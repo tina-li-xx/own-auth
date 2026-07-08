@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+.idea/
+.pnpm-store/
+.DS_Store
+.env
+.env.*
+!.env.example
+*.log
+AGENTS.md
+product.md

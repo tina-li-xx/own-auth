@@ -1,0 +1,42 @@
+{
+  "name": "own-auth-workspace",
+  "version": "0.1.8",
+  "private": true,
+  "description": "Vendor-neutral authentication platform for framework-independent auth, sessions, API keys, and organisations.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Tina Li",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tina-li-xx/own-auth.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tina-li-xx/own-auth/issues"
+  },
+  "homepage": "https://github.com/tina-li-xx/own-auth#readme",
+  "keywords": [
+    "auth",
+    "authentication",
+    "postgres",
+    "sessions",
+    "api-keys",
+    "organisations",
+    "backend",
+    "typescript"
+  ],
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "release:check": "pnpm build && pnpm test && pnpm --filter own-auth test:integration:required && pnpm --filter own-auth pack:check",
+    "release:publish": "pnpm run release:check && pnpm --filter own-auth publish:npm",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm --filter own-auth typecheck && pnpm --filter own-auth-basic-node-example build"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.5",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}
