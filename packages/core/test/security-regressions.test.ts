@@ -1,0 +1,532 @@
+import { describe, expect, it } from "vitest";
+import {
+  ConsoleEmailProvider,
+  ConsoleSmsProvider,
+  createOwnAuth,
+  InMemoryAuthStorage,
+  MemoryEmailProvider,
+  MemorySmsProvider
+} from "../src/index.js";
+
+function createHarness(
+  options: Parameters<typeof createOwnAuth>[0] = {}
+) {
+  const storage = options.storage ?? new InMemoryAuthStorage();
+  const emailProvider = new MemoryEmailProvider();
+  const smsProvider = new MemorySmsProvider();
+  const auth = createOwnAuth({
+    storage,
+    emailProvider,
+    smsProvider,
+    exposeRawTokens: true,
+    baseUrl: "http://localhost:3000",
+    ...options
+  });
+
+  return { auth, storage, emailProvider, smsProvider };
+}
+
+async function createOwnerWithOrg() {
+  const harness = createHarness();
+  const owner = await harness.auth.signUpEmailPassword({
+    email: "owner@example.com",
+    password: "correct-horse"
+  });
+  const organisation = await harness.auth.createOrganisation({
+    name: "Example Co",
+    ownerUserId: owner.user.id
+  });
+
+  return { ...harness, owner, ...organisation };
+}
+
+describe("OwnAuth security regressions", () => {
+  it("normalizes user identifiers and rejects duplicate email or phone accounts", async () => {
+    const { auth } = createHarness();
+
+    const user = await auth.createUser({
+      email: "USER@Example.COM ",
+      phone: "+1 (555) 123-4567",
+      password: "correct-horse"
+    });
+
+    expect(user.email).toBe("user@example.com");
+    expect(user.phone).toBe("+15551234567");
+
+    await expect(auth.createUser({ email: "user@example.com" })).rejects.toMatchObject({
+      code: "email_already_exists"
+    });
+    await expect(auth.createUser({ phone: "+15551234567" })).rejects.toMatchObject({
+      code: "phone_already_exists"
+    });
+  });
+
+  it("rejects weak passwords before creating users", async () => {
+    const { auth } = createHarness();
+
+    await expect(
+      auth.signUpEmailPassword({ email: "weak@example.com", password: "short" })
+    ).rejects.toMatchObject({ code: "weak_password" });
+    await expect(auth.storage.getUserByEmail("weak@example.com")).resolves.toBeNull();
+  });
+
+  it("blocks disabled users from signing in and invalidates their current sessions", async () => {
+    const { auth, storage } = createHarness();
+    const signup = await auth.signUpEmailPassword({
+      email: "disabled@example.com",
+      password: "correct-horse"
+    });
+
+    await storage.updateUser(signup.user.id, {
+      disabledAt: new Date(),
+      updatedAt: new Date()
+    });
+
+    await expect(
+      auth.signInEmailPassword({
+        email: "disabled@example.com",
+        password: "correct-horse"
+      })
+    ).rejects.toMatchObject({ code: "disabled_user" });
+    await expect(auth.getCurrentSession(signup.sessionToken)).resolves.toBeNull();
+  });
+
+  it("rate limits repeated password sign-in failures", async () => {
+    const { auth } = createHarness();
+    await auth.signUpEmailPassword({
+      email: "ratelimit@example.com",
+      password: "correct-horse"
+    });
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await expect(
+        auth.signInEmailPassword({
+          email: "ratelimit@example.com",
+          password: "wrong-password"
+        })
+      ).rejects.toMatchObject({ code: "invalid_credentials" });
+    }
+
+    await expect(
+      auth.signInEmailPassword({
+        email: "ratelimit@example.com",
+        password: "correct-horse"
+      })
+    ).rejects.toMatchObject({ code: "rate_limited" });
+  });
+
+  it("rejects expired absolute and idle sessions", async () => {
+    const absolute = createHarness({ session: { ttlMs: -1, idleTtlMs: 60_000 } });
+    const expiredAbsolute = await absolute.auth.signUpEmailPassword({
+      email: "absolute@example.com",
+      password: "correct-horse"
+    });
+
+    await expect(absolute.auth.getCurrentSession(expiredAbsolute.sessionToken)).resolves.toBeNull();
+
+    const idle = createHarness({ session: { ttlMs: 60_000, idleTtlMs: -1 } });
+    const expiredIdle = await idle.auth.signUpEmailPassword({
+      email: "idle@example.com",
+      password: "correct-horse"
+    });
+
+    await expect(idle.auth.getCurrentSession(expiredIdle.sessionToken)).resolves.toBeNull();
+  });
+
+  it("revokes every active session for a user", async () => {
+    const { auth } = createHarness();
+    const signup = await auth.signUpEmailPassword({
+      email: "sessions@example.com",
+      password: "correct-horse"
+    });
+    const signin = await auth.signInEmailPassword({
+      email: "sessions@example.com",
+      password: "correct-horse"
+    });
+
+    await expect(auth.revokeAllSessions(signup.user.id, "security_event")).resolves.toBe(2);
+    await expect(auth.getCurrentSession(signup.sessionToken)).resolves.toBeNull();
+    await expect(auth.getCurrentSession(signin.sessionToken)).resolves.toBeNull();
+  });
+
+  it("does not expose raw delivery tokens unless explicitly configured", async () => {
+    const emailProvider = new MemoryEmailProvider();
+    const auth = createOwnAuth({
+      emailProvider,
+      smsProvider: new MemorySmsProvider(),
+      exposeRawTokens: false
+    });
+
+    const result = await auth.requestMagicLink({ email: "hidden-token@example.com" });
+
+    expect(result.token).toBeUndefined();
+    expect(result.url).toBeUndefined();
+    expect(emailProvider.messages.at(-1)?.token).toBeTruthy();
+  });
+
+  it("does not log raw tokens or OTP codes from console providers", async () => {
+    const originalInfo = console.info;
+    const logs: unknown[] = [];
+    console.info = (...args: unknown[]) => {
+      logs.push(args);
+    };
+
+    try {
+      await new ConsoleEmailProvider().send({
+        to: "user@example.com",
+        type: "magic_link",
+        token: "raw-email-token",
+        url: "https://app.example.com/auth?token=raw-email-token",
+        expiresAt: new Date("2026-01-01T00:00:00.000Z")
+      });
+      await new ConsoleSmsProvider().send({
+        to: "+15550000000",
+        purpose: "phone_login",
+        code: "999999",
+        expiresAt: new Date("2026-01-01T00:00:00.000Z")
+      });
+    } finally {
+      console.info = originalInfo;
+    }
+
+    expect(JSON.stringify(logs)).not.toContain("raw-email-token");
+    expect(JSON.stringify(logs)).not.toContain("999999");
+  });
+
+  it("prevents magic-link open redirects but allows relative redirects", async () => {
+    const { auth, emailProvider } = createHarness({
+      redirectAllowlist: ["http://localhost:3000"]
+    });
+
+    await expect(
+      auth.requestMagicLink({
+        email: "redirect@example.com",
+        redirectUrl: "https://evil.example/callback"
+      })
+    ).rejects.toMatchObject({ code: "redirect_not_allowed" });
+
+    const result = await auth.requestMagicLink({
+      email: "redirect@example.com",
+      redirectUrl: "/dashboard"
+    });
+
+    expect(result.url).toContain("redirect_url=%2Fdashboard");
+    expect(emailProvider.messages).toHaveLength(1);
+  });
+
+  it("does not create or email unknown users when magic-link signup is disabled", async () => {
+    const { auth, emailProvider } = createHarness({ allowMagicLinkSignup: false });
+
+    const result = await auth.requestMagicLink({ email: "unknown@example.com" });
+
+    expect(result).toEqual({ sent: true, expiresAt: null });
+    expect(emailProvider.messages).toHaveLength(0);
+    await expect(auth.storage.getUserByEmail("unknown@example.com")).resolves.toBeNull();
+  });
+
+  it("rejects expired magic-link tokens", async () => {
+    const { auth, emailProvider } = createHarness({
+      tokenTtlMs: { magic_link: -1 }
+    });
+
+    await auth.requestMagicLink({ email: "expired-magic@example.com" });
+
+    await expect(
+      auth.verifyMagicLink({ token: emailProvider.messages.at(-1)?.token ?? "" })
+    ).rejects.toMatchObject({ code: "expired_token" });
+  });
+
+  it("returns generic email-verification responses for unknown users", async () => {
+    const { auth, emailProvider } = createHarness();
+
+    await expect(
+      auth.requestEmailVerification({ email: "missing@example.com" })
+    ).resolves.toEqual({ sent: true, expiresAt: null });
+    expect(emailProvider.messages).toHaveLength(0);
+  });
+
+  it("verifies email with a one-time token", async () => {
+    const { auth, emailProvider } = createHarness();
+    await auth.signUpEmailPassword({
+      email: "verify@example.com",
+      password: "correct-horse"
+    });
+    await auth.requestEmailVerification({ email: "verify@example.com" });
+
+    const token = emailProvider.messages.at(-1)?.token ?? "";
+    const user = await auth.verifyEmail({ token });
+
+    expect(user.emailVerifiedAt).toBeInstanceOf(Date);
+    await expect(auth.verifyEmail({ token })).rejects.toMatchObject({
+      code: "token_already_used"
+    });
+  });
+
+  it("returns generic password-reset responses for unknown users", async () => {
+    const { auth, emailProvider } = createHarness();
+
+    await expect(
+      auth.requestPasswordReset({ email: "missing-reset@example.com" })
+    ).resolves.toEqual({ sent: true, expiresAt: null });
+    expect(emailProvider.messages).toHaveLength(0);
+  });
+
+  it("rejects expired password reset tokens", async () => {
+    const { auth, emailProvider } = createHarness({
+      tokenTtlMs: { password_reset: -1 }
+    });
+    await auth.signUpEmailPassword({
+      email: "expired-reset@example.com",
+      password: "correct-horse"
+    });
+    await auth.requestPasswordReset({ email: "expired-reset@example.com" });
+
+    await expect(
+      auth.resetPassword({
+        token: emailProvider.messages.at(-1)?.token ?? "",
+        newPassword: "new-password"
+      })
+    ).rejects.toMatchObject({ code: "expired_token" });
+  });
+
+  it("tracks SMS OTP attempts and blocks codes after the attempt limit", async () => {
+    const { auth, smsProvider } = createHarness({ sms: { maxAttempts: 2 } });
+
+    await auth.requestSmsOtp({ phone: "+15551230000" });
+    const code = smsProvider.messages.at(-1)?.code ?? "";
+
+    await expect(
+      auth.verifySmsOtp({ phone: "+15551230000", code: "000000" })
+    ).rejects.toMatchObject({ code: "invalid_otp" });
+    await expect(
+      auth.verifySmsOtp({ phone: "+15551230000", code: "111111" })
+    ).rejects.toMatchObject({ code: "invalid_otp" });
+    await expect(
+      auth.verifySmsOtp({ phone: "+15551230000", code })
+    ).rejects.toMatchObject({ code: "otp_attempts_exceeded" });
+  });
+
+  it("prevents SMS OTP reuse after a successful verification", async () => {
+    const { auth, smsProvider } = createHarness();
+
+    await auth.requestSmsOtp({ phone: "+15551230001" });
+    const code = smsProvider.messages.at(-1)?.code ?? "";
+
+    await auth.verifySmsOtp({ phone: "+15551230001", code });
+    await expect(auth.verifySmsOtp({ phone: "+15551230001", code })).rejects.toMatchObject({
+      code: "invalid_otp"
+    });
+  });
+
+  it("verifies phone numbers without creating a login session for verification-only OTPs", async () => {
+    const { auth, smsProvider } = createHarness();
+    const user = await auth.createUser({ phone: "+15551230002" });
+
+    await auth.requestSmsOtp({
+      phone: "+15551230002",
+      userId: user.id,
+      purpose: "phone_verification"
+    });
+    const result = await auth.verifySmsOtp({
+      phone: "+15551230002",
+      code: smsProvider.messages.at(-1)?.code ?? "",
+      purpose: "phone_verification"
+    });
+
+    expect(result.user.phoneVerifiedAt).toBeInstanceOf(Date);
+    expect(result.session).toBeNull();
+    expect(result.sessionToken).toBeNull();
+  });
+
+  it("rejects malformed, tampered, expired, and revoked API keys", async () => {
+    const { auth, owner, organisation } = await createOwnerWithOrg();
+    const created = await auth.createApiKey({
+      name: "Worker",
+      organisationId: organisation.id,
+      actorUserId: owner.user.id,
+      scopes: ["read users"],
+      expiresAt: new Date(Date.now() + 60_000)
+    });
+    const tampered = `${created.rawKey.slice(0, -1)}x`;
+
+    await expect(auth.verifyApiKey("not-a-key")).rejects.toMatchObject({
+      code: "api_key_invalid"
+    });
+    await expect(auth.verifyApiKey(tampered)).rejects.toMatchObject({
+      code: "api_key_invalid"
+    });
+
+    await auth.revokeApiKey(created.apiKey.keyPrefix, owner.user.id);
+    await expect(auth.verifyApiKey(created.rawKey)).rejects.toMatchObject({
+      code: "api_key_revoked"
+    });
+
+    const expired = await auth.createApiKey({
+      name: "Expired",
+      organisationId: organisation.id,
+      actorUserId: owner.user.id,
+      expiresAt: new Date(Date.now() - 1)
+    });
+    await expect(auth.verifyApiKey(expired.rawKey)).rejects.toMatchObject({
+      code: "api_key_expired"
+    });
+  });
+
+  it("supports wildcard API key scopes and records last-used time", async () => {
+    const { auth, owner, organisation } = await createOwnerWithOrg();
+    const created = await auth.createApiKey({
+      name: "Wildcard",
+      organisationId: organisation.id,
+      actorUserId: owner.user.id,
+      scopes: ["*"]
+    });
+
+    const verified = await auth.verifyApiKey(created.rawKey, [
+      "read users",
+      "manage organisation"
+    ]);
+
+    expect(verified.apiKey.lastUsedAt).toBeInstanceOf(Date);
+    expect(verified.organisation?.id).toBe(organisation.id);
+  });
+
+  it("creates unique organisation slugs", async () => {
+    const { auth } = createHarness();
+    const user = await auth.signUpEmailPassword({
+      email: "slug-owner@example.com",
+      password: "correct-horse"
+    });
+
+    const first = await auth.createOrganisation({
+      name: "Example Co",
+      ownerUserId: user.user.id
+    });
+    const second = await auth.createOrganisation({
+      name: "Example Co",
+      ownerUserId: user.user.id
+    });
+
+    expect(first.organisation.slug).toBe("example-co");
+    expect(second.organisation.slug).toBe("example-co-2");
+  });
+
+  it("denies organisation actions for members without the required permission", async () => {
+    const { auth, owner, organisation } = await createOwnerWithOrg();
+    const invite = await auth.inviteMember({
+      organisationId: organisation.id,
+      invitedByUserId: owner.user.id,
+      email: "member@example.com",
+      role: "member"
+    });
+    const accepted = await auth.acceptInvitation({ token: invite.token ?? "" });
+
+    await expect(
+      auth.createApiKey({
+        name: "Member key",
+        organisationId: organisation.id,
+        actorUserId: accepted.user.id
+      })
+    ).rejects.toMatchObject({ code: "permission_denied" });
+    await expect(
+      auth.updateOrganisation(organisation.id, {
+        actorUserId: accepted.user.id,
+        name: "Renamed"
+      })
+    ).rejects.toMatchObject({ code: "permission_denied" });
+  });
+
+  it("prevents unsafe owner role changes and owner removal", async () => {
+    const { auth, owner, organisation, ownerMembership } = await createOwnerWithOrg();
+
+    await expect(
+      auth.changeMemberRole({
+        organisationId: organisation.id,
+        memberId: ownerMembership.id,
+        actorUserId: owner.user.id,
+        role: "admin"
+      })
+    ).rejects.toMatchObject({ code: "unsafe_owner_removal" });
+    await expect(
+      auth.removeMember({
+        organisationId: organisation.id,
+        memberId: ownerMembership.id,
+        actorUserId: owner.user.id
+      })
+    ).rejects.toMatchObject({ code: "unsafe_owner_removal" });
+  });
+
+  it("removes members and drops their permissions", async () => {
+    const { auth, owner, organisation } = await createOwnerWithOrg();
+    const invite = await auth.inviteMember({
+      organisationId: organisation.id,
+      invitedByUserId: owner.user.id,
+      email: "admin@example.com",
+      role: "admin"
+    });
+    const accepted = await auth.acceptInvitation({ token: invite.token ?? "" });
+
+    await auth.removeMember({
+      organisationId: organisation.id,
+      memberId: accepted.member.id,
+      actorUserId: owner.user.id
+    });
+
+    await expect(
+      auth.checkPermission(organisation.id, accepted.user.id, "manage_api_keys")
+    ).resolves.toBe(false);
+  });
+
+  it("prevents invitation token reuse", async () => {
+    const { auth, owner, organisation } = await createOwnerWithOrg();
+    const invite = await auth.inviteMember({
+      organisationId: organisation.id,
+      invitedByUserId: owner.user.id,
+      email: "invite-reuse@example.com"
+    });
+
+    await auth.acceptInvitation({ token: invite.token ?? "" });
+    await expect(auth.acceptInvitation({ token: invite.token ?? "" })).rejects.toMatchObject({
+      code: "token_already_used"
+    });
+  });
+
+  it("marks expired pending invitations as expired", async () => {
+    const { auth, storage, owner, organisation } = await createOwnerWithOrg();
+    const invite = await auth.inviteMember({
+      organisationId: organisation.id,
+      invitedByUserId: owner.user.id,
+      email: "expired-invite@example.com"
+    });
+
+    await storage.updateInvitation(invite.invitation.id, {
+      expiresAt: new Date(Date.now() - 1)
+    });
+
+    await expect(auth.acceptInvitation({ token: invite.token ?? "" })).rejects.toMatchObject({
+      code: "expired_token"
+    });
+    await expect(storage.getInvitationById(invite.invitation.id)).resolves.toMatchObject({
+      status: "expired"
+    });
+  });
+
+  it("filters audit events by user, organisation, and API key", async () => {
+    const { auth, owner, organisation } = await createOwnerWithOrg();
+    const apiKey = await auth.createApiKey({
+      name: "Audited key",
+      organisationId: organisation.id,
+      actorUserId: owner.user.id
+    });
+    await auth.verifyApiKey(apiKey.rawKey);
+
+    const userEvents = await auth.listAuditEvents({ userId: owner.user.id });
+    const orgEvents = await auth.listAuditEvents({ organisationId: organisation.id });
+    const keyEvents = await auth.listAuditEvents({ apiKeyId: apiKey.apiKey.id });
+
+    expect(userEvents.map((event) => event.eventType)).toContain("user.signed_up");
+    expect(orgEvents.map((event) => event.eventType)).toContain("organisation.created");
+    expect(keyEvents.map((event) => event.eventType)).toEqual(
+      expect.arrayContaining(["api_key.created", "api_key.used"])
+    );
+  });
+});
