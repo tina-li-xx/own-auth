@@ -71,9 +71,11 @@ const emailProvider: EmailProvider = {
   },
 };
 
+const appLink = "replace-with-the-url-your-app-handles";
+
 export const auth = createOwnAuth({
   tokenPepper: process.env.OWN_AUTH_TOKEN_PEPPER,
-  baseUrl: "https://yourapp.com",
+  baseUrl: appLink,
   emailProvider,
 });
 ```
@@ -108,18 +110,24 @@ Skip this if your app sends its own emails. Use this if you want Own Auth to han
 ```ts
 import { OwnAuthManagedEmailProvider, createOwnAuth } from "own-auth";
 
+const appLink = "replace-with-the-url-your-app-handles";
+
 export const auth = createOwnAuth({
   tokenPepper: process.env.OWN_AUTH_TOKEN_PEPPER,
-  baseUrl: "https://yourapp.com",
+  baseUrl: appLink,
   emailProvider: new OwnAuthManagedEmailProvider({
     deliveryKey: process.env.OWN_AUTH_EMAIL_DELIVERY_KEY,
   }),
 });
 ```
 
+Managed delivery uses `https://api.own-auth.com/v1/email` by default.
+
 ## Magic Links
 
-Passwordless email login. Own Auth creates a single-use link, hashes the token, and calls your email provider.
+Passwordless email login. Own Auth creates a single-use link to the app, hashes the token, and calls the email provider.
+
+Set `baseUrl` to the URL the app handles for auth links. That can be a route, universal link, deep link, or any other callback URL owned by the app.
 
 ```ts
 // Request
@@ -132,7 +140,11 @@ await auth.requestMagicLink({
 const { user, sessionToken } = await auth.verifyMagicLink({ token });
 ```
 
+The app reads the token from the link, verifies it, saves the returned session, and then opens `redirectUrl`.
+
 New users are created automatically. Disable with `allowMagicLinkSignup: false`.
+
+`redirectUrl` supports any URL in your `redirectAllowlist`, including mobile deep links like `myapp://settings`.
 
 ## Phone / SMS Login
 
@@ -286,12 +298,14 @@ const events = await auth.listAuditEvents({
 ## Configuration
 
 ```ts
+const appLink = "replace-with-the-url-your-app-handles";
+
 createOwnAuth({
   // Required
   tokenPepper: process.env.OWN_AUTH_TOKEN_PEPPER,
 
-  // Base URL for email links (default: "http://localhost:3000")
-  baseUrl: "https://yourapp.com",
+  // URL the app handles for auth links
+  baseUrl: appLink,
 
   // Providers (default: log to console)
   emailProvider,
@@ -328,7 +342,7 @@ createOwnAuth({
   },
 
   // Security
-  redirectAllowlist: ["https://yourapp.com"],
+  redirectAllowlist: [appLink],
 
   // Development only. Exposes raw tokens in responses.
   exposeRawTokens: false,

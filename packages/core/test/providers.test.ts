@@ -2,6 +2,27 @@ import { describe, expect, it, vi } from "vitest";
 import { OwnAuthManagedEmailProvider } from "../src/index.js";
 
 describe("OwnAuthManagedEmailProvider", () => {
+  it("uses the Own Auth managed delivery endpoint by default", async () => {
+    const fetch = vi.fn(async () => ({ ok: true, status: 202 }) as Response);
+    const provider = new OwnAuthManagedEmailProvider({
+      deliveryKey: "delivery_key",
+      fetch
+    });
+
+    await provider.send({
+      to: "user@example.com",
+      type: "magic_link",
+      token: "raw-token",
+      url: "https://app.example.com/auth/magic-link/verify?token=raw-token",
+      expiresAt: new Date("2026-01-01T00:00:00.000Z")
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "https://api.own-auth.com/v1/email",
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
   it("sends email delivery requests without posting the raw token separately", async () => {
     const fetch = vi.fn(async () => ({ ok: true, status: 202 }) as Response);
     const provider = new OwnAuthManagedEmailProvider({

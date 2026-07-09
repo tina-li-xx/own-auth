@@ -56,7 +56,7 @@ export class OwnAuthManagedEmailProvider implements EmailProvider {
     }
 
     this.deliveryKey = options.deliveryKey;
-    this.endpoint = (options.endpoint ?? "https://delivery.own-auth.com/v1/email").toString();
+    this.endpoint = (options.endpoint ?? "https://api.own-auth.com/v1/email").toString();
     this.fetchImpl = options.fetch ?? globalThis.fetch;
   }
 

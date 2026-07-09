@@ -76,13 +76,19 @@ const smsProvider: SmsProvider = {
   }
 };
 
+const appLink = "replace-with-the-url-your-app-handles";
+
 export const auth = createOwnAuth({
   tokenPepper: process.env.OWN_AUTH_TOKEN_PEPPER,
-  baseUrl: "https://yourapp.com",
+  baseUrl: appLink,
   emailProvider,
   smsProvider
 });
 ```
+
+`baseUrl` is the URL the app handles for auth links.
+
+Managed delivery uses `https://api.own-auth.com/v1/email` by default.
 
 Without providers, Own Auth writes delivery events to the server console for local development.
 
