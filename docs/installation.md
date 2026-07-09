@@ -39,6 +39,8 @@ Run this once after setting `DATABASE_URL`. It creates the Own Auth tables in th
 npx own-auth migrate
 ```
 
+Own Auth saves users, sessions, tokens, API keys, organisations, and rate-limit attempts in Postgres.
+
 Use this path for normal setup.
 
 ### Advanced: Manual SQL

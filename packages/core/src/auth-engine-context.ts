@@ -6,6 +6,7 @@ import {
   type SmsProvider
 } from "./providers.js";
 import { InMemoryAuthStorage } from "./memory-storage.js";
+import { PostgresRateLimitStore } from "./postgres/postgres-rate-limit-store.js";
 import { PostgresAuthStorage } from "./postgres/postgres-storage.js";
 import { InMemoryRateLimitStore, type RateLimitStore } from "./rate-limit.js";
 import type { AuthStorage } from "./storage.js";
@@ -44,10 +45,11 @@ export function createAuthEngineContext(options: OwnAuthOptions = {}): AuthEngin
   }
 
   const baseUrl = options.baseUrl ?? "http://localhost:3000";
+  const persistence = createDefaultPersistence(options.storage);
 
   return {
-    storage: options.storage ?? createDefaultStorage(),
-    rateLimitStore: options.rateLimitStore ?? new InMemoryRateLimitStore(),
+    storage: persistence.storage,
+    rateLimitStore: options.rateLimitStore ?? persistence.rateLimitStore,
     emailProvider: options.emailProvider ?? new ConsoleEmailProvider(),
     smsProvider: options.smsProvider ?? new ConsoleSmsProvider(),
     baseUrl,
@@ -66,17 +68,34 @@ export function createAuthEngineContext(options: OwnAuthOptions = {}): AuthEngin
   };
 }
 
-function createDefaultStorage(): AuthStorage {
+function createDefaultPersistence(storage?: AuthStorage): {
+  storage: AuthStorage;
+  rateLimitStore: RateLimitStore;
+} {
+  if (storage) {
+    return {
+      storage,
+      rateLimitStore: new InMemoryRateLimitStore()
+    };
+  }
+
   const nodeEnv = process.env.NODE_ENV;
   const databaseUrl = process.env.DATABASE_URL;
 
   if (nodeEnv === "test") {
-    return new InMemoryAuthStorage();
+    return {
+      storage: new InMemoryAuthStorage(),
+      rateLimitStore: new InMemoryRateLimitStore()
+    };
   }
 
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is required. Set DATABASE_URL or pass storage to createOwnAuth().");
   }
 
-  return new PostgresAuthStorage(new pg.Pool({ connectionString: databaseUrl }));
+  const pool = new pg.Pool({ connectionString: databaseUrl });
+  return {
+    storage: new PostgresAuthStorage(pool),
+    rateLimitStore: new PostgresRateLimitStore(pool)
+  };
 }

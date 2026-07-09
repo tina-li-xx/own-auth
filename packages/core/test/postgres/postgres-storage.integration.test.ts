@@ -7,7 +7,7 @@ import {
   MemoryEmailProvider,
   MemorySmsProvider
 } from "own-auth";
-import { PostgresAuthStorage } from "../../src/postgres/index.js";
+import { PostgresAuthStorage, PostgresRateLimitStore } from "../../src/postgres/index.js";
 
 const { Pool } = pg;
 const defaultDatabaseUrl = "postgres://localhost:5432/own_auth_test";
@@ -51,6 +51,7 @@ describeWithDatabase("PostgresAuthStorage integration", () => {
     const smsProvider = new MemorySmsProvider();
     const auth = createOwnAuth({
       storage: new PostgresAuthStorage(client),
+      rateLimitStore: new PostgresRateLimitStore(client),
       emailProvider,
       smsProvider,
       exposeRawTokens: true,
@@ -104,6 +105,9 @@ describeWithDatabase("PostgresAuthStorage integration", () => {
       "select event_type from own_auth_audit_events where organisation_id = $1 order by created_at asc",
       [organisation.id]
     );
+    const rateLimitRows = await client.query<{ count: number }>(
+      "select count(*)::int as count from own_auth_rate_limits"
+    );
 
     expect(passwordRow.rows[0]?.password_hash).not.toBe("correct-horse");
     expect(sessionRow.rows[0]?.token_hash).not.toBe(signup.sessionToken);
@@ -113,6 +117,7 @@ describeWithDatabase("PostgresAuthStorage integration", () => {
     expect(auditRows.rows.map((row) => row.event_type)).toEqual(
       expect.arrayContaining(["organisation.created", "api_key.created", "api_key.used"])
     );
+    expect(rateLimitRows.rows[0]?.count).toBeGreaterThan(0);
   });
 });
 

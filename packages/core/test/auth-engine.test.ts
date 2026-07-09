@@ -5,7 +5,7 @@ import {
   MemoryEmailProvider,
   MemorySmsProvider
 } from "../src/index.js";
-import { PostgresAuthStorage } from "../src/postgres/index.js";
+import { PostgresAuthStorage, PostgresRateLimitStore } from "../src/postgres/index.js";
 
 function createTestAuth() {
   const emailProvider = new MemoryEmailProvider();
@@ -90,7 +90,7 @@ describe("OwnAuth core", () => {
     }
   });
 
-  it("uses Postgres storage from DATABASE_URL outside tests", () => {
+  it("uses Postgres storage and rate limits from DATABASE_URL outside tests", () => {
     const previousNodeEnv = process.env.NODE_ENV;
     const previousDatabaseUrl = process.env.DATABASE_URL;
 
@@ -101,6 +101,7 @@ describe("OwnAuth core", () => {
       const auth = createOwnAuth();
 
       expect(auth.storage).toBeInstanceOf(PostgresAuthStorage);
+      expect(auth.rateLimitStore).toBeInstanceOf(PostgresRateLimitStore);
     } finally {
       process.env.NODE_ENV = previousNodeEnv;
       if (previousDatabaseUrl === undefined) {

@@ -316,6 +316,8 @@ Auto-migrate (recommended):
 npx own-auth migrate
 ```
 
+Own Auth saves users, sessions, tokens, API keys, organisations, and rate-limit attempts in Postgres.
+
 Or generate SQL and apply it yourself:
 
 ```bash
