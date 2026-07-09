@@ -37,6 +37,19 @@ const current = await auth.requireCurrentSession(signup.sessionToken);
 await auth.signOut(signup.sessionToken);
 ```
 
+## External Provider Sign In
+
+After your backend verifies an Apple or Google token, pass the verified provider identity to Own Auth:
+
+```ts
+const { sessionToken } = await auth.signInWithExternalProvider({
+  provider: "google",
+  providerAccountId: googleUser.sub,
+  email: googleUser.email,
+  emailVerified: googleUser.email_verified === true
+});
+```
+
 ## Email and SMS
 
 Pass providers when you need real email or SMS delivery:

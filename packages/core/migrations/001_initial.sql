@@ -35,7 +35,7 @@ create table if not exists own_auth_accounts (
   created_at timestamptz not null,
   updated_at timestamptz not null,
   constraint own_auth_accounts_provider_check
-    check (provider in ('password', 'magic_link', 'phone'))
+    check (provider in ('password', 'magic_link', 'phone', 'apple', 'google'))
 );
 
 create unique index if not exists own_auth_accounts_provider_account_unique

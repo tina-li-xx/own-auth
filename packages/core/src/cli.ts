@@ -19,6 +19,10 @@ const defaultIo: CliIo = {
   stdout: (message) => process.stdout.write(message),
   stderr: (message) => process.stderr.write(message)
 };
+const migrationFiles = [
+  "001_initial.sql",
+  "002_external_providers.sql"
+] as const;
 
 export async function runCli(
   argv = process.argv.slice(2),
@@ -63,7 +67,11 @@ export async function runCli(
 }
 
 export async function readMigrationSql(): Promise<string> {
-  return readFile(new URL("../migrations/001_initial.sql", import.meta.url), "utf8");
+  const migrations = await Promise.all(
+    migrationFiles.map((file) => readFile(new URL(`../migrations/${file}`, import.meta.url), "utf8"))
+  );
+
+  return migrations.map((sql) => sql.trim()).join("\n\n") + "\n";
 }
 
 function parseArgs(argv: string[]): ParsedArgs {

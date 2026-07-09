@@ -30,6 +30,7 @@ describe("own-auth CLI", () => {
 
     expect(exitCode).toBe(0);
     expect(output().stdout).toContain("create table if not exists own_auth_users");
+    expect(output().stdout).toContain("002_external_providers");
     expect(output().stderr).toBe("");
   });
 

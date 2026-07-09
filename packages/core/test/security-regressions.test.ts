@@ -159,6 +159,53 @@ describe("OwnAuth security regressions", () => {
     expect(signin.user.id).toBe(signup.user.id);
   });
 
+  it("rejects new external provider links with unverified emails", async () => {
+    const { auth } = createHarness();
+
+    await expect(
+      auth.signInWithExternalProvider({
+        provider: "google",
+        providerAccountId: "google-unverified-email",
+        email: "unverified@example.com",
+        emailVerified: false
+      })
+    ).rejects.toMatchObject({ code: "validation_error" });
+    await expect(auth.storage.getUserByEmail("unverified@example.com")).resolves.toBeNull();
+  });
+
+  it("rejects unsupported external providers", async () => {
+    const { auth } = createHarness();
+
+    await expect(
+      auth.signInWithExternalProvider({
+        provider: "facebook" as "google",
+        providerAccountId: "facebook-user-1"
+      })
+    ).rejects.toMatchObject({ code: "validation_error" });
+  });
+
+  it("blocks disabled users from external provider sign-in", async () => {
+    const { auth, storage } = createHarness();
+    const signin = await auth.signInWithExternalProvider({
+      provider: "google",
+      providerAccountId: "google-disabled-user",
+      email: "disabled-external@example.com",
+      emailVerified: true
+    });
+
+    await storage.updateUser(signin.user.id, {
+      disabledAt: new Date(),
+      updatedAt: new Date()
+    });
+
+    await expect(
+      auth.signInWithExternalProvider({
+        provider: "google",
+        providerAccountId: "google-disabled-user"
+      })
+    ).rejects.toMatchObject({ code: "disabled_user" });
+  });
+
   it("rejects expired absolute and idle sessions", async () => {
     const absolute = createHarness({ session: { ttlMs: -1, idleTtlMs: 60_000 } });
     const expiredAbsolute = await absolute.auth.signUpEmailPassword({

@@ -193,6 +193,51 @@ describe("OwnAuth core", () => {
     expect(signin.user.id).toBe(signup.user.id);
   });
 
+  it("signs in with a verified external provider identity", async () => {
+    const { auth } = createTestAuth();
+
+    const firstSignin = await auth.signInWithExternalProvider({
+      provider: "google",
+      providerAccountId: "google-user-1",
+      email: "External@Example.com",
+      emailVerified: true,
+      name: "External User"
+    });
+    const secondSignin = await auth.signInWithExternalProvider({
+      provider: "google",
+      providerAccountId: "google-user-1"
+    });
+
+    expect(firstSignin.user.email).toBe("external@example.com");
+    expect(firstSignin.user.emailVerifiedAt).toBeInstanceOf(Date);
+    expect(secondSignin.user.id).toBe(firstSignin.user.id);
+    await expect(auth.getCurrentSession(secondSignin.sessionToken)).resolves.toMatchObject({
+      user: { id: firstSignin.user.id }
+    });
+  });
+
+  it("links a verified external provider identity to an existing user email", async () => {
+    const { auth } = createTestAuth();
+    const signup = await auth.signUpEmailPassword({
+      email: "linked@example.com",
+      password: "correct-horse"
+    });
+
+    const signin = await auth.signInWithExternalProvider({
+      provider: "apple",
+      providerAccountId: "apple-user-1",
+      email: "LINKED@example.com",
+      emailVerified: true
+    });
+
+    expect(signin.user.id).toBe(signup.user.id);
+    const account = await auth.storage.getAccountByProvider("apple", "apple-user-1");
+    expect(account).toMatchObject({
+      userId: signup.user.id,
+      providerEmail: "linked@example.com"
+    });
+  });
+
   it("supports phone login through hashed SMS OTP codes", async () => {
     const { auth, smsProvider } = createTestAuth();
 

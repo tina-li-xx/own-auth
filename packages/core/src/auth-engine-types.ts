@@ -5,6 +5,7 @@ import type {
   Organisation,
   OrganisationMember,
   OrganisationRole,
+  ExternalAccountProvider,
   RequestContext,
   Session,
   SmsOtpPurpose,
@@ -54,6 +55,17 @@ export interface ChangePasswordInput {
   sessionToken: string;
   currentPassword: string;
   newPassword: string;
+  request?: RequestContext;
+}
+
+export interface SignInWithExternalProviderInput {
+  provider: ExternalAccountProvider;
+  providerAccountId: string;
+  email?: string;
+  emailVerified?: boolean;
+  name?: string;
+  imageUrl?: string;
+  metadata?: JsonRecord;
   request?: RequestContext;
 }
 

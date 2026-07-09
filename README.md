@@ -151,6 +151,21 @@ const { user, sessionToken } = await auth.verifySmsOtp({
 
 New users are created automatically. Disable with `allowPhoneSignup: false`.
 
+## External Provider Sign In
+
+After your backend verifies an Apple or Google token, pass the verified provider identity to Own Auth.
+
+```ts
+const { user, sessionToken } = await auth.signInWithExternalProvider({
+  provider: "google",
+  providerAccountId: googleUser.sub,
+  email: googleUser.email,
+  emailVerified: googleUser.email_verified === true
+});
+```
+
+Own Auth links the provider account, creates or finds the user, creates the session, and writes the audit events.
+
 ## Email Verification
 
 ```ts
@@ -344,6 +359,7 @@ psql "$DATABASE_URL" -f own-auth.sql
 | **Users** | `createUser` `signUpEmailPassword` `signInEmailPassword` |
 | **Sessions** | `getCurrentSession` `requireCurrentSession` `signOut` `revokeAllSessions` |
 | **Magic Links** | `requestMagicLink` `verifyMagicLink` |
+| **External Providers** | `signInWithExternalProvider` |
 | **Email Verification** | `requestEmailVerification` `verifyEmail` |
 | **Passwords** | `requestPasswordReset` `resetPassword` `changePassword` |
 | **SMS OTP** | `requestSmsOtp` `verifySmsOtp` |

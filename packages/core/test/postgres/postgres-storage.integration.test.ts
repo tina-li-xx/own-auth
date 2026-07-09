@@ -6,7 +6,7 @@ import {
   createOwnAuth,
   MemoryEmailProvider,
   MemorySmsProvider
-} from "own-auth";
+} from "../../src/index.js";
 import { PostgresAuthStorage, PostgresRateLimitStore } from "../../src/postgres/index.js";
 
 const { Pool } = pg;
@@ -72,6 +72,15 @@ describeWithDatabase("PostgresAuthStorage integration", () => {
 
     expect(magicSession.user.id).toBe(signup.user.id);
 
+    const externalSession = await auth.signInWithExternalProvider({
+      provider: "google",
+      providerAccountId: "postgres-google-user",
+      email: "postgres-google@example.com",
+      emailVerified: true
+    });
+
+    expect(externalSession.user.email).toBe("postgres-google@example.com");
+
     const { organisation } = await auth.createOrganisation({
       name: "Postgres Co",
       ownerUserId: signup.user.id
@@ -105,6 +114,9 @@ describeWithDatabase("PostgresAuthStorage integration", () => {
       "select event_type from own_auth_audit_events where organisation_id = $1 order by created_at asc",
       [organisation.id]
     );
+    const externalAccountRows = await client.query<{ provider: string }>(
+      "select provider from own_auth_accounts where provider = 'google'"
+    );
     const rateLimitRows = await client.query<{ count: number }>(
       "select count(*)::int as count from own_auth_rate_limits"
     );
@@ -117,6 +129,7 @@ describeWithDatabase("PostgresAuthStorage integration", () => {
     expect(auditRows.rows.map((row) => row.event_type)).toEqual(
       expect.arrayContaining(["organisation.created", "api_key.created", "api_key.used"])
     );
+    expect(externalAccountRows.rows).toEqual([{ provider: "google" }]);
     expect(rateLimitRows.rows[0]?.count).toBeGreaterThan(0);
   });
 });

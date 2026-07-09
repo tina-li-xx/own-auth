@@ -1,6 +1,8 @@
 export type JsonRecord = Record<string, unknown>;
 
-export type AccountProvider = "password" | "magic_link" | "phone";
+export type ExternalAccountProvider = "apple" | "google";
+
+export type AccountProvider = "password" | "magic_link" | "phone" | ExternalAccountProvider;
 
 export type TokenType =
   | "email_verification"
@@ -25,6 +27,7 @@ export type AuditEventType =
   | "user.signed_out"
   | "user.disabled"
   | "user.re_enabled"
+  | "external_provider.linked"
   | "session.created"
   | "session.revoked"
   | "session.revoked_other"

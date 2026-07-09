@@ -19,6 +19,7 @@ import {
 } from "./auth-engine-internals.js";
 import * as apiKeys from "./auth-engine-api-keys.js";
 import * as email from "./auth-engine-email.js";
+import * as external from "./auth-engine-external.js";
 import * as invitations from "./auth-engine-invitations.js";
 import * as organisations from "./auth-engine-organisations.js";
 import * as sessions from "./auth-engine-sessions.js";
@@ -46,6 +47,7 @@ import type {
   RevokeInvitationInput,
   SessionResult,
   SignInEmailPasswordInput,
+  SignInWithExternalProviderInput,
   SignUpEmailPasswordInput,
   SmsOtpVerificationResult,
   UpdateOrganisationInput,
@@ -70,6 +72,9 @@ export class OwnAuth {
   createUser(input: CreateUserInput): Promise<User> { return users.createUser(this.ctx, input); }
   signUpEmailPassword(input: SignUpEmailPasswordInput): Promise<SessionResult> { return users.signUpEmailPassword(this.ctx, input); }
   signInEmailPassword(input: SignInEmailPasswordInput): Promise<SessionResult> { return users.signInEmailPassword(this.ctx, input); }
+  signInWithExternalProvider(input: SignInWithExternalProviderInput): Promise<SessionResult> {
+    return external.signInWithExternalProvider(this.ctx, input);
+  }
   changePassword(input: ChangePasswordInput): Promise<User> { return users.changePassword(this.ctx, input); }
   getCurrentSession(sessionToken: string): Promise<CurrentSession | null> { return sessions.getCurrentSession(this.ctx, sessionToken); }
   requireCurrentSession(sessionToken: string): Promise<CurrentSession> { return sessions.requireCurrentSession(this.ctx, sessionToken); }
