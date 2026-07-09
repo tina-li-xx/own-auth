@@ -1,6 +1,7 @@
 export { OwnAuth, createOwnAuth } from "./auth-engine.js";
 export type {
   CreateApiKeyInput,
+  ChangePasswordInput,
   CreatedApiKey,
   CreateOrganisationInput,
   CreateUserInput,

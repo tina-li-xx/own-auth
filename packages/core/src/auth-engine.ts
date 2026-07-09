@@ -29,6 +29,7 @@ import type {
   ApiKeyListFilter,
   AuditEventFilter,
   ChangeMemberRoleInput,
+  ChangePasswordInput,
   CreateApiKeyInput,
   CreatedApiKey,
   CreateOrganisationInput,
@@ -69,6 +70,7 @@ export class OwnAuth {
   createUser(input: CreateUserInput): Promise<User> { return users.createUser(this.ctx, input); }
   signUpEmailPassword(input: SignUpEmailPasswordInput): Promise<SessionResult> { return users.signUpEmailPassword(this.ctx, input); }
   signInEmailPassword(input: SignInEmailPasswordInput): Promise<SessionResult> { return users.signInEmailPassword(this.ctx, input); }
+  changePassword(input: ChangePasswordInput): Promise<User> { return users.changePassword(this.ctx, input); }
   getCurrentSession(sessionToken: string): Promise<CurrentSession | null> { return sessions.getCurrentSession(this.ctx, sessionToken); }
   requireCurrentSession(sessionToken: string): Promise<CurrentSession> { return sessions.requireCurrentSession(this.ctx, sessionToken); }
   signOut(sessionToken: string, context?: RequestContext): Promise<void> { return sessions.signOut(this.ctx, sessionToken, context); }

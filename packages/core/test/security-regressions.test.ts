@@ -115,6 +115,50 @@ describe("OwnAuth security regressions", () => {
     ).rejects.toMatchObject({ code: "rate_limited" });
   });
 
+  it("rejects password changes with the wrong current password", async () => {
+    const { auth } = createHarness();
+    const signup = await auth.signUpEmailPassword({
+      email: "wrong-current@example.com",
+      password: "correct-horse"
+    });
+
+    await expect(
+      auth.changePassword({
+        sessionToken: signup.sessionToken,
+        currentPassword: "wrong-password",
+        newPassword: "new-password"
+      })
+    ).rejects.toMatchObject({ code: "invalid_credentials" });
+
+    const signin = await auth.signInEmailPassword({
+      email: "wrong-current@example.com",
+      password: "correct-horse"
+    });
+    expect(signin.user.id).toBe(signup.user.id);
+  });
+
+  it("rejects weak new passwords before updating the user password", async () => {
+    const { auth } = createHarness();
+    const signup = await auth.signUpEmailPassword({
+      email: "weak-change@example.com",
+      password: "correct-horse"
+    });
+
+    await expect(
+      auth.changePassword({
+        sessionToken: signup.sessionToken,
+        currentPassword: "correct-horse",
+        newPassword: "short"
+      })
+    ).rejects.toMatchObject({ code: "weak_password" });
+
+    const signin = await auth.signInEmailPassword({
+      email: "weak-change@example.com",
+      password: "correct-horse"
+    });
+    expect(signin.user.id).toBe(signup.user.id);
+  });
+
   it("rejects expired absolute and idle sessions", async () => {
     const absolute = createHarness({ session: { ttlMs: -1, idleTtlMs: 60_000 } });
     const expiredAbsolute = await absolute.auth.signUpEmailPassword({

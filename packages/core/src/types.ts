@@ -27,6 +27,7 @@ export type AuditEventType =
   | "user.re_enabled"
   | "session.created"
   | "session.revoked"
+  | "session.revoked_other"
   | "session.revoked_all"
   | "magic_link.requested"
   | "magic_link.used"

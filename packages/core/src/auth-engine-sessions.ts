@@ -114,6 +114,36 @@ export async function revokeAllSessions(
   return revoked;
 }
 
+export async function revokeOtherSessions(
+  ctx: AuthEngineContext,
+  userId: string,
+  currentSessionId: string,
+  reason = "other_sessions_revoked"
+): Promise<number> {
+  const sessions = await ctx.storage.listSessionsByUserId(userId);
+  const now = new Date();
+  let revoked = 0;
+
+  for (const session of sessions) {
+    if (!session.revokedAt && session.id !== currentSessionId) {
+      await ctx.storage.updateSession(session.id, {
+        revokedAt: now,
+        revokeReason: reason
+      });
+      revoked += 1;
+    }
+  }
+
+  await audit(ctx, {
+    eventType: "session.revoked_other",
+    actorUserId: userId,
+    targetUserId: userId,
+    metadata: { reason, revoked }
+  });
+
+  return revoked;
+}
+
 export async function listSessions(
   ctx: AuthEngineContext,
   userId: string

@@ -161,6 +161,38 @@ describe("OwnAuth core", () => {
     expect(signin.user.id).toBe(signup.user.id);
   });
 
+  it("changes passwords with the current password and revokes other sessions", async () => {
+    const { auth } = createTestAuth();
+    const signup = await auth.signUpEmailPassword({
+      email: "change@example.com",
+      password: "old-password"
+    });
+    const otherSession = await auth.signInEmailPassword({
+      email: "change@example.com",
+      password: "old-password"
+    });
+
+    const changedUser = await auth.changePassword({
+      sessionToken: signup.sessionToken,
+      currentPassword: "old-password",
+      newPassword: "new-password"
+    });
+
+    expect(changedUser.id).toBe(signup.user.id);
+    const currentSession = await auth.getCurrentSession(signup.sessionToken);
+    expect(currentSession?.user.id).toBe(signup.user.id);
+    await expect(auth.getCurrentSession(otherSession.sessionToken)).resolves.toBeNull();
+    await expect(
+      auth.signInEmailPassword({ email: "change@example.com", password: "old-password" })
+    ).rejects.toMatchObject({ code: "invalid_credentials" });
+
+    const signin = await auth.signInEmailPassword({
+      email: "change@example.com",
+      password: "new-password"
+    });
+    expect(signin.user.id).toBe(signup.user.id);
+  });
+
   it("supports phone login through hashed SMS OTP codes", async () => {
     const { auth, smsProvider } = createTestAuth();
 

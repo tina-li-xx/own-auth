@@ -167,6 +167,18 @@ await auth.requestPasswordReset({ email: "user@example.com" });
 await auth.resetPassword({ token, newPassword: "new-secure-password" });
 ```
 
+## Change Password
+
+For signed-in users who know their current password.
+
+```ts
+await auth.changePassword({
+  sessionToken,
+  currentPassword: "current-password",
+  newPassword: "new-secure-password"
+});
+```
+
 ## API Keys
 
 Scoped keys for machine-to-machine access. The raw key is returned once. Only the hash is stored.
@@ -333,7 +345,7 @@ psql "$DATABASE_URL" -f own-auth.sql
 | **Sessions** | `getCurrentSession` `requireCurrentSession` `signOut` `revokeAllSessions` |
 | **Magic Links** | `requestMagicLink` `verifyMagicLink` |
 | **Email Verification** | `requestEmailVerification` `verifyEmail` |
-| **Password Reset** | `requestPasswordReset` `resetPassword` |
+| **Passwords** | `requestPasswordReset` `resetPassword` `changePassword` |
 | **SMS OTP** | `requestSmsOtp` `verifySmsOtp` |
 | **API Keys** | `createApiKey` `verifyApiKey` `revokeApiKey` |
 | **Organisations** | `createOrganisation` `updateOrganisation` |

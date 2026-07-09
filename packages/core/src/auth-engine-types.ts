@@ -50,6 +50,13 @@ export interface SignInEmailPasswordInput {
   request?: RequestContext;
 }
 
+export interface ChangePasswordInput {
+  sessionToken: string;
+  currentPassword: string;
+  newPassword: string;
+  request?: RequestContext;
+}
+
 export interface RequestTokenInput {
   email: string;
   redirectUrl?: string;

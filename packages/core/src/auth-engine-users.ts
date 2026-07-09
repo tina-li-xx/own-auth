@@ -2,7 +2,15 @@ import { AuthError } from "./errors.js";
 import { createId, verifyPassword } from "./crypto.js";
 import { normalizeEmail, normalizePhone } from "./normalise.js";
 import type { User } from "./types.js";
-import { minute, type CreateUserInput, type SignInEmailPasswordInput, type SignUpEmailPasswordInput, type SessionResult, type UserStatusInput } from "./auth-engine-types.js";
+import {
+  minute,
+  type ChangePasswordInput,
+  type CreateUserInput,
+  type SignInEmailPasswordInput,
+  type SignUpEmailPasswordInput,
+  type SessionResult,
+  type UserStatusInput
+} from "./auth-engine-types.js";
 import {
   accountFor,
   assertUserEnabled,
@@ -14,7 +22,11 @@ import {
   rateLimit,
   type AuthEngineContext
 } from "./auth-engine-internals.js";
-import { revokeAllSessions } from "./auth-engine-sessions.js";
+import {
+  requireCurrentSession,
+  revokeAllSessions,
+  revokeOtherSessions
+} from "./auth-engine-sessions.js";
 
 export async function createUser(ctx: AuthEngineContext, input: CreateUserInput): Promise<User> {
   const email = input.email ? normalizeEmail(input.email) : null;
@@ -115,6 +127,44 @@ export async function signInEmailPassword(
   });
 
   return result;
+}
+
+export async function changePassword(
+  ctx: AuthEngineContext,
+  input: ChangePasswordInput
+): Promise<User> {
+  const currentSession = await requireCurrentSession(ctx, input.sessionToken);
+  const { user } = currentSession;
+  await rateLimit(ctx, "change-password", user.id, 5, 10 * minute);
+
+  if (!user.passwordHash) {
+    throw new AuthError("invalid_credentials", "Invalid current password", 401);
+  }
+
+  if (!(await verifyPassword(input.currentPassword, user.passwordHash))) {
+    throw new AuthError("invalid_credentials", "Invalid current password", 401);
+  }
+
+  const updatedUser = await ctx.storage.updateUser(user.id, {
+    passwordHash: await hashPasswordInput(ctx, input.newPassword),
+    updatedAt: new Date()
+  });
+
+  await revokeOtherSessions(
+    ctx,
+    user.id,
+    currentSession.session.id,
+    "password_changed"
+  );
+
+  await audit(ctx, {
+    eventType: "password.changed",
+    actorUserId: user.id,
+    targetUserId: user.id,
+    context: input.request
+  });
+
+  return updatedUser ?? user;
 }
 
 export async function disableUser(ctx: AuthEngineContext, input: UserStatusInput): Promise<User> {
