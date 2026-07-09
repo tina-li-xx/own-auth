@@ -97,6 +97,84 @@ describe("PostgresAuthStorage", () => {
     expect(db.lastCall.params).toEqual([revokedAt, "password_reset", "ses_1"]);
   });
 
+  it("lists user sessions with a valid select query", async () => {
+    const db = new RecordingDb();
+    const storage = new PostgresAuthStorage(db);
+    db.queueRows([sessionRow()]);
+
+    const sessions = await storage.listSessionsByUserId("usr_1");
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]?.id).toBe("ses_1");
+    expect(db.lastCall.sql).toMatch(/^select id, user_id, token_hash,/);
+    expect(db.lastCall.sql).toContain("from own_auth_sessions where user_id = $1");
+    expect(db.lastCall.params).toEqual(["usr_1"]);
+  });
+
+  it("builds valid select SQL for every list query", async () => {
+    const db = new RecordingDb();
+    const storage = new PostgresAuthStorage(db);
+    const listCalls: Array<{
+      row: Record<string, unknown>;
+      run: () => Promise<unknown>;
+      sqlFragment: string;
+    }> = [
+      {
+        row: sessionRow(),
+        run: () => storage.listSessionsByUserId("usr_1"),
+        sqlFragment: "from own_auth_sessions where user_id = $1"
+      },
+      {
+        row: apiKeyRow(),
+        run: () => storage.listApiKeysByOrganisationId("org_1"),
+        sqlFragment: "from own_auth_api_keys where organisation_id = $1"
+      },
+      {
+        row: apiKeyRow(),
+        run: () => storage.listApiKeysByUserId("usr_1"),
+        sqlFragment: "from own_auth_api_keys where user_id = $1"
+      },
+      {
+        row: organisationRow(),
+        run: () => storage.listOrganisationsByUserId("usr_1"),
+        sqlFragment: "from own_auth_organisations where id in"
+      },
+      {
+        row: organisationMemberRow(),
+        run: () => storage.listOrganisationMembers("org_1"),
+        sqlFragment: "from own_auth_organisation_members where organisation_id = $1"
+      },
+      {
+        row: invitationRow(),
+        run: () => storage.listInvitationsByOrganisationId("org_1"),
+        sqlFragment: "from own_auth_invitations where organisation_id = $1"
+      },
+      {
+        row: auditEventRow(),
+        run: () => storage.listAuditEvents(),
+        sqlFragment: "from own_auth_audit_events order by created_at desc"
+      }
+    ];
+
+    for (const listCall of listCalls) {
+      db.queueRows([listCall.row]);
+      await listCall.run();
+    }
+
+    expect(db.calls).toHaveLength(listCalls.length);
+
+    for (const [index, call] of db.calls.entries()) {
+      const expected = listCalls[index];
+      if (!expected) {
+        throw new Error(`Missing expected SQL assertion for list query ${index}`);
+      }
+
+      expect(call.sql).toMatch(/^select /);
+      expect(call.sql).toContain(expected.sqlFragment);
+      expect(call.sql).not.toMatch(/^id, /);
+    }
+  });
+
   it("fetches pending invitations with case-insensitive email matching", async () => {
     const db = new RecordingDb();
     const storage = new PostgresAuthStorage(db);
@@ -151,6 +229,7 @@ describe("PostgresAuthStorage", () => {
     });
 
     expect(events).toHaveLength(1);
+    expect(db.lastCall.sql).toMatch(/^select id, event_type,/);
     expect(db.lastCall.sql).toContain("(actor_user_id = $1 or target_user_id = $1)");
     expect(db.lastCall.sql).toContain("organisation_id = $2");
     expect(db.lastCall.sql).toContain("api_key_id = $3");
@@ -265,6 +344,35 @@ function apiKeyRow(overrides: Record<string, unknown> = {}): Record<string, unkn
     revoked_at: null,
     revoked_by: null,
     metadata: { environment: "test" },
+    ...overrides
+  };
+}
+
+function organisationRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "org_1",
+    name: "Example Org",
+    slug: "example-org",
+    owner_user_id: "usr_1",
+    metadata: {},
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+    disabled_at: null,
+    ...overrides
+  };
+}
+
+function organisationMemberRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "mem_1",
+    organisation_id: "org_1",
+    user_id: "usr_1",
+    role: "owner",
+    status: "active",
+    joined_at: "2026-01-01T00:00:00.000Z",
+    removed_at: null,
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
     ...overrides
   };
 }

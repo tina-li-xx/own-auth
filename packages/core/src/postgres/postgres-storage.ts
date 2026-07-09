@@ -114,11 +114,11 @@ export class PostgresAuthStorage implements AuthStorage {
   }
 
   async listSessionsByUserId(userId: string): Promise<Session[]> {
-    const result = await this.db.query<Row>(
+    const rows = await this.selectMany(
       `${sessionReturning} from own_auth_sessions where user_id = $1 order by created_at desc`,
       [userId]
     );
-    return result.rows.map(mapSession);
+    return rows.map(mapSession);
   }
 
   async createToken(token: AuthToken): Promise<AuthToken> {
@@ -180,19 +180,19 @@ export class PostgresAuthStorage implements AuthStorage {
   }
 
   async listApiKeysByOrganisationId(organisationId: string): Promise<ApiKey[]> {
-    const result = await this.db.query<Row>(
+    const rows = await this.selectMany(
       `${apiKeyReturning} from own_auth_api_keys where organisation_id = $1 order by created_at desc`,
       [organisationId]
     );
-    return result.rows.map(mapApiKey);
+    return rows.map(mapApiKey);
   }
 
   async listApiKeysByUserId(userId: string): Promise<ApiKey[]> {
-    const result = await this.db.query<Row>(
+    const rows = await this.selectMany(
       `${apiKeyReturning} from own_auth_api_keys where user_id = $1 order by created_at desc`,
       [userId]
     );
-    return result.rows.map(mapApiKey);
+    return rows.map(mapApiKey);
   }
 
   async createOrganisation(organisation: Organisation): Promise<Organisation> {
@@ -230,11 +230,11 @@ export class PostgresAuthStorage implements AuthStorage {
   }
 
   async listOrganisationsByUserId(userId: string): Promise<Organisation[]> {
-    const result = await this.db.query<Row>(
+    const rows = await this.selectMany(
       `${organisationReturning} from own_auth_organisations where id in (select organisation_id from own_auth_organisation_members where user_id = $1 and status = 'active') order by created_at desc`,
       [userId]
     );
-    return result.rows.map(mapOrganisation);
+    return rows.map(mapOrganisation);
   }
 
   async createOrganisationMember(
@@ -283,11 +283,11 @@ export class PostgresAuthStorage implements AuthStorage {
   }
 
   async listOrganisationMembers(organisationId: string): Promise<OrganisationMember[]> {
-    const result = await this.db.query<Row>(
+    const rows = await this.selectMany(
       `${organisationMemberReturning} from own_auth_organisation_members where organisation_id = $1 order by created_at asc`,
       [organisationId]
     );
-    return result.rows.map(mapOrganisationMember);
+    return rows.map(mapOrganisationMember);
   }
 
   async createInvitation(invitation: Invitation): Promise<Invitation> {
@@ -306,11 +306,11 @@ export class PostgresAuthStorage implements AuthStorage {
   }
 
   async listInvitationsByOrganisationId(organisationId: string): Promise<Invitation[]> {
-    const result = await this.db.query<Row>(
+    const rows = await this.selectMany(
       `${invitationReturning} from own_auth_invitations where organisation_id = $1 order by created_at desc`,
       [organisationId]
     );
-    return result.rows.map(mapInvitation);
+    return rows.map(mapInvitation);
   }
 
   async getPendingInvitationByOrganisationAndEmail(
@@ -353,11 +353,11 @@ export class PostgresAuthStorage implements AuthStorage {
     }
 
     const where = clauses.length > 0 ? ` where ${clauses.join(" and ")}` : "";
-    const result = await this.db.query<Row>(
+    const rows = await this.selectMany(
       `${auditEventReturning} from own_auth_audit_events${where} order by created_at desc`,
       params
     );
-    return result.rows.map(mapAuditEvent);
+    return rows.map(mapAuditEvent);
   }
 
   private async insertOne<Entity extends { id: string }>(
@@ -407,6 +407,11 @@ export class PostgresAuthStorage implements AuthStorage {
   private async selectOne(sql: string, params: readonly unknown[]): Promise<Row | null> {
     const result = await this.db.query<Row>(`select ${sql}`, params);
     return result.rows[0] ?? null;
+  }
+
+  private async selectMany(sql: string, params: readonly unknown[]): Promise<Row[]> {
+    const result = await this.db.query<Row>(`select ${sql}`, params);
+    return result.rows;
   }
 }
 
