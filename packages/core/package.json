@@ -1,6 +1,6 @@
 {
   "name": "own-auth",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "type": "module",
   "description": "Framework-independent TypeScript auth engine with Postgres storage.",
   "license": "MIT",
