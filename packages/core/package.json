@@ -1,6 +1,6 @@
 {
   "name": "own-auth",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "type": "module",
   "description": "Framework-independent TypeScript auth engine with Postgres storage.",
   "license": "MIT",
@@ -27,7 +27,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "own-auth": "./dist/cli.js"
+    "own-auth": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -50,7 +50,7 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "pack:check": "npm pack --dry-run",
-    "publish:npm": "pnpm publish --access public --no-git-checks",
+    "publish:npm": "npm publish --access public --auth-type=web",
     "test": "vitest run",
     "test:integration": "vitest run test/postgres/postgres-storage.integration.test.ts",
     "test:integration:required": "OWN_AUTH_REQUIRE_POSTGRES=true vitest run test/postgres/postgres-storage.integration.test.ts",
