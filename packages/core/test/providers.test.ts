@@ -61,6 +61,88 @@ describe("OwnAuthManagedEmailProvider", () => {
     expect(body.token).toBeUndefined();
   });
 
+  it("includes managed delivery error details when the endpoint returns a safe error body", async () => {
+    const fetch = vi.fn(async () => ({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        error: {
+          code: "bad_request",
+          message: "url is not allowed for this delivery project."
+        }
+      })
+    }) as Response);
+    const provider = new OwnAuthManagedEmailProvider({
+      deliveryKey: "delivery_key",
+      fetch
+    });
+
+    await expect(
+      provider.send({
+        to: "user@example.com",
+        type: "magic_link",
+        token: "raw-token",
+        url: "myapp://app/auth/magic-link/verify?token=raw-token",
+        expiresAt: new Date("2026-01-01T00:00:00.000Z")
+      })
+    ).rejects.toThrow(
+      "Own Auth managed email delivery failed with status 400: bad_request - url is not allowed for this delivery project."
+    );
+  });
+
+  it("keeps the generic status error when the endpoint error body is not structured", async () => {
+    const fetch = vi.fn(async () => ({
+      ok: false,
+      status: 502,
+      json: async () => {
+        throw new Error("invalid json");
+      }
+    }) as unknown as Response);
+    const provider = new OwnAuthManagedEmailProvider({
+      deliveryKey: "delivery_key",
+      fetch
+    });
+
+    await expect(
+      provider.send({
+        to: "user@example.com",
+        type: "magic_link",
+        token: "raw-token",
+        url: "https://app.example.com/auth/magic-link/verify?token=raw-token",
+        expiresAt: new Date("2026-01-01T00:00:00.000Z")
+      })
+    ).rejects.toThrow("Own Auth managed email delivery failed with status 502.");
+  });
+
+  it("sanitizes managed delivery error details before throwing", async () => {
+    const fetch = vi.fn(async () => ({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        error: {
+          code: "bad_request\nwith_newline",
+          message: `invalid url\n${"x".repeat(260)}`
+        }
+      })
+    }) as Response);
+    const provider = new OwnAuthManagedEmailProvider({
+      deliveryKey: "delivery_key",
+      fetch
+    });
+
+    await expect(
+      provider.send({
+        to: "user@example.com",
+        type: "magic_link",
+        token: "raw-token",
+        url: "myapp://app/auth/magic-link/verify?token=raw-token",
+        expiresAt: new Date("2026-01-01T00:00:00.000Z")
+      })
+    ).rejects.toThrow(
+      /^Own Auth managed email delivery failed with status 400: bad_request with_newline - invalid url x+\.$/
+    );
+  });
+
   it("requires a delivery key", () => {
     expect(
       () => new OwnAuthManagedEmailProvider({ deliveryKey: "" })

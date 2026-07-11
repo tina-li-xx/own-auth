@@ -76,9 +76,58 @@ export class OwnAuthManagedEmailProvider implements EmailProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`Own Auth managed email delivery failed with status ${response.status}.`);
+      const details = await managedDeliveryErrorDetails(response);
+      throw new Error(
+        `Own Auth managed email delivery failed with status ${response.status}${details}.`
+      );
     }
   }
+}
+
+async function managedDeliveryErrorDetails(response: Response): Promise<string> {
+  const body = await readManagedDeliveryErrorBody(response);
+  const error = isRecord(body) ? body.error : undefined;
+
+  if (!isRecord(error)) {
+    return "";
+  }
+
+  const code = safeManagedDeliveryErrorText(error.code);
+  const message = safeManagedDeliveryErrorText(error.message);
+
+  if (code && message) {
+    return `: ${code} - ${message}`;
+  }
+
+  if (message) {
+    return `: ${message}`;
+  }
+
+  if (code) {
+    return `: ${code}`;
+  }
+
+  return "";
+}
+
+async function readManagedDeliveryErrorBody(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function safeManagedDeliveryErrorText(value: unknown): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.replace(/[\r\n\t]/g, " ").replace(/\s+/g, " ").trim().slice(0, 240);
 }
 
 export class ConsoleEmailProvider implements EmailProvider {
