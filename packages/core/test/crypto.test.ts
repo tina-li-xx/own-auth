@@ -6,8 +6,10 @@ import {
   hashSecret,
   safeEqual,
   hashPassword,
+  passwordNeedsRehash,
   verifyPassword
 } from "../src/crypto.js";
+import { legacyScryptHash } from "./password-hash-fixtures.js";
 
 describe("randomBase64Url", () => {
   it("returns a URL-safe base64 string of the expected length", () => {
@@ -104,15 +106,29 @@ describe("hashPassword / verifyPassword", () => {
     expect(a).not.toBe(b);
   });
 
-  it("includes scrypt version and parameters in the hash", async () => {
+  it("uses the current Argon2id parameters", async () => {
     const hash = await hashPassword("test");
-    const parts = hash.split("$");
-    expect(parts[0]).toBe("scrypt");
-    expect(parts).toHaveLength(6);
+    expect(hash).toMatch(/^\$argon2id\$v=19\$m=19456,t=2,p=1\$/);
+    expect(passwordNeedsRehash(hash)).toBe(false);
+  });
+
+  it("verifies legacy scrypt hashes and marks them for rehashing", async () => {
+    const hash = legacyScryptHash("old-password");
+
+    expect(await verifyPassword("old-password", hash)).toBe(true);
+    expect(await verifyPassword("wrong-password", hash)).toBe(false);
+    expect(passwordNeedsRehash(hash)).toBe(true);
+  });
+
+  it("rejects legacy hashes with altered work factors", async () => {
+    const hash = legacyScryptHash("old-password").replace("scrypt$16384$", "scrypt$32768$");
+
+    expect(await verifyPassword("old-password", hash)).toBe(false);
   });
 
   it("rejects a malformed hash", async () => {
     expect(await verifyPassword("test", "garbage")).toBe(false);
     expect(await verifyPassword("test", "wrong$format")).toBe(false);
+    expect(await verifyPassword("test", "$argon2id$broken")).toBe(false);
   });
 });

@@ -6,6 +6,7 @@ import {
   MemorySmsProvider
 } from "../src/index.js";
 import { PostgresAuthStorage, PostgresRateLimitStore } from "../src/postgres/index.js";
+import { legacyScryptHash } from "./password-hash-fixtures.js";
 
 function createTestAuth() {
   const emailProvider = new MemoryEmailProvider();
@@ -43,6 +44,51 @@ describe("OwnAuth core", () => {
 
     await auth.signOut(signup.sessionToken);
     await expect(auth.getCurrentSession(signup.sessionToken)).resolves.toBeNull();
+  });
+
+  it("upgrades a legacy scrypt password hash after a successful sign in", async () => {
+    const { auth } = createTestAuth();
+    const signup = await auth.signUpEmailPassword({
+      email: "legacy@example.com",
+      password: "old-password"
+    });
+    const legacyHash = legacyScryptHash("old-password");
+
+    await auth.storage.updateUser(signup.user.id, {
+      passwordHash: legacyHash,
+      updatedAt: new Date()
+    });
+
+    await auth.signInEmailPassword({
+      email: "legacy@example.com",
+      password: "old-password"
+    });
+
+    const migratedUser = await auth.storage.getUserById(signup.user.id);
+    expect(migratedUser?.passwordHash).toMatch(/^\$argon2id\$/);
+    expect(migratedUser?.passwordHash).not.toBe(legacyHash);
+  });
+
+  it("keeps a legacy scrypt hash unchanged after a failed sign in", async () => {
+    const { auth } = createTestAuth();
+    const signup = await auth.signUpEmailPassword({
+      email: "legacy-failed@example.com",
+      password: "old-password"
+    });
+    const legacyHash = legacyScryptHash("old-password");
+
+    await auth.storage.updateUser(signup.user.id, {
+      passwordHash: legacyHash,
+      updatedAt: new Date()
+    });
+
+    await expect(auth.signInEmailPassword({
+      email: "legacy-failed@example.com",
+      password: "wrong-password"
+    })).rejects.toMatchObject({ code: "invalid_credentials" });
+
+    const unchangedUser = await auth.storage.getUserById(signup.user.id);
+    expect(unchangedUser?.passwordHash).toBe(legacyHash);
   });
 
   it("requires DATABASE_URL outside tests when no storage adapter is provided", () => {

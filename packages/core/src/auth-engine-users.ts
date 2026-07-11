@@ -1,5 +1,10 @@
 import { AuthError } from "./errors.js";
-import { createId, verifyPassword } from "./crypto.js";
+import {
+  createId,
+  hashPassword,
+  passwordNeedsRehash,
+  verifyPassword
+} from "./crypto.js";
 import { normalizeEmail, normalizePhone } from "./normalise.js";
 import type { User } from "./types.js";
 import {
@@ -116,7 +121,15 @@ export async function signInEmailPassword(
     throw new AuthError("invalid_credentials", "Invalid email or password", 401);
   }
 
-  const activeUser = await markUserLoggedIn(ctx, user);
+  let authenticatedUser = user;
+  if (passwordNeedsRehash(user.passwordHash)) {
+    authenticatedUser = (await ctx.storage.updateUser(user.id, {
+      passwordHash: await hashPassword(input.password),
+      updatedAt: new Date()
+    })) ?? user;
+  }
+
+  const activeUser = await markUserLoggedIn(ctx, authenticatedUser);
   const result = await createSession(ctx, activeUser, input.request);
 
   await audit(ctx, {
