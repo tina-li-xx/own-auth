@@ -9,8 +9,18 @@ interface CliIo {
   stdout(message: string): void;
   stderr(message: string): void;
 }
+
+export interface CliDatabase {
+  query<Row = Record<string, unknown>>(sql: string): Promise<{ rows: Row[] }>;
+  end(): Promise<void>;
+}
+
+export interface CliDependencies {
+  createDatabase(databaseUrl: string): CliDatabase;
+}
+
 interface ParsedArgs {
-  command: "generate" | "migrate" | "help";
+  command: "generate" | "migrate" | "status" | "help";
   databaseUrl?: string;
   out?: string;
   version: boolean;
@@ -19,15 +29,31 @@ const defaultIo: CliIo = {
   stdout: (message) => process.stdout.write(message),
   stderr: (message) => process.stderr.write(message)
 };
+const defaultDependencies: CliDependencies = {
+  createDatabase(databaseUrl) {
+    const pool = new Pool({ connectionString: databaseUrl });
+    return {
+      async query<Row>(sql: string) {
+        const result = await pool.query(sql);
+        return { rows: result.rows as Row[] };
+      },
+      async end() {
+        await pool.end();
+      }
+    };
+  }
+};
 const migrationFiles = [
   "001_initial.sql",
   "002_external_providers.sql"
 ] as const;
+const migrationVersions = migrationFiles.map((file) => file.replace(/\.sql$/, ""));
 
 export async function runCli(
   argv = process.argv.slice(2),
   env: NodeJS.ProcessEnv = process.env,
-  io: CliIo = defaultIo
+  io: CliIo = defaultIo,
+  dependencies: CliDependencies = defaultDependencies
 ): Promise<number> {
   try {
     const args = parseArgs(argv);
@@ -39,8 +65,8 @@ export async function runCli(
       io.stdout(helpText());
       return 0;
     }
-    const sql = await readMigrationSql();
     if (args.command === "generate") {
+      const sql = await readMigrationSql();
       if (args.out) {
         const outPath = resolve(args.out);
         await mkdir(dirname(outPath), { recursive: true });
@@ -56,9 +82,14 @@ export async function runCli(
     if (!databaseUrl) {
       throw new Error("DATABASE_URL is required. Set DATABASE_URL or pass --database-url.");
     }
-    await migrate(databaseUrl, sql);
-    io.stdout("Applied Own Auth core tables.\n");
-    return 0;
+
+    if (args.command === "migrate") {
+      await migrate(databaseUrl, await readMigrationSql(), dependencies);
+      io.stdout("Applied Own Auth core tables.\n");
+      return 0;
+    }
+
+    return await printStatus(databaseUrl, io, dependencies) ? 0 : 1;
   } catch (error) {
     io.stderr(`Error: ${error instanceof Error ? error.message : String(error)}\n\n`);
     io.stderr(helpText());
@@ -85,7 +116,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   if (command === "--version" || command === "-v") {
     return { command: "help", version: true };
   }
-  if (command !== "generate" && command !== "migrate") {
+  if (command !== "generate" && command !== "migrate" && command !== "status") {
     throw new Error(`Unknown command: ${command}`);
   }
   const parsed: ParsedArgs = { command, version: false };
@@ -99,7 +130,7 @@ function parseArgs(argv: string[]): ParsedArgs {
       index += 1;
       continue;
     }
-    if (arg === "--database-url" && command === "migrate") {
+    if (arg === "--database-url" && (command === "migrate" || command === "status")) {
       parsed.databaseUrl = requireValue(rest, index, arg);
       index += 1;
       continue;
@@ -117,12 +148,63 @@ function requireValue(args: string[], index: number, name: string): string {
   return value;
 }
 
-async function migrate(databaseUrl: string, sql: string): Promise<void> {
-  const pool = new Pool({ connectionString: databaseUrl });
+async function migrate(
+  databaseUrl: string,
+  sql: string,
+  dependencies: CliDependencies
+): Promise<void> {
+  const database = dependencies.createDatabase(databaseUrl);
   try {
-    await pool.query(sql);
+    await database.query(sql);
   } finally {
-    await pool.end();
+    await database.end();
+  }
+}
+
+async function printStatus(
+  databaseUrl: string,
+  io: CliIo,
+  dependencies: CliDependencies
+): Promise<boolean> {
+  const database = dependencies.createDatabase(databaseUrl);
+
+  try {
+    const table = await database.query<{ tableName: string | null }>(
+      "select to_regclass('own_auth_migrations')::text as \"tableName\""
+    );
+    io.stdout("Database: connected\n");
+
+    if (!table.rows[0]?.tableName) {
+      io.stdout("Migration version: none\n");
+      io.stdout("Status: migrations required\n");
+      return false;
+    }
+
+    const result = await database.query<{ version: string }>(
+      "select version from own_auth_migrations order by applied_at asc, version asc"
+    );
+    const appliedVersions = result.rows.map((row) => row.version);
+    const applied = new Set(appliedVersions);
+    const latestApplied = appliedVersions.at(-1) ?? "none";
+    const missing = migrationVersions.filter((version) => !applied.has(version));
+    const unknown = appliedVersions.filter((version) => !migrationVersions.includes(version));
+
+    io.stdout(`Migration version: ${latestApplied}\n`);
+
+    if (unknown.length > 0) {
+      io.stdout("Status: database is newer than this own-auth version\n");
+      return false;
+    }
+
+    if (missing.length > 0) {
+      io.stdout("Status: migrations required\n");
+      return false;
+    }
+
+    io.stdout("Status: current\n");
+    return true;
+  } finally {
+    await database.end();
   }
 }
 
@@ -138,10 +220,12 @@ function helpText(): string {
 Usage:
   own-auth generate [--out <file>]
   own-auth migrate [--database-url <url>]
+  own-auth status [--database-url <url>]
 
 Commands:
   generate  Print the SQL migration, or write it with --out.
   migrate   Apply the SQL migration to DATABASE_URL.
+  status    Check the database connection and migration version.
 
 Options:
   --out, --output       Write generated SQL to a file.

@@ -14,6 +14,7 @@ export type {
 export const initialMigration = "001_initial.sql";
 
 export const tables = {
+  migrations: "own_auth_migrations",
   users: "own_auth_users",
   accounts: "own_auth_accounts",
   sessions: "own_auth_sessions",
