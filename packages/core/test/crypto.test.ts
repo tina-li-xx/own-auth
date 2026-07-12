@@ -9,7 +9,10 @@ import {
   passwordNeedsRehash,
   verifyPassword
 } from "../src/crypto.js";
-import { legacyScryptHash } from "./password-hash-fixtures.js";
+import {
+  legacyScryptHash,
+  nativeArgon2idHash
+} from "./password-hash-fixtures.js";
 
 describe("randomBase64Url", () => {
   it("returns a URL-safe base64 string of the expected length", () => {
@@ -110,6 +113,12 @@ describe("hashPassword / verifyPassword", () => {
     const hash = await hashPassword("test");
     expect(hash).toMatch(/^\$argon2id\$v=19\$m=19456,t=2,p=1\$/);
     expect(passwordNeedsRehash(hash)).toBe(false);
+  });
+
+  it("verifies Argon2id hashes created by the previous native implementation", async () => {
+    expect(await verifyPassword("worker-compatible-password", nativeArgon2idHash)).toBe(true);
+    expect(await verifyPassword("wrong-password", nativeArgon2idHash)).toBe(false);
+    expect(passwordNeedsRehash(nativeArgon2idHash)).toBe(false);
   });
 
   it("verifies legacy scrypt hashes and marks them for rehashing", async () => {

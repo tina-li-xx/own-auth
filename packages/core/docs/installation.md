@@ -5,6 +5,16 @@
 - Node.js 18 or later
 - A Postgres database, local or hosted
 
+Own Auth also supports Cloudflare Workers. Enable Node.js compatibility in the Worker's Wrangler configuration:
+
+```jsonc
+{
+  "compatibility_flags": ["nodejs_compat"]
+}
+```
+
+Password hashing uses the same Argon2id format and security parameters in Node.js and Cloudflare Workers, so passwords remain compatible between runtimes.
+
 ## Install the package
 
 ```bash

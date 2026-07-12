@@ -61,7 +61,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "argon2": "^0.44.0",
+    "@noble/hashes": "^1.8.0",
     "pg": "^8.16.3"
   }
 }

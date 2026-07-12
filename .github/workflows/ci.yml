@@ -57,5 +57,8 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Check Cloudflare Workers bundle
+        run: pnpm cloudflare:check
+
       - name: Test
         run: pnpm test
