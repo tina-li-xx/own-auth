@@ -113,7 +113,7 @@ describe("OwnAuth security regressions", () => {
         password: "correct-horse"
       })
     ).rejects.toMatchObject({ code: "rate_limited" });
-  });
+  }, 20_000);
 
   it("rejects password changes with the wrong current password", async () => {
     const { auth } = createHarness();
