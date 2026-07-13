@@ -342,7 +342,7 @@ The app reads the token from the link, verifies it, saves the returned session, 
 
 New users are created automatically. Disable with `allowMagicLinkSignup: false`.
 
-`redirectUrl` supports any URL in your `redirectAllowlist`, including mobile deep links like `myapp://settings`.
+`redirectUrl` supports allowlisted HTTPS links, localhost development URLs, and app links such as `myapp://settings`. Relative paths are also accepted.
 
 ## Phone / SMS Login
 

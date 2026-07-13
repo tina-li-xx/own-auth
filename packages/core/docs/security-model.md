@@ -33,7 +33,9 @@ The raw token is sent to the user in an email link or SMS and is never persisted
 Magic-link redirect targets are checked against `redirectAllowlist`.
 
 - Relative paths such as `/dashboard` are accepted.
-- Absolute URLs must match the origin of an allowed URL.
+- HTTPS and localhost URLs must match an allowlisted protocol, hostname, port, and path prefix.
+- Custom app schemes must match an allowlisted scheme, host, port, and path prefix.
+- Plain HTTP is rejected outside localhost.
 - Unapproved absolute URLs throw `redirect_not_allowed`.
 
 Configure only destinations controlled by the application. See [Magic Links](/docs/magic-links) for setup.

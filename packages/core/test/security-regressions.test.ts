@@ -308,6 +308,40 @@ describe("OwnAuth security regressions", () => {
     expect(emailProvider.messages).toHaveLength(1);
   });
 
+  it.each([
+    ["HTTPS URL", "https://app.example.com/auth/callback", "https://app.example.com"],
+    ["universal link", "https://app.example.com/auth/magic", "https://app.example.com/auth"],
+    ["localhost URL", "http://localhost:3000/auth/callback", "http://localhost:3000"],
+    ["loopback URL", "http://127.0.0.1:3000/auth/callback", "http://127.0.0.1:3000"],
+    ["custom app scheme", "myapp://auth/magic", "myapp://auth"]
+  ])("allows an allowlisted %s redirect", async (_label, redirectUrl, allowedUrl) => {
+    const { auth } = createHarness({ redirectAllowlist: [allowedUrl] });
+
+    await expect(
+      auth.requestMagicLink({
+        email: "redirect-allowed@example.com",
+        redirectUrl
+      })
+    ).resolves.toMatchObject({ sent: true });
+  });
+
+  it.each([
+    ["non-local HTTP URL", "http://app.example.com/auth", "http://app.example.com"],
+    ["protocol-relative URL", "//evil.example/auth", "https://app.example.com"],
+    ["lookalike host", "https://app.example.com.evil.test/auth", "https://app.example.com"],
+    ["different custom scheme", "evilapp://auth/magic", "myapp://auth"],
+    ["different custom host", "myapp://evil/magic", "myapp://auth"],
+    ["unsafe script scheme", "javascript://auth/magic", "javascript://auth"],
+    ["unsupported FTP URL", "ftp://app.example.com/auth", "ftp://app.example.com"],
+    ["path outside the allowlist", "https://app.example.com/admin", "https://app.example.com/auth"]
+  ])("rejects a %s redirect", async (_label, redirectUrl, allowedUrl) => {
+    const { auth } = createHarness({ redirectAllowlist: [allowedUrl] });
+
+    await expect(
+      auth.requestMagicLink({ email: "redirect-rejected@example.com", redirectUrl })
+    ).rejects.toMatchObject({ code: "redirect_not_allowed" });
+  });
+
   it("does not create or email unknown users when magic-link signup is disabled", async () => {
     const { auth, emailProvider } = createHarness({ allowMagicLinkSignup: false });
 

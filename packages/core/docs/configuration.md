@@ -164,7 +164,16 @@ export const auth = createOwnAuth({
 
 ### `redirectAllowlist`
 
-An array of URLs allowed as absolute magic-link redirect targets. Relative redirect paths are allowed. The default is an array containing `baseUrl`.
+An array of allowed magic-link redirect targets. The default contains `baseUrl`.
+
+Accepted targets:
+
+- HTTPS URLs and universal links, such as `https://app.example.com/auth`
+- Local development URLs, such as `http://localhost:3000/auth`
+- Custom app schemes, such as `myapp://auth`
+- Relative paths beginning with one slash, such as `/dashboard`
+
+HTTP is rejected outside localhost. Absolute targets must match an allowlisted protocol, hostname, port, and path prefix. For example, allowlisting `myapp://auth` accepts `myapp://auth/magic` but not `evilapp://auth/magic` or `myapp://other/magic`.
 
 ## Validation
 

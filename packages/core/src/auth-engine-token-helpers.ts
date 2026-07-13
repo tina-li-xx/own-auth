@@ -6,6 +6,10 @@ import {
   randomBase64Url
 } from "./crypto.js";
 import { isExpired } from "./normalise.js";
+import {
+  matchesAllowedAuthRedirect,
+  parseAbsoluteUrl
+} from "./url-security.js";
 import type { AuthToken, TokenType } from "./types.js";
 import type { DeliveryResult } from "./auth-engine-types.js";
 import type { AuthEngineContext } from "./auth-engine-context.js";
@@ -142,15 +146,20 @@ export function assertRedirectAllowed(ctx: AuthEngineContext, redirectUrl?: stri
     return;
   }
 
-  if (redirectUrl.startsWith("/")) {
+  if (
+    redirectUrl.startsWith("/") &&
+    !redirectUrl.startsWith("//") &&
+    !redirectUrl.includes("\\")
+  ) {
     return;
   }
 
-  const parsed = new URL(redirectUrl);
-  const allowed = ctx.redirectAllowlist.some((allowedUrl) => {
-    const allowedParsed = new URL(allowedUrl);
-    return parsed.origin === allowedParsed.origin;
-  });
+  const parsed = parseAbsoluteUrl(redirectUrl);
+  const allowed = parsed
+    ? ctx.redirectAllowlist.some((allowedUrl) =>
+        matchesAllowedAuthRedirect(parsed, allowedUrl)
+      )
+    : false;
 
   if (!allowed) {
     throw new AuthError("redirect_not_allowed", "Redirect URL is not allowed", 400);
