@@ -10,3 +10,5 @@ coverage
 *.log
 AGENTS.md
 product.md
+docs/product-roadmap-review.md
+packages/core/test/cloudflare/.wrangler/
