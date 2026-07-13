@@ -29,10 +29,16 @@ export interface AuthStorage {
 
   createToken(token: AuthToken): Promise<AuthToken>;
   getTokenByHash(tokenHash: string, type?: TokenType): Promise<AuthToken | null>;
+  /** Atomically marks one unused, unexpired token as consumed. */
+  consumeToken(tokenHash: string, type: TokenType, consumedAt: Date): Promise<AuthToken | null>;
   updateToken(id: string, patch: Partial<AuthToken>): Promise<AuthToken | null>;
 
   createSmsOtp(otp: SmsOtp): Promise<SmsOtp>;
   getLatestSmsOtp(phone: string, purpose: string): Promise<SmsOtp | null>;
+  /** Atomically increments attempts only while the OTP remains usable. */
+  incrementSmsOtpAttempts(id: string, attemptedAt: Date): Promise<SmsOtp | null>;
+  /** Atomically consumes one unused, unexpired OTP below its attempt limit. */
+  consumeSmsOtp(id: string, consumedAt: Date): Promise<SmsOtp | null>;
   updateSmsOtp(id: string, patch: Partial<SmsOtp>): Promise<SmsOtp | null>;
 
   createApiKey(apiKey: ApiKey): Promise<ApiKey>;

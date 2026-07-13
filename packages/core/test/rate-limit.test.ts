@@ -63,6 +63,18 @@ describe("InMemoryRateLimitStore", () => {
     const r = await store.hit("key", 60_000, 5);
     expect(r.resetAt.getTime()).toBeGreaterThan(Date.now());
   });
+
+  it("counts concurrent hits without dropping increments", async () => {
+    const store = new InMemoryRateLimitStore();
+    const results = await Promise.all(
+      Array.from({ length: 20 }, () => store.hit("concurrent", 60_000, 10))
+    );
+
+    expect(results.map((result) => result.count).sort((a, b) => a - b)).toEqual(
+      Array.from({ length: 20 }, (_, index) => index + 1)
+    );
+    expect(results.filter((result) => result.allowed)).toHaveLength(10);
+  });
 });
 
 describe("enforceRateLimit", () => {

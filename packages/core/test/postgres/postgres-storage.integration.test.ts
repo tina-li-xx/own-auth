@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
 import {
@@ -8,42 +6,25 @@ import {
   MemorySmsProvider
 } from "../../src/index.js";
 import { PostgresAuthStorage, PostgresRateLimitStore } from "../../src/postgres/index.js";
+import {
+  createPostgresTestDatabase,
+  hasPostgresTestDatabase,
+  type PostgresTestDatabase
+} from "./postgres-test-database.js";
 
-const { Pool } = pg;
-const defaultDatabaseUrl = "postgres://localhost:5432/own_auth_test";
-const explicitDatabaseUrl = process.env.OWN_AUTH_TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const databaseUrl = explicitDatabaseUrl ?? defaultDatabaseUrl;
-const requireDatabase = process.env.OWN_AUTH_REQUIRE_POSTGRES === "true";
-const hasDatabase = explicitDatabaseUrl || requireDatabase ? true : await canConnect(databaseUrl);
-const describeWithDatabase = hasDatabase ? describe : describe.skip;
+const describeWithDatabase = hasPostgresTestDatabase ? describe : describe.skip;
 
 describeWithDatabase("PostgresAuthStorage integration", () => {
-  let pool: pg.Pool;
+  let database: PostgresTestDatabase;
   let client: pg.PoolClient;
-  let schema: string;
 
   beforeAll(async () => {
-    pool = new Pool({ connectionString: databaseUrl });
-    client = await pool.connect();
-    schema = `own_auth_test_${randomUUID().replace(/-/g, "")}`;
-
-    await client.query(`create schema ${quoteIdentifier(schema)}`);
-    await client.query(`set search_path to ${quoteIdentifier(schema)}`);
-
-    const migration = await readFile(
-      new URL("../../migrations/001_initial.sql", import.meta.url),
-      "utf8"
-    );
-    await client.query(migration);
+    database = await createPostgresTestDatabase();
+    client = database.client;
   });
 
   afterAll(async () => {
-    if (client && schema) {
-      await client.query(`drop schema if exists ${quoteIdentifier(schema)} cascade`);
-      client.release();
-    }
-
-    await pool?.end();
+    await database?.close();
   });
 
   it("runs real auth flows against migrated Postgres tables without storing raw secrets", async () => {
@@ -206,28 +187,3 @@ describeWithDatabase("PostgresAuthStorage integration", () => {
     expect(remainingAuditEvents.rows[0]?.count).toBe(0);
   });
 });
-
-function quoteIdentifier(identifier: string): string {
-  if (!/^[a-z_][a-z0-9_]*$/.test(identifier)) {
-    throw new Error(`Unsafe Postgres identifier: ${identifier}`);
-  }
-
-  return `"${identifier}"`;
-}
-
-async function canConnect(connectionString: string): Promise<boolean> {
-  const pool = new Pool({
-    connectionString,
-    connectionTimeoutMillis: 500
-  });
-
-  try {
-    const client = await pool.connect();
-    client.release();
-    return true;
-  } catch {
-    return false;
-  } finally {
-    await pool.end().catch(() => undefined);
-  }
-}

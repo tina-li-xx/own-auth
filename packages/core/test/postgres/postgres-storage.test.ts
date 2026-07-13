@@ -111,6 +111,58 @@ describe("PostgresAuthStorage", () => {
     expect(db.lastCall.params).toEqual(["usr_1"]);
   });
 
+  it("consumes a token with one conditional update", async () => {
+    const db = new RecordingDb();
+    const storage = new PostgresAuthStorage(db);
+    const consumedAt = new Date("2026-01-01T00:05:00.000Z");
+    db.queueRows([tokenRow({ used_at: consumedAt })]);
+
+    const token = await storage.consumeToken(
+      "token_hash",
+      "magic_link",
+      consumedAt
+    );
+
+    expect(token?.usedAt).toEqual(consumedAt);
+    expect(db.lastCall.sql).toContain("update own_auth_tokens");
+    expect(db.lastCall.sql).toContain("used_at is null");
+    expect(db.lastCall.sql).toContain("expires_at > $3");
+    expect(db.lastCall.sql).toContain("returning id, token_hash");
+    expect(db.lastCall.params).toEqual(["token_hash", "magic_link", consumedAt]);
+  });
+
+  it("increments OTP attempts only while the credential is usable", async () => {
+    const db = new RecordingDb();
+    const storage = new PostgresAuthStorage(db);
+    const attemptedAt = new Date("2026-01-01T00:05:00.000Z");
+    db.queueRows([smsOtpRow({ attempts: 1 })]);
+
+    const otp = await storage.incrementSmsOtpAttempts("otp_1", attemptedAt);
+
+    expect(otp?.attempts).toBe(1);
+    expect(db.lastCall.sql).toContain("set attempts = attempts + 1");
+    expect(db.lastCall.sql).toContain("consumed_at is null");
+    expect(db.lastCall.sql).toContain("expires_at > $2");
+    expect(db.lastCall.sql).toContain("attempts < max_attempts");
+    expect(db.lastCall.params).toEqual(["otp_1", attemptedAt]);
+  });
+
+  it("consumes an OTP with one conditional update", async () => {
+    const db = new RecordingDb();
+    const storage = new PostgresAuthStorage(db);
+    const consumedAt = new Date("2026-01-01T00:05:00.000Z");
+    db.queueRows([smsOtpRow({ attempts: 1, consumed_at: consumedAt })]);
+
+    const otp = await storage.consumeSmsOtp("otp_1", consumedAt);
+
+    expect(otp?.consumedAt).toEqual(consumedAt);
+    expect(db.lastCall.sql).toContain("set consumed_at = $2");
+    expect(db.lastCall.sql).toContain("attempts = attempts + 1");
+    expect(db.lastCall.sql).toContain("consumed_at is null");
+    expect(db.lastCall.sql).toContain("attempts < max_attempts");
+    expect(db.lastCall.params).toEqual(["otp_1", consumedAt]);
+  });
+
   it("builds valid select SQL for every list query", async () => {
     const db = new RecordingDb();
     const storage = new PostgresAuthStorage(db);
@@ -351,6 +403,39 @@ function sessionRow(overrides: Record<string, unknown> = {}): Record<string, unk
     user_agent: "vitest",
     revoked_at: null,
     revoke_reason: null,
+    ...overrides
+  };
+}
+
+function tokenRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "tok_1",
+    token_hash: "token_hash",
+    type: "magic_link",
+    user_id: "usr_1",
+    email: "tina@example.com",
+    phone: null,
+    organisation_id: null,
+    expires_at: "2026-01-01T00:15:00.000Z",
+    used_at: null,
+    created_at: "2026-01-01T00:00:00.000Z",
+    ...overrides
+  };
+}
+
+function smsOtpRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "otp_1",
+    phone: "+15551234567",
+    user_id: "usr_1",
+    code_hash: "code_hash",
+    purpose: "phone_login",
+    expires_at: "2026-01-01T00:10:00.000Z",
+    attempts: 0,
+    max_attempts: 3,
+    consumed_at: null,
+    created_at: "2026-01-01T00:00:00.000Z",
+    last_sent_at: "2026-01-01T00:00:00.000Z",
     ...overrides
   };
 }

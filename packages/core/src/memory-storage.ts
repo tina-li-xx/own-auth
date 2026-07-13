@@ -32,6 +32,14 @@ function updateStoredEntity<T extends { id: string }>(
   return clone(updated);
 }
 
+function isUsableSmsOtp(otp: SmsOtp, at: Date): boolean {
+  return (
+    !otp.consumedAt &&
+    otp.expiresAt.getTime() > at.getTime() &&
+    otp.attempts < otp.maxAttempts
+  );
+}
+
 export class InMemoryAuthStorage implements AuthStorage {
   private readonly users = new Map<string, User>();
   private readonly accounts = new Map<string, Account>();
@@ -136,6 +144,27 @@ export class InMemoryAuthStorage implements AuthStorage {
     return null;
   }
 
+  async consumeToken(
+    tokenHash: string,
+    type: TokenType,
+    consumedAt: Date
+  ): Promise<AuthToken | null> {
+    for (const [id, token] of this.tokens) {
+      if (
+        token.tokenHash !== tokenHash ||
+        token.type !== type ||
+        token.usedAt ||
+        token.expiresAt.getTime() <= consumedAt.getTime()
+      ) {
+        continue;
+      }
+
+      return updateStoredEntity(this.tokens, id, { usedAt: consumedAt });
+    }
+
+    return null;
+  }
+
   async updateToken(id: string, patch: Partial<AuthToken>): Promise<AuthToken | null> {
     return updateStoredEntity(this.tokens, id, patch);
   }
@@ -151,6 +180,29 @@ export class InMemoryAuthStorage implements AuthStorage {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
     return matching[0] ? clone(matching[0]) : null;
+  }
+
+  async incrementSmsOtpAttempts(id: string, attemptedAt: Date): Promise<SmsOtp | null> {
+    const existing = this.smsOtps.get(id);
+    if (!existing || !isUsableSmsOtp(existing, attemptedAt)) {
+      return null;
+    }
+
+    return updateStoredEntity(this.smsOtps, id, {
+      attempts: existing.attempts + 1
+    });
+  }
+
+  async consumeSmsOtp(id: string, consumedAt: Date): Promise<SmsOtp | null> {
+    const existing = this.smsOtps.get(id);
+    if (!existing || !isUsableSmsOtp(existing, consumedAt)) {
+      return null;
+    }
+
+    return updateStoredEntity(this.smsOtps, id, {
+      attempts: existing.attempts + 1,
+      consumedAt
+    });
   }
 
   async updateSmsOtp(id: string, patch: Partial<SmsOtp>): Promise<SmsOtp | null> {

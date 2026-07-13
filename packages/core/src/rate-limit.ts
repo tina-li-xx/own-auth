@@ -7,6 +7,7 @@ export interface RateLimitResult {
 }
 
 export interface RateLimitStore {
+  /** Atomically increments a bucket and returns the count after this hit. */
   hit(key: string, windowMs: number, limit: number): Promise<RateLimitResult>;
   reset(key: string): Promise<void>;
 }

@@ -85,14 +85,14 @@ export async function verifySmsOtp(
 
   const codeHash = hash(ctx, input.code);
   if (!safeEqual(codeHash, otp.codeHash)) {
-    await ctx.storage.updateSmsOtp(otp.id, { attempts: otp.attempts + 1 });
+    await ctx.storage.incrementSmsOtpAttempts(otp.id, now);
     throw new AuthError("invalid_otp", "Invalid or expired code", 401);
   }
 
-  await ctx.storage.updateSmsOtp(otp.id, {
-    consumedAt: now,
-    attempts: otp.attempts + 1
-  });
+  const consumedOtp = await ctx.storage.consumeSmsOtp(otp.id, now);
+  if (!consumedOtp) {
+    throw new AuthError("invalid_otp", "Invalid or expired code", 401);
+  }
 
   let user = otp.userId ? await ctx.storage.getUserById(otp.userId) : null;
   if (!user) {

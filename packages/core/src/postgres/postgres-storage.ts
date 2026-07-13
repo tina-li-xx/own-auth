@@ -13,6 +13,11 @@ import type {
 } from "../types.js";
 import type { AuthStorage } from "../storage.js";
 import {
+  atomicConsumeSmsOtp,
+  atomicConsumeToken,
+  atomicIncrementSmsOtpAttempts
+} from "./postgres-atomic-operations.js";
+import {
   mapAccount,
   mapApiKey,
   mapAuditEvent,
@@ -138,6 +143,14 @@ export class PostgresAuthStorage implements AuthStorage {
     return row ? mapToken(row) : null;
   }
 
+  async consumeToken(
+    tokenHash: string,
+    type: TokenType,
+    consumedAt: Date
+  ): Promise<AuthToken | null> {
+    return atomicConsumeToken(this.db, tokenHash, type, consumedAt);
+  }
+
   async updateToken(id: string, patch: Partial<AuthToken>): Promise<AuthToken | null> {
     const row = await this.updateOne("own_auth_tokens", tokenColumns, id, patch, tokenReturning);
     return row ? mapToken(row) : null;
@@ -154,6 +167,14 @@ export class PostgresAuthStorage implements AuthStorage {
       [phone, purpose]
     );
     return row ? mapSmsOtp(row) : null;
+  }
+
+  async incrementSmsOtpAttempts(id: string, attemptedAt: Date): Promise<SmsOtp | null> {
+    return atomicIncrementSmsOtpAttempts(this.db, id, attemptedAt);
+  }
+
+  async consumeSmsOtp(id: string, consumedAt: Date): Promise<SmsOtp | null> {
+    return atomicConsumeSmsOtp(this.db, id, consumedAt);
   }
 
   async updateSmsOtp(id: string, patch: Partial<SmsOtp>): Promise<SmsOtp | null> {

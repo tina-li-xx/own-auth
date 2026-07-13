@@ -56,8 +56,8 @@
     "pack:check": "npm pack --dry-run",
     "publish:npm": "npm publish --access public --auth-type=web",
     "test": "vitest run",
-    "test:integration": "vitest run test/postgres/postgres-storage.integration.test.ts",
-    "test:integration:required": "OWN_AUTH_REQUIRE_POSTGRES=true vitest run test/postgres/postgres-storage.integration.test.ts",
+    "test:integration": "vitest run test/postgres/postgres-storage.integration.test.ts test/postgres/postgres-concurrency.integration.test.ts",
+    "test:integration:required": "OWN_AUTH_REQUIRE_POSTGRES=true vitest run test/postgres/postgres-storage.integration.test.ts test/postgres/postgres-concurrency.integration.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

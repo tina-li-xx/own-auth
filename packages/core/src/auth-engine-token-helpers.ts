@@ -44,13 +44,25 @@ export async function consumeToken(
   rawToken: string,
   type: TokenType
 ): Promise<AuthToken> {
-  const token = await getUsableToken(ctx, rawToken, type);
+  const tokenHash = hash(ctx, rawToken);
+  const consumedAt = new Date();
+  const consumed = await ctx.storage.consumeToken(tokenHash, type, consumedAt);
+  if (consumed) {
+    return consumed;
+  }
 
-  const updatedToken = await ctx.storage.updateToken(token.id, {
-    usedAt: new Date()
-  });
+  const token = await ctx.storage.getTokenByHash(tokenHash, type);
+  if (!token) {
+    throw new AuthError("invalid_token", "Invalid token", 401);
+  }
+  if (token.usedAt) {
+    throw new AuthError("token_already_used", "Token has already been used", 401);
+  }
+  if (isExpired(token.expiresAt, consumedAt)) {
+    throw new AuthError("expired_token", "Token has expired", 401);
+  }
 
-  return updatedToken ?? token;
+  throw new AuthError("invalid_token", "Invalid token", 401);
 }
 
 export async function getUsableToken(

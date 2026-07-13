@@ -13,7 +13,7 @@ The hashing algorithm is not configurable. There's no reason to downgrade to bcr
 All tokens, including magic links, password resets, email verification, phone codes, and invites, follow the same security model:
 
 - **Random.** Generated with a cryptographically secure random number generator.
-- **Single-use.** Consumed on first use. A second use fails.
+- **Single-use.** Consumed through an atomic storage operation so only one concurrent request can succeed. Every later use fails.
 - **Expiring.** Each token type has a TTL. After expiry, the token is rejected.
 - **Hashed in storage.** The raw token is hashed with the token pepper before storage. The database contains only the hash.
 - **Peppered.** The token pepper adds a secret layer to the hash. Even with database access, an attacker cannot reconstruct raw tokens without the pepper.
@@ -49,6 +49,8 @@ Pass `actorUserId` from the authenticated session. Own Auth performs the organis
 Every sensitive operation is rate-limited automatically. You don't enable it, configure it, or write middleware. See [Rate limiting](/docs/rate-limiting) for the full table of limits.
 
 Rate limiting protects against brute-force attacks, credential stuffing, SMS pumping, and abuse of email-sending endpoints.
+
+The Postgres rate-limit store increments counters atomically so concurrent requests cannot bypass a limit by overwriting one another's counts.
 
 ## Account enumeration protection
 

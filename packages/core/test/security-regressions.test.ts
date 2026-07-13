@@ -7,6 +7,7 @@ import {
   MemoryEmailProvider,
   MemorySmsProvider
 } from "../src/index.js";
+import { expectOneWinner } from "./concurrency-helpers.js";
 
 function createHarness(
   options: Parameters<typeof createOwnAuth>[0] = {}
@@ -355,6 +356,38 @@ describe("OwnAuth security regressions", () => {
     });
   });
 
+  it("allows only one concurrent magic-link verification", async () => {
+    const { auth, emailProvider } = createHarness();
+    await auth.requestMagicLink({ email: "magic-race@example.com" });
+    const token = emailProvider.messages.at(-1)?.token ?? "";
+
+    expectOneWinner(
+      await Promise.allSettled([
+        auth.verifyMagicLink({ token }),
+        auth.verifyMagicLink({ token })
+      ]),
+      "token_already_used"
+    );
+  });
+
+  it("allows only one concurrent email verification", async () => {
+    const { auth, emailProvider } = createHarness();
+    await auth.signUpEmailPassword({
+      email: "verification-race@example.com",
+      password: "correct-horse"
+    });
+    await auth.requestEmailVerification({ email: "verification-race@example.com" });
+    const token = emailProvider.messages.at(-1)?.token ?? "";
+
+    expectOneWinner(
+      await Promise.allSettled([
+        auth.verifyEmail({ token }),
+        auth.verifyEmail({ token })
+      ]),
+      "token_already_used"
+    );
+  });
+
   it("returns generic password-reset responses for unknown users", async () => {
     const { auth, emailProvider } = createHarness();
 
@@ -380,6 +413,24 @@ describe("OwnAuth security regressions", () => {
         newPassword: "new-password"
       })
     ).rejects.toMatchObject({ code: "expired_token" });
+  });
+
+  it("allows only one concurrent password reset", async () => {
+    const { auth, emailProvider } = createHarness();
+    await auth.signUpEmailPassword({
+      email: "reset-race@example.com",
+      password: "correct-horse"
+    });
+    await auth.requestPasswordReset({ email: "reset-race@example.com" });
+    const token = emailProvider.messages.at(-1)?.token ?? "";
+
+    expectOneWinner(
+      await Promise.allSettled([
+        auth.resetPassword({ token, newPassword: "new-password-one" }),
+        auth.resetPassword({ token, newPassword: "new-password-two" })
+      ]),
+      "token_already_used"
+    );
   });
 
   it("tracks SMS OTP attempts and blocks codes after the attempt limit", async () => {
@@ -408,6 +459,42 @@ describe("OwnAuth security regressions", () => {
     await auth.verifySmsOtp({ phone: "+15551230001", code });
     await expect(auth.verifySmsOtp({ phone: "+15551230001", code })).rejects.toMatchObject({
       code: "invalid_otp"
+    });
+  });
+
+  it("allows only one concurrent SMS OTP verification", async () => {
+    const { auth, smsProvider } = createHarness();
+    const phone = "+15551230003";
+    await auth.requestSmsOtp({ phone });
+    const code = smsProvider.messages.at(-1)?.code ?? "";
+
+    expectOneWinner(
+      await Promise.allSettled([
+        auth.verifySmsOtp({ phone, code }),
+        auth.verifySmsOtp({ phone, code })
+      ]),
+      "invalid_otp"
+    );
+  });
+
+  it("counts concurrent wrong SMS OTP attempts without dropping either hit", async () => {
+    const { auth, smsProvider } = createHarness({ sms: { maxAttempts: 2 } });
+    const phone = "+15551230004";
+    await auth.requestSmsOtp({ phone });
+    const validCode = smsProvider.messages.at(-1)?.code ?? "";
+    const wrongCode = validCode === "000000" ? "111111" : "000000";
+
+    const wrongAttempts = await Promise.allSettled([
+      auth.verifySmsOtp({ phone, code: wrongCode }),
+      auth.verifySmsOtp({ phone, code: wrongCode })
+    ]);
+
+    expect(wrongAttempts).toEqual([
+      expect.objectContaining({ status: "rejected" }),
+      expect.objectContaining({ status: "rejected" })
+    ]);
+    await expect(auth.verifySmsOtp({ phone, code: validCode })).rejects.toMatchObject({
+      code: "otp_attempts_exceeded"
     });
   });
 
@@ -791,6 +878,25 @@ describe("OwnAuth security regressions", () => {
     await expect(
       auth.acceptInvite({ token: invite.token ?? "", userId: invitedUser.id })
     ).rejects.toMatchObject({ code: "token_already_used" });
+  });
+
+  it("allows only one concurrent invitation acceptance", async () => {
+    const { auth, owner, organisation } = await createOwnerWithOrg();
+    const invitedUser = await auth.createUser({ email: "invite-race@example.com" });
+    const invite = await auth.inviteMember({
+      organisationId: organisation.id,
+      invitedByUserId: owner.user.id,
+      email: "invite-race@example.com"
+    });
+    const input = { token: invite.token ?? "", userId: invitedUser.id };
+
+    expectOneWinner(
+      await Promise.allSettled([
+        auth.acceptInvite(input),
+        auth.acceptInvite(input)
+      ]),
+      "token_already_used"
+    );
   });
 
   it("does not consume an invitation when the wrong user tries to accept it", async () => {
