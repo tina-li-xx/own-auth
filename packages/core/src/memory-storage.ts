@@ -17,8 +17,19 @@ function clone<T>(value: T): T {
   return structuredClone(value);
 }
 
-function mergeEntity<T extends { id: string }>(entity: T, patch: Partial<T>): T {
-  return { ...entity, ...patch };
+function updateStoredEntity<T extends { id: string }>(
+  store: Map<string, T>,
+  id: string,
+  patch: Partial<T>
+): T | null {
+  const existing = store.get(id);
+  if (!existing) {
+    return null;
+  }
+
+  const updated = clone({ ...existing, ...patch });
+  store.set(id, updated);
+  return clone(updated);
 }
 
 export class InMemoryAuthStorage implements AuthStorage {
@@ -39,11 +50,7 @@ export class InMemoryAuthStorage implements AuthStorage {
   }
 
   async updateUser(id: string, patch: Partial<User>): Promise<User | null> {
-    const existing = this.users.get(id);
-    if (!existing) return null;
-    const updated = mergeEntity(existing, patch);
-    this.users.set(id, clone(updated));
-    return clone(updated);
+    return updateStoredEntity(this.users, id, patch);
   }
 
   async getUserById(id: string): Promise<User | null> {
@@ -105,11 +112,7 @@ export class InMemoryAuthStorage implements AuthStorage {
   }
 
   async updateSession(id: string, patch: Partial<Session>): Promise<Session | null> {
-    const existing = this.sessions.get(id);
-    if (!existing) return null;
-    const updated = mergeEntity(existing, patch);
-    this.sessions.set(id, clone(updated));
-    return clone(updated);
+    return updateStoredEntity(this.sessions, id, patch);
   }
 
   async listSessionsByUserId(userId: string): Promise<Session[]> {
@@ -134,11 +137,7 @@ export class InMemoryAuthStorage implements AuthStorage {
   }
 
   async updateToken(id: string, patch: Partial<AuthToken>): Promise<AuthToken | null> {
-    const existing = this.tokens.get(id);
-    if (!existing) return null;
-    const updated = mergeEntity(existing, patch);
-    this.tokens.set(id, clone(updated));
-    return clone(updated);
+    return updateStoredEntity(this.tokens, id, patch);
   }
 
   async createSmsOtp(otp: SmsOtp): Promise<SmsOtp> {
@@ -155,11 +154,7 @@ export class InMemoryAuthStorage implements AuthStorage {
   }
 
   async updateSmsOtp(id: string, patch: Partial<SmsOtp>): Promise<SmsOtp | null> {
-    const existing = this.smsOtps.get(id);
-    if (!existing) return null;
-    const updated = mergeEntity(existing, patch);
-    this.smsOtps.set(id, clone(updated));
-    return clone(updated);
+    return updateStoredEntity(this.smsOtps, id, patch);
   }
 
   async createApiKey(apiKey: ApiKey): Promise<ApiKey> {
@@ -178,11 +173,7 @@ export class InMemoryAuthStorage implements AuthStorage {
   }
 
   async updateApiKey(id: string, patch: Partial<ApiKey>): Promise<ApiKey | null> {
-    const existing = this.apiKeys.get(id);
-    if (!existing) return null;
-    const updated = mergeEntity(existing, patch);
-    this.apiKeys.set(id, clone(updated));
-    return clone(updated);
+    return updateStoredEntity(this.apiKeys, id, patch);
   }
 
   async listApiKeysByOrganisationId(organisationId: string): Promise<ApiKey[]> {
@@ -206,11 +197,7 @@ export class InMemoryAuthStorage implements AuthStorage {
     id: string,
     patch: Partial<Organisation>
   ): Promise<Organisation | null> {
-    const existing = this.organisations.get(id);
-    if (!existing) return null;
-    const updated = mergeEntity(existing, patch);
-    this.organisations.set(id, clone(updated));
-    return clone(updated);
+    return updateStoredEntity(this.organisations, id, patch);
   }
 
   async deleteOrganisation(id: string): Promise<boolean> {
@@ -300,11 +287,7 @@ export class InMemoryAuthStorage implements AuthStorage {
     id: string,
     patch: Partial<OrganisationMember>
   ): Promise<OrganisationMember | null> {
-    const existing = this.members.get(id);
-    if (!existing) return null;
-    const updated = mergeEntity(existing, patch);
-    this.members.set(id, clone(updated));
-    return clone(updated);
+    return updateStoredEntity(this.members, id, patch);
   }
 
   async getOrganisationMember(
@@ -347,11 +330,7 @@ export class InMemoryAuthStorage implements AuthStorage {
     id: string,
     patch: Partial<Invitation>
   ): Promise<Invitation | null> {
-    const existing = this.invitations.get(id);
-    if (!existing) return null;
-    const updated = mergeEntity(existing, patch);
-    this.invitations.set(id, clone(updated));
-    return clone(updated);
+    return updateStoredEntity(this.invitations, id, patch);
   }
 
   async getInvitationById(id: string): Promise<Invitation | null> {
