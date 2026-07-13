@@ -106,7 +106,6 @@ Own Auth does not:
 - **Encrypt data at rest.** User emails, names, and metadata are stored in plain text in the Postgres database. If column-level encryption is required, apply it at the database level.
 - **Manage TLS.** Application and database connections must use TLS in production. Own Auth does not configure it.
 - **Handle CORS.** Cross-origin request policies are the application's responsibility.
-- **Set cookies.** Own Auth returns tokens. The application decides whether to deliver them through cookies, headers, or a response body.
 - **Manage secrets.** The token pepper, database URL, provider credentials, and API keys must be secured using the deployment platform's secret management.
 
 ## Production checklist

@@ -168,6 +168,41 @@ await auth.signOut(sessionToken);
 
 That is it. Users, passwords, and sessions are working. Everything is in your Postgres database, under your control.
 
+### Use The HTTP Handler
+
+Applications that want ready-made auth endpoints can mount one framework-neutral Web handler:
+
+```ts auth-handler.ts
+import { createOwnAuthHandler } from "own-auth/http";
+
+import { auth } from "./auth";
+
+export const authHandler = createOwnAuthHandler(auth);
+```
+
+The handler provides signup, signin, sessions, signout, password flows, magic links, email verification, SMS verification, and invitation acceptance under `/api/auth`. It sets secure `HttpOnly` session cookies, checks browser request origins, and returns one documented error format.
+
+Browser TypeScript can use the matching client:
+
+```ts auth-client.ts
+import { createOwnAuthClient } from "own-auth/client";
+
+export const authClient = createOwnAuthClient();
+```
+
+React applications can use the matching client and session hook from `own-auth/react`:
+
+```tsx auth-client.ts
+import { createOwnAuthReactClient } from "own-auth/react";
+
+export const authClient = createOwnAuthReactClient();
+
+// Inside a component:
+// const { data, isPending, error } = authClient.useSession();
+```
+
+See the [HTTP handler](./docs/http-handler.md) and [TypeScript client](./docs/typescript-client.md) guides for the complete route and error contract.
+
 ### What's Next
 
 You have basic email/password auth. Here is where to go next:

@@ -96,3 +96,33 @@ export type {
   User,
   VerifiedApiKey
 } from "./types.js";
+export {
+  clearSessionCookie,
+  createOwnAuthHandler,
+  createOwnAuthOpenApiDocument,
+  createSessionCookie,
+  defaultSessionCookieName,
+  getOwnAuthEndpoint,
+  ownAuthEndpointContract,
+  readSessionToken
+} from "./http/index.js";
+export type {
+  AuthSessionPayload,
+  DeliveryPayload,
+  OwnAuthEndpointDefinition,
+  OwnAuthEndpointId,
+  OwnAuthEndpointInputMap,
+  OwnAuthEndpointOutputMap,
+  OwnAuthErrorPayload,
+  OwnAuthHandler,
+  OwnAuthHandlerOptions,
+  OwnAuthHttpErrorCode,
+  OwnAuthOpenApiDocument,
+  OwnAuthOpenApiOptions,
+  OwnAuthSessionCookieOptions,
+  PublicAuthSession,
+  PublicAuthUser,
+  PublicOrganisation,
+  PublicOrganisationMember,
+  SameSitePolicy
+} from "./http/index.js";

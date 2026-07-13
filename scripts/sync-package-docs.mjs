@@ -62,6 +62,14 @@ const files = [
     target: "packages/core/docs/external-providers.md"
   },
   {
+    source: "docs/http-handler.md",
+    target: "packages/core/docs/http-handler.md"
+  },
+  {
+    source: "docs/typescript-client.md",
+    target: "packages/core/docs/typescript-client.md"
+  },
+  {
     source: "docs/sessions/management.md",
     target: "packages/core/docs/sessions/management.md"
   },

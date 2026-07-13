@@ -1,6 +1,6 @@
 # Hono
 
-Use Own Auth from a Hono server running on Node.js. Complete the [Quickstart](https://own-auth.com/docs/quickstart) first so the shared `auth` instance and database tables are ready.
+Mount the framework-neutral Own Auth handler in one Hono route. Complete the [Quickstart](https://own-auth.com/docs/quickstart) first so the shared `auth` instance and database tables are ready.
 
 ## Install
 
@@ -8,121 +8,31 @@ Use Own Auth from a Hono server running on Node.js. Complete the [Quickstart](ht
 npm install own-auth hono @hono/node-server
 ```
 
-## Complete Server
-
-This server provides signup, signin, current-session, and signout routes using Hono's cookie helpers.
+## Add the handler
 
 ```ts server.ts
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import {
-  deleteCookie,
-  getCookie,
-  setCookie,
-} from "hono/cookie";
-import { AuthError } from "own-auth";
+import { createOwnAuthHandler } from "own-auth/http";
 
 import { auth } from "./auth";
 
-type Credentials = {
-  email: string;
-  password: string;
-  name?: string;
-};
-
 const app = new Hono();
-const sessionCookieName = "own_auth_session";
-const sessionCookieOptions = {
-  httpOnly: true,
-  path: "/",
-  sameSite: "Lax" as const,
-  secure: process.env.NODE_ENV === "production",
-};
+const authHandler = createOwnAuthHandler(auth);
 
-app.post("/auth/signup", async (context) => {
-  const body = await context.req.json<Credentials>();
-  const result = await auth.signUpEmailPassword(body);
+app.all("/api/auth/*", (context) => authHandler(context.req.raw));
 
-  setCookie(context, sessionCookieName, result.sessionToken, {
-    ...sessionCookieOptions,
-    expires: result.session.expiresAt,
-  });
-
-  return context.json({ user: result.user }, 201);
-});
-
-app.post("/auth/signin", async (context) => {
-  const body = await context.req.json<Credentials>();
-  const result = await auth.signInEmailPassword(body);
-
-  setCookie(context, sessionCookieName, result.sessionToken, {
-    ...sessionCookieOptions,
-    expires: result.session.expiresAt,
-  });
-
-  return context.json({ user: result.user });
-});
-
-app.get("/auth/session", async (context) => {
-  const sessionToken = getCookie(context, sessionCookieName);
-  const current = sessionToken
-    ? await auth.getCurrentSession(sessionToken)
-    : null;
-
-  if (!current) {
-    return context.json({ error: "Unauthorized" }, 401);
-  }
-
-  return context.json({
-    session: current.session,
-    user: current.user,
-  });
-});
-
-app.post("/auth/signout", async (context) => {
-  const sessionToken = getCookie(context, sessionCookieName);
-
-  if (sessionToken) {
-    await auth.signOut(sessionToken);
-  }
-
-  deleteCookie(context, sessionCookieName, {
-    path: sessionCookieOptions.path,
-    secure: sessionCookieOptions.secure,
-  });
-
-  return context.body(null, 204);
-});
-
-app.onError((error) => {
-  if (error instanceof AuthError) {
-    return Response.json(
-      {
-        error: {
-          code: error.code,
-          message: error.safeMessage,
-        },
-      },
-      { status: error.statusCode },
-    );
-  }
-
-  console.error(error);
-  return Response.json(
-    {
-      error: {
-        code: "internal_error",
-        message: "Authentication failed",
-      },
-    },
-    { status: 500 },
-  );
-});
-
-serve({
-  fetch: app.fetch,
-  port: 3000,
-});
+serve({ fetch: app.fetch, port: 3000 });
 ```
 
-The browser receives only the `HttpOnly` session cookie. Raw session tokens are not returned in the JSON responses.
+This exposes the complete [HTTP handler contract](https://own-auth.com/docs/http-handler) under `/api/auth`.
+
+## Add the client
+
+```ts auth-client.ts
+import { createOwnAuthClient } from "own-auth/client";
+
+export const authClient = createOwnAuthClient();
+```
+
+The handler owns request validation, safe errors, session cookies, and CSRF checks. Hono remains a thin request adapter and the Own Auth core stays framework-independent.

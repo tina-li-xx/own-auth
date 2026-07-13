@@ -46,6 +46,18 @@
       "types": "./dist/postgres/index.d.ts",
       "default": "./dist/postgres/index.js"
     },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "default": "./dist/http/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "default": "./dist/react.js"
+    },
     "./migrations/001_initial.sql": "./migrations/001_initial.sql",
     "./migrations/002_external_providers.sql": "./migrations/002_external_providers.sql",
     "./docs/installation.md": "./docs/installation.md",
@@ -63,5 +75,13 @@
   "dependencies": {
     "@noble/hashes": "^1.8.0",
     "pg": "^8.16.3"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
   }
 }

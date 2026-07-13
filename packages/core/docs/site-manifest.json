@@ -166,6 +166,25 @@
       ]
     },
     {
+      "title": "Integration",
+      "pages": [
+        {
+          "title": "HTTP Handler",
+          "description": "Expose Own Auth through one framework-neutral Web Request and Response handler with secure cookies, CSRF checks, typed errors, and generated OpenAPI.",
+          "href": "/docs/http-handler",
+          "slug": ["http-handler"],
+          "source": "docs/http-handler.md"
+        },
+        {
+          "title": "TypeScript Client",
+          "description": "Call the Own Auth HTTP handler from browser TypeScript or React with typed methods and shared current-session state.",
+          "href": "/docs/typescript-client",
+          "slug": ["typescript-client"],
+          "source": "docs/typescript-client.md"
+        }
+      ]
+    },
+    {
       "title": "Reference",
       "pages": [
         {
