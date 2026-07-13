@@ -242,14 +242,14 @@ describe("OwnAuth core", () => {
   it("signs in with a verified external provider identity", async () => {
     const { auth } = createTestAuth();
 
-    const firstSignin = await auth.signInWithExternalProvider({
+    const firstSignin = await auth.signInWithVerifiedExternalIdentity({
       provider: "google",
       providerAccountId: "google-user-1",
       email: "External@Example.com",
       emailVerified: true,
       name: "External User"
     });
-    const secondSignin = await auth.signInWithExternalProvider({
+    const secondSignin = await auth.signInWithVerifiedExternalIdentity({
       provider: "google",
       providerAccountId: "google-user-1"
     });
@@ -269,7 +269,7 @@ describe("OwnAuth core", () => {
       password: "correct-horse"
     });
 
-    const signin = await auth.signInWithExternalProvider({
+    const signin = await auth.signInWithVerifiedExternalIdentity({
       provider: "apple",
       providerAccountId: "apple-user-1",
       email: "LINKED@example.com",

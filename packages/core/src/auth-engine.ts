@@ -63,7 +63,7 @@ import type {
   RevokeSessionInput,
   SessionResult,
   SignInEmailPasswordInput,
-  SignInWithExternalProviderInput,
+  VerifiedExternalIdentityInput,
   SignUpEmailPasswordInput,
   SmsOtpVerificationResult,
   UpdateOrganisationInput,
@@ -88,8 +88,8 @@ export class OwnAuth {
   createUser(input: CreateUserInput): Promise<User> { return users.createUser(this.ctx, input); }
   signUpEmailPassword(input: SignUpEmailPasswordInput): Promise<SessionResult> { return users.signUpEmailPassword(this.ctx, input); }
   signInEmailPassword(input: SignInEmailPasswordInput): Promise<SessionResult> { return users.signInEmailPassword(this.ctx, input); }
-  signInWithExternalProvider(input: SignInWithExternalProviderInput): Promise<SessionResult> {
-    return external.signInWithExternalProvider(this.ctx, input);
+  signInWithVerifiedExternalIdentity(input: VerifiedExternalIdentityInput): Promise<SessionResult> {
+    return external.signInWithVerifiedExternalIdentity(this.ctx, input);
   }
   changePassword(input: ChangePasswordInput): Promise<User> { return users.changePassword(this.ctx, input); }
   getCurrentSession(sessionToken: string): Promise<CurrentSession | null> { return sessions.getCurrentSession(this.ctx, sessionToken); }

@@ -58,6 +58,10 @@ const files = [
     target: "packages/core/docs/password-reset.md"
   },
   {
+    source: "docs/external-providers.md",
+    target: "packages/core/docs/external-providers.md"
+  },
+  {
     source: "docs/sessions/management.md",
     target: "packages/core/docs/sessions/management.md"
   },

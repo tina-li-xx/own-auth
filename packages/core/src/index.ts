@@ -33,7 +33,7 @@ export type {
   RemoveMemberInput,
   SessionResult,
   SignInEmailPasswordInput,
-  SignInWithExternalProviderInput,
+  VerifiedExternalIdentityInput,
   SignUpEmailPasswordInput,
   SmsOtpVerificationResult,
   UpdateOrganisationInput,

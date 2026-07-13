@@ -79,7 +79,7 @@
     "revokeInvitation",
     "revokeSession",
     "signInEmailPassword",
-    "signInWithExternalProvider",
+    "signInWithVerifiedExternalIdentity",
     "signOut",
     "signUpEmailPassword",
     "updateOrganisation",
@@ -166,7 +166,6 @@
     "Session",
     "SessionResult",
     "SignInEmailPasswordInput",
-    "SignInWithExternalProviderInput",
     "SignUpEmailPasswordInput",
     "SmsMessage",
     "SmsOtp",
@@ -178,6 +177,7 @@
     "User",
     "UserStatusInput",
     "VerifiedApiKey",
+    "VerifiedExternalIdentityInput",
     "VerifySmsOtpInput",
     "VerifyTokenInput"
   ]

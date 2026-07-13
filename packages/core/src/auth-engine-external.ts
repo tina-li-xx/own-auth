@@ -4,7 +4,7 @@ import type { ExternalAccountProvider, User } from "./types.js";
 import {
   minute,
   type SessionResult,
-  type SignInWithExternalProviderInput
+  type VerifiedExternalIdentityInput
 } from "./auth-engine-types.js";
 import {
   accountFor,
@@ -19,9 +19,9 @@ import {
 
 const externalProviders = new Set<ExternalAccountProvider>(["apple", "google"]);
 
-export async function signInWithExternalProvider(
+export async function signInWithVerifiedExternalIdentity(
   ctx: AuthEngineContext,
-  input: SignInWithExternalProviderInput
+  input: VerifiedExternalIdentityInput
 ): Promise<SessionResult> {
   const provider = normalizeExternalProvider(input.provider);
   const providerAccountId = input.providerAccountId.trim();
@@ -75,7 +75,7 @@ function normalizeExternalProvider(provider: string): ExternalAccountProvider {
 
 async function findOrCreateExternalUser(
   ctx: AuthEngineContext,
-  input: SignInWithExternalProviderInput,
+  input: VerifiedExternalIdentityInput,
   email: string
 ): Promise<User> {
   const existingUser = await ctx.storage.getUserByEmail(email);
@@ -96,7 +96,7 @@ async function findOrCreateExternalUser(
 
 async function createExternalUser(
   ctx: AuthEngineContext,
-  input: SignInWithExternalProviderInput,
+  input: VerifiedExternalIdentityInput,
   email: string | null
 ): Promise<User> {
   const now = new Date();
@@ -129,7 +129,7 @@ async function createExternalUser(
 async function createExternalProviderSession(
   ctx: AuthEngineContext,
   user: User,
-  input: SignInWithExternalProviderInput
+  input: VerifiedExternalIdentityInput
 ): Promise<SessionResult> {
   assertUserEnabled(user);
   const activeUser = await markUserLoggedIn(ctx, user);

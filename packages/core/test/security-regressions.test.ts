@@ -164,7 +164,7 @@ describe("OwnAuth security regressions", () => {
     const { auth } = createHarness();
 
     await expect(
-      auth.signInWithExternalProvider({
+      auth.signInWithVerifiedExternalIdentity({
         provider: "google",
         providerAccountId: "google-unverified-email",
         email: "unverified@example.com",
@@ -178,7 +178,7 @@ describe("OwnAuth security regressions", () => {
     const { auth } = createHarness();
 
     await expect(
-      auth.signInWithExternalProvider({
+      auth.signInWithVerifiedExternalIdentity({
         provider: "facebook" as "google",
         providerAccountId: "facebook-user-1"
       })
@@ -187,7 +187,7 @@ describe("OwnAuth security regressions", () => {
 
   it("blocks disabled users from external provider sign-in", async () => {
     const { auth, storage } = createHarness();
-    const signin = await auth.signInWithExternalProvider({
+    const signin = await auth.signInWithVerifiedExternalIdentity({
       provider: "google",
       providerAccountId: "google-disabled-user",
       email: "disabled-external@example.com",
@@ -200,7 +200,7 @@ describe("OwnAuth security regressions", () => {
     });
 
     await expect(
-      auth.signInWithExternalProvider({
+      auth.signInWithVerifiedExternalIdentity({
         provider: "google",
         providerAccountId: "google-disabled-user"
       })

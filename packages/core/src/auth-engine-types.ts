@@ -64,7 +64,8 @@ export interface RevokeSessionInput {
   request?: RequestContext;
 }
 
-export interface SignInWithExternalProviderInput {
+/** A provider identity whose token or authorization response was already verified. */
+export interface VerifiedExternalIdentityInput {
   provider: ExternalAccountProvider;
   providerAccountId: string;
   email?: string;

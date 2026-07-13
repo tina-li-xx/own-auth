@@ -72,6 +72,13 @@
           "href": "/docs/password-reset",
           "slug": ["password-reset"],
           "source": "docs/password-reset.md"
+        },
+        {
+          "title": "External Providers",
+          "description": "Create an Own Auth session from an Apple or Google identity that a trusted provider adapter has already verified.",
+          "href": "/docs/external-providers",
+          "slug": ["external-providers"],
+          "source": "docs/external-providers.md"
         }
       ]
     },

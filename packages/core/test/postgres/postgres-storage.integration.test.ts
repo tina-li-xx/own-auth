@@ -53,7 +53,7 @@ describeWithDatabase("PostgresAuthStorage integration", () => {
 
     expect(magicSession.user.id).toBe(signup.user.id);
 
-    const externalSession = await auth.signInWithExternalProvider({
+    const externalSession = await auth.signInWithVerifiedExternalIdentity({
       provider: "google",
       providerAccountId: "postgres-google-user",
       email: "postgres-google@example.com",
