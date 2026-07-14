@@ -43,6 +43,7 @@ export type AuthErrorCode =
   | "passkey_not_found"
   | "plugin_denied"
   | "plugin_hook_timeout"
+  | "auth_closed"
   | "validation_error";
 
 export class AuthError extends Error {
@@ -65,4 +66,8 @@ export function toAuthError(error: unknown): AuthError {
   }
 
   return new AuthError("invalid_credentials", "Authentication failed", 500);
+}
+
+export function createAuthClosedError(): AuthError {
+  return new AuthError("auth_closed", "Own Auth has been closed", 503);
 }

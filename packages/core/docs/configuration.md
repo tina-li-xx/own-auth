@@ -298,9 +298,23 @@ const auth = createOwnAuth({
 
 See [Plugins](/docs/plugins) for the public extension and migration contract.
 
+## Database connection and shutdown
+
+`createOwnAuth` validates that `DATABASE_URL` is a Postgres connection URL when the auth instance is created. The Postgres driver and database connection are loaded only when the first database operation runs.
+
+For long-running servers, close the auth instance during graceful shutdown:
+
+```ts
+await auth.close();
+```
+
+`close` waits for an in-progress first connection, closes the Postgres pool created by Own Auth, and is safe to call more than once. Auth methods called afterward reject with an `AuthError` whose code is `auth_closed`.
+
+Do not call `close` after every request. Serverless and edge runtimes should keep the auth instance reusable across requests. When `storage` or `rateLimitStore` is supplied by the application, the application owns and closes those adapter resources.
+
 ## Validation
 
-`createOwnAuth` checks required runtime configuration when the auth instance is created. Without a database connection, it throws:
+`createOwnAuth` checks required runtime configuration when the auth instance is created. Without `DATABASE_URL`, it throws:
 
 ```text
 DATABASE_URL is required. Set DATABASE_URL or pass storage to createOwnAuth().
@@ -313,6 +327,14 @@ OWN_AUTH_TOKEN_PEPPER is required in production.
 ```
 
 These errors happen when your application starts, before an auth method is called.
+
+A malformed or non-Postgres database URL also fails immediately:
+
+```text
+DATABASE_URL must be a valid postgres:// or postgresql:// connection URL.
+```
+
+Driver import and database connection errors happen on the first database operation and retain the original PostgreSQL error and code.
 
 ## Next step
 

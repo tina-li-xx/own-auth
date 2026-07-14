@@ -18,6 +18,7 @@ export const hasPostgresTestDatabase = explicitDatabaseUrl || requireDatabase
 
 export interface PostgresTestDatabase {
   client: pg.PoolClient;
+  connectionString: string;
   queryable: PostgresQueryable;
   connectPair(): Promise<[pg.PoolClient, pg.PoolClient]>;
   close(): Promise<void>;
@@ -73,6 +74,7 @@ export async function createPostgresTestDatabase(
 
   return {
     client,
+    connectionString: databaseUrlForSchema(databaseUrl, schema),
     queryable,
     async connectPair() {
       const first = await connect();
@@ -92,6 +94,12 @@ export async function createPostgresTestDatabase(
       }
     }
   };
+}
+
+function databaseUrlForSchema(connectionString: string, schema: string): string {
+  const url = new URL(connectionString);
+  url.searchParams.set("options", `-c search_path=${schema}`);
+  return url.toString();
 }
 
 function quoteIdentifier(identifier: string): string {

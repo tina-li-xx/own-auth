@@ -19,6 +19,8 @@
 - Passkey registration, primary sign-in, MFA completion, listing, renaming, and revocation.
 - A public plugin contract with namespaced routes, hooks, rate limits, migrations, OpenAPI output, and client fingerprints.
 - Migrations `003_oauth_transactions` through `007_plugin_migrations`.
+- Lazy Postgres initialization so importing `own-auth` with custom storage does not load `pg`.
+- `auth.close()` for idempotent shutdown of the Postgres pool owned by Own Auth.
 
 ### Security
 
@@ -29,5 +31,10 @@
 - HTTP request body limits are enforced while streaming, including Apple's 64 KiB form-post callback limit.
 - Generated plugin clients reject missing or mismatched server contract fingerprints.
 - Browser OAuth popups exchange only completion state. OAuth codes, provider tokens, session tokens, and MFA challenge tokens are never sent through `postMessage`.
+
+### Runtime
+
+- `DATABASE_URL` is validated when `createOwnAuth` runs, while driver import and connection errors retain their original PostgreSQL diagnostics on first use.
+- Auth operations after `auth.close()` fail with the typed `auth_closed` error.
 
 The trusted `signInWithVerifiedExternalIdentity` flow remains available for native provider SDKs and other integrations that verify provider credentials before calling Own Auth.

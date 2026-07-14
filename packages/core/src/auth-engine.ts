@@ -110,6 +110,7 @@ import type {
   VerifyTokenInput
 } from "./auth-engine-types.js";
 import { isRecord } from "./value-guards.js";
+import { createAuthClosedError } from "./errors.js";
 
 export type { OwnAuthOptions } from "./auth-engine-types.js";
 
@@ -118,6 +119,8 @@ export class OwnAuth {
   readonly rateLimitStore: RateLimitStore;
   private readonly ctx: AuthEngineContext;
   private readonly pluginRuntime: OwnAuthPluginRuntime;
+  private closed = false;
+  private closePromise: Promise<void> | null = null;
 
   constructor(options: OwnAuthOptions = {}) {
     this.ctx = createAuthEngineContext(options);
@@ -149,7 +152,9 @@ export class OwnAuth {
     sessionToken: string | null,
     request: RequestContext
   ): Promise<unknown> {
-    return this.pluginRuntime.executeEndpoint(endpoint, input, sessionToken, request);
+    return this.runWhileOpen(() =>
+      this.pluginRuntime.executeEndpoint(endpoint, input, sessionToken, request)
+    );
   }
   callPluginMethod(
     pluginId: string,
@@ -157,19 +162,29 @@ export class OwnAuth {
     input: unknown,
     options?: CallOwnAuthPluginMethodOptions
   ): Promise<unknown> {
-    return this.pluginRuntime.callServerMethod(pluginId, method, input, options);
+    return this.runWhileOpen(() =>
+      this.pluginRuntime.callServerMethod(pluginId, method, input, options)
+    );
   }
   private executeCore<Result>(
     operation: string,
     input: unknown,
     work: () => Promise<Result>
   ): Promise<Result> {
-    return this.pluginRuntime.runCoreOperation(
-      operation,
-      input,
-      requestContextFrom(input),
-      work
+    return this.runWhileOpen(() =>
+      this.pluginRuntime.runCoreOperation(
+        operation,
+        input,
+        requestContextFrom(input),
+        work
+      )
     );
+  }
+  private runWhileOpen<Result>(work: () => Promise<Result>): Promise<Result> {
+    if (this.closed) {
+      return Promise.reject(createAuthClosedError());
+    }
+    return work();
   }
 
   createUser(input: CreateUserInput): Promise<User> {
@@ -415,6 +430,16 @@ export class OwnAuth {
   cleanupAuditLogs(input: CleanupAuditLogsInput): Promise<number> {
     return this.executeCore("cleanupAuditLogs", input, () =>
       auditEvents.cleanupAuditLogs(this.ctx, input));
+  }
+
+  close(): Promise<void> {
+    if (this.closePromise) {
+      return this.closePromise;
+    }
+
+    this.closed = true;
+    this.closePromise = this.ctx.closePersistence();
+    return this.closePromise;
   }
 }
 

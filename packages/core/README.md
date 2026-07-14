@@ -627,6 +627,14 @@ createOwnAuth({
 
 OAuth providers, the shared encryption key ring, TOTP, passkeys, and plugins are documented in the [Configuration guide](https://github.com/tina-li-xx/own-auth/blob/main/docs/configuration.md).
 
+For long-running servers, close Own Auth during graceful shutdown:
+
+```ts
+await auth.close();
+```
+
+Own Auth closes only the Postgres pool it creates. Applications that pass custom storage or rate-limit adapters remain responsible for those resources. See [Database connection and shutdown](https://github.com/tina-li-xx/own-auth/blob/main/docs/configuration.md#database-connection-and-shutdown).
+
 ## Database Setup
 
 Auto-migrate (recommended):
@@ -666,6 +674,7 @@ psql "$DATABASE_URL" -f own-auth.sql
 | **Permissions** | `checkPermission` `requirePermission` |
 | **Audit Logs** | `listAuditEvents` `cleanupAuditLogs` |
 | **Plugins** | `callPluginMethod` plus methods and endpoints declared by configured plugins |
+| **Lifecycle** | `close` |
 
 ## Security
 

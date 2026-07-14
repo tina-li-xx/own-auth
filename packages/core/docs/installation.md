@@ -15,6 +15,8 @@ Own Auth also supports Cloudflare Workers. Enable Node.js compatibility in the W
 
 Password hashing uses the same Argon2id format and security parameters in Node.js and Cloudflare Workers, so passwords remain compatible between runtimes.
 
+Cloudflare deployments can pass edge-compatible `storage` and `rateLimitStore` adapters. That path does not load the Node.js `pg` driver, and the application remains responsible for closing resources created by its adapters.
+
 ## Install the package
 
 ```bash

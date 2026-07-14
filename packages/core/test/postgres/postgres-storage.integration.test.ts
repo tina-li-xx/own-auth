@@ -186,4 +186,36 @@ describeWithDatabase("PostgresAuthStorage integration", () => {
     expect(deletedAuditEvents).toBeGreaterThan(0);
     expect(remainingAuditEvents.rows[0]?.count).toBe(0);
   });
+
+  it("uses and closes the default lazy Postgres pool", async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+    process.env.NODE_ENV = "development";
+    process.env.DATABASE_URL = database.connectionString;
+    const auth = createOwnAuth({ tokenPepper: "lazy-integration-test-pepper" });
+
+    try {
+      const signup = await auth.signUpEmailPassword({
+        email: "lazy-pool@example.com",
+        password: "correct-horse"
+      });
+      const session = await auth.requireCurrentSession(signup.sessionToken);
+
+      expect(session.user.id).toBe(signup.user.id);
+      await auth.close();
+      await expect(auth.getCurrentSession(signup.sessionToken)).rejects.toMatchObject({
+        code: "auth_closed",
+        message: "Own Auth has been closed"
+      });
+      await expect(auth.close()).resolves.toBeUndefined();
+    } finally {
+      await auth.close().catch(() => undefined);
+      process.env.NODE_ENV = previousNodeEnv;
+      if (previousDatabaseUrl === undefined) {
+        delete process.env.DATABASE_URL;
+      } else {
+        process.env.DATABASE_URL = previousDatabaseUrl;
+      }
+    }
+  });
 });

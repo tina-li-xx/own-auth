@@ -1,4 +1,3 @@
-import pg from "pg";
 import {
   ConsoleEmailProvider,
   ConsoleSmsProvider,
@@ -6,8 +5,7 @@ import {
   type SmsProvider
 } from "./providers.js";
 import { InMemoryAuthStorage } from "./memory-storage.js";
-import { PostgresRateLimitStore } from "./postgres/postgres-rate-limit-store.js";
-import { PostgresAuthStorage } from "./postgres/postgres-storage.js";
+import { createPostgresPersistence } from "./postgres/postgres-persistence.js";
 import { InMemoryRateLimitStore, type RateLimitStore } from "./rate-limit.js";
 import type { AuthStorage } from "./storage.js";
 import { createEncryptionKeyRing, type EncryptionKeyRing } from "./encryption.js";
@@ -50,6 +48,7 @@ export interface AuthEngineContext {
   mfaMaxAttempts: number;
   recoveryCodeCount: number;
   passkeys: Required<PasskeyOptions> | null;
+  closePersistence(): Promise<void>;
 }
 
 export function createAuthEngineContext(options: OwnAuthOptions = {}): AuthEngineContext {
@@ -92,7 +91,8 @@ export function createAuthEngineContext(options: OwnAuthOptions = {}): AuthEngin
     mfaChallengeTtlMs: mfa.challengeTtlMs,
     mfaMaxAttempts: mfa.maxAttempts,
     recoveryCodeCount: mfa.recoveryCodeCount,
-    passkeys: normalizePasskeyOptions(options.passkeys)
+    passkeys: normalizePasskeyOptions(options.passkeys),
+    closePersistence: persistence.close
   };
 }
 
@@ -156,11 +156,13 @@ function normalizePasskeyOptions(options?: PasskeyOptions): Required<PasskeyOpti
 function createDefaultPersistence(storage?: AuthStorage): {
   storage: AuthStorage;
   rateLimitStore: RateLimitStore;
+  close(): Promise<void>;
 } {
   if (storage) {
     return {
       storage,
-      rateLimitStore: new InMemoryRateLimitStore()
+      rateLimitStore: new InMemoryRateLimitStore(),
+      close: noOpClose
     };
   }
 
@@ -170,7 +172,8 @@ function createDefaultPersistence(storage?: AuthStorage): {
   if (nodeEnv === "test") {
     return {
       storage: new InMemoryAuthStorage(),
-      rateLimitStore: new InMemoryRateLimitStore()
+      rateLimitStore: new InMemoryRateLimitStore(),
+      close: noOpClose
     };
   }
 
@@ -178,9 +181,9 @@ function createDefaultPersistence(storage?: AuthStorage): {
     throw new Error("DATABASE_URL is required. Set DATABASE_URL or pass storage to createOwnAuth().");
   }
 
-  const pool = new pg.Pool({ connectionString: databaseUrl });
-  return {
-    storage: new PostgresAuthStorage(pool),
-    rateLimitStore: new PostgresRateLimitStore(pool)
-  };
+  return createPostgresPersistence(databaseUrl);
+}
+
+function noOpClose(): Promise<void> {
+  return Promise.resolve();
 }

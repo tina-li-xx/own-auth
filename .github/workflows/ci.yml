@@ -57,6 +57,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Check lazy Postgres loading
+        run: pnpm postgres-loading:check
+
       - name: Check Cloudflare Workers bundle
         run: pnpm cloudflare:check
 

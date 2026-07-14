@@ -110,6 +110,27 @@ describe("OwnAuth core", () => {
     }
   });
 
+  it("rejects malformed DATABASE_URL values before an auth method runs", () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+
+    try {
+      process.env.NODE_ENV = "development";
+      process.env.DATABASE_URL = "not-a-postgres-url";
+
+      expect(() => createOwnAuth()).toThrow(
+        "DATABASE_URL must be a valid postgres:// or postgresql:// connection URL."
+      );
+    } finally {
+      process.env.NODE_ENV = previousNodeEnv;
+      if (previousDatabaseUrl === undefined) {
+        delete process.env.DATABASE_URL;
+      } else {
+        process.env.DATABASE_URL = previousDatabaseUrl;
+      }
+    }
+  });
+
   it("requires OWN_AUTH_TOKEN_PEPPER in production", () => {
     const previousNodeEnv = process.env.NODE_ENV;
     const previousDatabaseUrl = process.env.DATABASE_URL;
@@ -162,6 +183,21 @@ describe("OwnAuth core", () => {
     const auth = createOwnAuth({ storage: new InMemoryAuthStorage() });
 
     expect(auth.storage).toBeInstanceOf(InMemoryAuthStorage);
+  });
+
+  it("closes idempotently and rejects later auth operations", async () => {
+    const auth = createOwnAuth({ storage: new InMemoryAuthStorage() });
+
+    const firstClose = auth.close();
+    const secondClose = auth.close();
+
+    expect(secondClose).toBe(firstClose);
+    await firstClose;
+    await expect(auth.createUser({ email: "closed@example.com" })).rejects.toMatchObject({
+      code: "auth_closed",
+      message: "Own Auth has been closed",
+      statusCode: 503
+    });
   });
 
   it("uses one-time hashed magic link tokens", async () => {
