@@ -1,6 +1,6 @@
 {
   "name": "own-auth-workspace",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Vendor-neutral authentication platform for framework-independent auth, sessions, API keys, and organisations.",
   "type": "module",
@@ -25,6 +25,9 @@
     "typescript"
   ],
   "packageManager": "pnpm@10.0.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "build": "pnpm -r build",
     "cloudflare:check": "node scripts/check-cloudflare-worker.mjs",

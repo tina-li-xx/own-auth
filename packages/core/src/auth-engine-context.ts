@@ -10,6 +10,10 @@ import { PostgresRateLimitStore } from "./postgres/postgres-rate-limit-store.js"
 import { PostgresAuthStorage } from "./postgres/postgres-storage.js";
 import { InMemoryRateLimitStore, type RateLimitStore } from "./rate-limit.js";
 import type { AuthStorage } from "./storage.js";
+import { createEncryptionKeyRing, type EncryptionKeyRing } from "./encryption.js";
+import { createOAuthProviderRegistry } from "./oauth-registry.js";
+import type { OAuthAccountLinking, OAuthProviderAdapter } from "./oauth-types.js";
+import type { ExternalAccountProvider } from "./types.js";
 import {
   day,
   defaultTokenTtls,
@@ -17,6 +21,8 @@ import {
   type OwnAuthOptions,
   type TokenTtlConfig
 } from "./auth-engine-types.js";
+import type { PasskeyOptions } from "./auth-engine-options.js";
+import { normalizeTrustedWebOrigin } from "./url-security.js";
 
 export interface AuthEngineContext {
   storage: AuthStorage;
@@ -36,6 +42,14 @@ export interface AuthEngineContext {
   smsMaxAttempts: number;
   smsCodeLength: number;
   passwordMinLength: number;
+  encryption: EncryptionKeyRing | null;
+  oauthProviders: ReadonlyMap<ExternalAccountProvider, OAuthProviderAdapter>;
+  oauthAccountLinking: OAuthAccountLinking;
+  mfaIssuer: string;
+  mfaChallengeTtlMs: number;
+  mfaMaxAttempts: number;
+  recoveryCodeCount: number;
+  passkeys: Required<PasskeyOptions> | null;
 }
 
 export function createAuthEngineContext(options: OwnAuthOptions = {}): AuthEngineContext {
@@ -46,6 +60,12 @@ export function createAuthEngineContext(options: OwnAuthOptions = {}): AuthEngin
 
   const baseUrl = options.baseUrl ?? "http://localhost:3000";
   const persistence = createDefaultPersistence(options.storage);
+  const encryption = createEncryptionKeyRing(options.encryption);
+  const oauthProviders = createOAuthProviderRegistry(options.oauth);
+  if (!encryption && [...oauthProviders.values()].some((provider) => provider.offlineAccess)) {
+    throw new Error("OAuth offline access requires encryption configuration");
+  }
+  const mfa = normalizeMfaOptions(options.mfa);
 
   return {
     storage: persistence.storage,
@@ -64,7 +84,72 @@ export function createAuthEngineContext(options: OwnAuthOptions = {}): AuthEngin
     smsOtpTtlMs: options.sms?.otpTtlMs ?? 10 * minute,
     smsMaxAttempts: options.sms?.maxAttempts ?? 5,
     smsCodeLength: options.sms?.codeLength ?? 6,
-    passwordMinLength: options.password?.minLength ?? 8
+    passwordMinLength: options.password?.minLength ?? 8,
+    encryption,
+    oauthProviders,
+    oauthAccountLinking: options.oauth?.accountLinking ?? "explicit",
+    mfaIssuer: mfa.issuer,
+    mfaChallengeTtlMs: mfa.challengeTtlMs,
+    mfaMaxAttempts: mfa.maxAttempts,
+    recoveryCodeCount: mfa.recoveryCodeCount,
+    passkeys: normalizePasskeyOptions(options.passkeys)
+  };
+}
+
+function normalizeMfaOptions(options: OwnAuthOptions["mfa"]): {
+  issuer: string;
+  challengeTtlMs: number;
+  maxAttempts: number;
+  recoveryCodeCount: number;
+} {
+  const issuer = options?.issuer?.trim() ?? "Own Auth";
+  if (!issuer) {
+    throw new Error("mfa.issuer must be non-empty");
+  }
+  return {
+    issuer,
+    challengeTtlMs: positiveInteger(
+      options?.challengeTtlMs ?? 5 * minute,
+      "mfa.challengeTtlMs"
+    ),
+    maxAttempts: positiveInteger(options?.maxAttempts ?? 5, "mfa.maxAttempts"),
+    recoveryCodeCount: positiveInteger(
+      options?.recoveryCodeCount ?? 10,
+      "mfa.recoveryCodeCount"
+    )
+  };
+}
+
+function positiveInteger(value: number, option: string): number {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`${option} must be a positive integer`);
+  }
+  return value;
+}
+
+function normalizePasskeyOptions(options?: PasskeyOptions): Required<PasskeyOptions> | null {
+  if (!options) {
+    return null;
+  }
+  if (!/^(?=.{1,253}$)(?!-)[a-z0-9.-]+(?<!-)$/.test(options.rpId)) {
+    throw new Error("passkeys.rpId must be a valid lowercase domain name");
+  }
+  if (!options.rpName.trim()) {
+    throw new Error("passkeys.rpName is required");
+  }
+  const origins = options.origins.map((origin) => normalizeTrustedWebOrigin(origin));
+  if (origins.length === 0 || origins.some((origin) => !origin)) {
+    throw new Error("passkeys.origins must contain HTTPS or local development origins");
+  }
+  const timeoutMs = options.timeoutMs ?? 60_000;
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1) {
+    throw new Error("passkeys.timeoutMs must be a positive integer");
+  }
+  return {
+    rpId: options.rpId,
+    rpName: options.rpName.trim(),
+    origins: origins as string[],
+    timeoutMs
   };
 }
 

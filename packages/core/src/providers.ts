@@ -1,4 +1,5 @@
 import type { TokenType } from "./types.js";
+import { isRecord } from "./value-guards.js";
 
 export interface EmailMessage {
   to: string;
@@ -116,10 +117,6 @@ async function readManagedDeliveryErrorBody(response: Response): Promise<unknown
   } catch {
     return null;
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function safeManagedDeliveryErrorText(value: unknown): string {

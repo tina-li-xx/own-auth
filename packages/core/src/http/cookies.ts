@@ -11,7 +11,10 @@ export interface OwnAuthSessionCookieOptions {
   secure?: boolean;
 }
 
+export interface OwnAuthMfaCookieOptions extends OwnAuthSessionCookieOptions {}
+
 export const defaultSessionCookieName = "own_auth_session";
+export const defaultMfaCookieName = "own_auth_mfa";
 
 export function readSessionToken(
   request: Request,
@@ -45,6 +48,40 @@ export function clearSessionCookie(
   options: OwnAuthSessionCookieOptions = {}
 ): string {
   return serializeCookie("", new Date(0), requestUrl, options, 0);
+}
+
+export function readMfaChallengeToken(
+  request: Request,
+  options: OwnAuthMfaCookieOptions = {}
+): string | null {
+  return readCookie(request, options.name ?? defaultMfaCookieName);
+}
+
+export function createMfaChallengeCookie(
+  token: string,
+  expiresAt: Date,
+  requestUrl: URL,
+  options: OwnAuthMfaCookieOptions = {}
+): string {
+  return serializeCookie(
+    token,
+    expiresAt,
+    requestUrl,
+    { ...options, name: options.name ?? defaultMfaCookieName }
+  );
+}
+
+export function clearMfaChallengeCookie(
+  requestUrl: URL,
+  options: OwnAuthMfaCookieOptions = {}
+): string {
+  return serializeCookie(
+    "",
+    new Date(0),
+    requestUrl,
+    { ...options, name: options.name ?? defaultMfaCookieName },
+    0
+  );
 }
 
 function serializeCookie(
@@ -131,6 +168,10 @@ function resolveSecureCookie(requestUrl: URL, configured?: boolean): boolean {
     "Session cookies require HTTPS outside localhost",
     500
   );
+}
+
+function readCookie(request: Request, name: string): string | null {
+  return parseCookieHeader(request.headers.get("cookie")).get(name) ?? null;
 }
 
 function parseCookieHeader(value: string | null): Map<string, string> {

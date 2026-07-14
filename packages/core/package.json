@@ -1,6 +1,6 @@
 {
   "name": "own-auth",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Framework-independent TypeScript auth engine with Postgres storage.",
   "license": "MIT",
@@ -32,8 +32,12 @@
   "files": [
     "dist",
     "docs",
-    "migrations"
+    "migrations",
+    "CHANGELOG.md"
   ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "publishConfig": {
     "access": "public"
   },
@@ -58,8 +62,21 @@
       "types": "./dist/react.d.ts",
       "default": "./dist/react.js"
     },
+    "./passkeys": {
+      "types": "./dist/passkeys-client.d.ts",
+      "default": "./dist/passkeys-client.js"
+    },
+    "./google-one-tap": {
+      "types": "./dist/google-one-tap.d.ts",
+      "default": "./dist/google-one-tap.js"
+    },
     "./migrations/001_initial.sql": "./migrations/001_initial.sql",
     "./migrations/002_external_providers.sql": "./migrations/002_external_providers.sql",
+    "./migrations/003_oauth_transactions.sql": "./migrations/003_oauth_transactions.sql",
+    "./migrations/004_mfa.sql": "./migrations/004_mfa.sql",
+    "./migrations/005_oauth_credentials.sql": "./migrations/005_oauth_credentials.sql",
+    "./migrations/006_passkeys.sql": "./migrations/006_passkeys.sql",
+    "./migrations/007_plugin_migrations.sql": "./migrations/007_plugin_migrations.sql",
     "./docs/installation.md": "./docs/installation.md",
     "./docs/security-model.md": "./docs/security-model.md"
   },
@@ -68,12 +85,17 @@
     "pack:check": "npm pack --dry-run",
     "publish:npm": "npm publish --access public --auth-type=web",
     "test": "vitest run",
-    "test:integration": "vitest run test/postgres/postgres-storage.integration.test.ts test/postgres/postgres-concurrency.integration.test.ts",
-    "test:integration:required": "OWN_AUTH_REQUIRE_POSTGRES=true vitest run test/postgres/postgres-storage.integration.test.ts test/postgres/postgres-concurrency.integration.test.ts",
+    "test:integration": "vitest run test/postgres/postgres-storage.integration.test.ts test/postgres/postgres-concurrency.integration.test.ts test/postgres/postgres-migrations.integration.test.ts",
+    "test:integration:required": "OWN_AUTH_REQUIRE_POSTGRES=true vitest run test/postgres/postgres-storage.integration.test.ts test/postgres/postgres-concurrency.integration.test.ts test/postgres/postgres-migrations.integration.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@noble/hashes": "^1.8.0",
+    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/server": "^13.3.2",
+    "jiti": "^2.7.0",
+    "oauth4webapi": "^3.8.6",
+    "otpauth": "^9.5.1",
     "pg": "^8.16.3"
   },
   "peerDependencies": {

@@ -60,13 +60,19 @@ try {
 ## Sign in
 
 ```ts
-const { user, session, sessionToken } = await auth.signInEmailPassword({
+const result = await auth.signInEmailPassword({
   email: "alice@example.com",
   password: "her-secret-password",
 });
+
+if (result.status === "mfa_required") {
+  // Show a second-factor form using result.methods.
+} else {
+  const { user, session, sessionToken } = result;
+}
 ```
 
-Own Auth checks the password against the stored hash. If it matches, it creates a new session and returns the token.
+Own Auth checks the password against the stored hash. If it matches, Own Auth either creates a session or returns `mfa_required` when the user has a second factor enabled.
 
 ### Errors
 

@@ -1,39 +1,34 @@
 import type { OwnAuth } from "../auth-engine.js";
 import { AuthError } from "../errors.js";
 import type { RequestContext } from "../types.js";
+import { OAuthCallbackError } from "../oauth-types.js";
+import { OwnAuthPluginError } from "../plugin-definition.js";
 import {
   ownAuthEndpointContract,
-  type OwnAuthEndpointDefinition,
-  type OwnAuthEndpointId,
-  type OwnAuthEndpointInputMap,
   type OwnAuthErrorPayload,
   type OwnAuthHttpErrorCode
 } from "./contract.js";
 import {
-  getOwnAuthRoutePath,
-  normalizeOwnAuthBasePath
-} from "./routing.js";
-import {
+  clearMfaChallengeCookie,
   clearSessionCookie,
+  createMfaChallengeCookie,
   createSessionCookie,
+  readMfaChallengeToken,
   readSessionToken,
+  type OwnAuthMfaCookieOptions,
   type OwnAuthSessionCookieOptions
 } from "./cookies.js";
 import { assertCsrfSafe } from "./csrf.js";
 import { OwnAuthHttpError } from "./errors.js";
-import {
-  serializeAuthSession,
-  serializeDelivery,
-  serializeMember,
-  serializeOrganisation,
-  serializeSession,
-  serializeUser
-} from "./serializers.js";
-import { validateEndpointInput } from "./validation.js";
+import { executeEndpoint, type EndpointExecution } from "./execution.js";
+import { createOAuthCallbackResponse } from "./oauth-response.js";
+import { pluginInputContract, readEndpointInput } from "./request-input.js";
+import { getOwnAuthRoutePath, normalizeOwnAuthBasePath } from "./routing.js";
 
 export interface OwnAuthHandlerOptions {
   basePath?: string;
   cookie?: OwnAuthSessionCookieOptions;
+  mfaCookie?: OwnAuthMfaCookieOptions;
   trustedOrigins?: readonly string[];
   maxRequestBodyBytes?: number;
   getRequestContext?: (request: Request) => RequestContext | Promise<RequestContext>;
@@ -41,12 +36,6 @@ export interface OwnAuthHandlerOptions {
 }
 
 export type OwnAuthHandler = (request: Request) => Promise<Response>;
-
-interface EndpointExecution {
-  body: unknown;
-  setSession?: { token: string; expiresAt: Date };
-  clearSession?: boolean;
-}
 
 export function createOwnAuthHandler(
   auth: OwnAuth,
@@ -61,37 +50,39 @@ export function createOwnAuthHandler(
   return async (request) => {
     const requestUrl = new URL(request.url);
     const routePath = getOwnAuthRoutePath(requestUrl.pathname, basePath);
-    if (!routePath) {
-      return errorResponse("not_found", "Auth endpoint not found", 404);
-    }
+    if (!routePath) return errorResponse("not_found", "Auth endpoint not found", 404);
 
-    const pathEndpoints = ownAuthEndpointContract.filter(
-      (endpoint) => endpoint.path === routePath
-    );
-    const endpoint = pathEndpoints.find((candidate) => candidate.method === request.method);
+    const candidates = ownAuthEndpointContract.filter((endpoint) => endpoint.path === routePath);
+    const endpoint = candidates.find((candidate) => candidate.method === request.method);
+    const pluginEndpoint = endpoint ? null : auth.findPluginEndpoint(routePath, request.method);
     if (!endpoint) {
-      if (pathEndpoints.length === 0) {
+      if (pluginEndpoint) {
+        return handlePluginEndpoint(auth, pluginEndpoint, request, requestUrl, options);
+      }
+      const pluginMethods = auth.getPluginEndpointMethods(routePath);
+      if (candidates.length === 0 && pluginMethods.length === 0) {
         return errorResponse("not_found", "Auth endpoint not found", 404);
       }
-      return errorResponse(
-        "method_not_allowed",
-        "Method not allowed",
-        405,
-        { allow: pathEndpoints.map((candidate) => candidate.method).join(", ") }
-      );
+      return errorResponse("method_not_allowed", "Method not allowed", 405, {
+        allow: [...candidates.map((candidate) => candidate.method), ...pluginMethods].join(", ")
+      });
     }
 
     const sessionCredential = readSessionToken(request, options.cookie);
     try {
-      assertCsrfSafe(
-        request,
-        sessionCredential.source === "cookie",
-        options.trustedOrigins ?? []
-      );
-      const body = await readAndValidateBody(
+      if (endpoint.csrf !== "oauth_state") {
+        assertCsrfSafe(
+          request,
+          sessionCredential.source === "cookie",
+          options.trustedOrigins ?? []
+        );
+      }
+      const input = await readEndpointInput(
         request,
         endpoint,
-        maxRequestBodyBytes
+        endpoint.requestTransport === "form"
+          ? Math.min(maxRequestBodyBytes, 64 * 1024)
+          : maxRequestBodyBytes
       );
       const context = options.getRequestContext
         ? await options.getRequestContext(request)
@@ -99,220 +90,153 @@ export function createOwnAuthHandler(
       const execution = await executeEndpoint(
         auth,
         endpoint.id,
-        body,
+        input,
         sessionCredential.token,
+        readMfaChallengeToken(request, options.mfaCookie),
         context
       );
-
       const headers = responseHeaders();
-      if (execution.setSession) {
-        headers.set(
-          "set-cookie",
-          createSessionCookie(
-            execution.setSession.token,
-            execution.setSession.expiresAt,
-            requestUrl,
-            options.cookie
-          )
-        );
-      } else if (execution.clearSession) {
-        headers.set("set-cookie", clearSessionCookie(requestUrl, options.cookie));
-      }
+      applyCookies(headers, execution, requestUrl, options);
 
+      if (endpoint.responseKind === "oauth_callback") {
+        return createOAuthCallbackResponse(execution, requestUrl, headers);
+      }
       return new Response(JSON.stringify(execution.body), { status: 200, headers });
     } catch (error) {
-      if (error instanceof AuthError) {
-        return errorResponse(error.code, error.safeMessage, error.statusCode);
-      }
-      if (error instanceof OwnAuthHttpError) {
-        if (error.statusCode >= 500) {
-          await reportError(options.onError, error, request);
-        }
-        return errorResponse(error.code, error.message, error.statusCode);
-      }
-      await reportError(options.onError, error, request);
-      return errorResponse("internal_error", "Authentication request failed", 500);
+      return handleRequestError(
+        error,
+        request,
+        requestUrl,
+        options,
+        endpoint.responseKind === "oauth_callback"
+      );
     }
   };
 }
 
-async function executeEndpoint(
+async function handlePluginEndpoint(
   auth: OwnAuth,
-  endpointId: OwnAuthEndpointId,
-  rawInput: Record<string, unknown> | undefined,
-  sessionToken: string | null,
-  request: RequestContext
-): Promise<EndpointExecution> {
-  switch (endpointId) {
-    case "signUpEmailPassword": {
-      const input = inputAs(rawInput, endpointId);
-      const result = await auth.signUpEmailPassword({ ...input, request });
-      return withCreatedSession(result);
-    }
-    case "signInEmailPassword": {
-      const input = inputAs(rawInput, endpointId);
-      const result = await auth.signInEmailPassword({ ...input, request });
-      return withCreatedSession(result);
-    }
-    case "getSession": {
-      const current = sessionToken ? await auth.getCurrentSession(sessionToken) : null;
-      return {
-        body: { session: current ? serializeAuthSession(current) : null }
-      };
-    }
-    case "signOut": {
-      if (sessionToken) {
-        await auth.signOut(sessionToken, request);
-      }
-      return { body: { success: true }, clearSession: true };
-    }
-    case "changePassword": {
-      const input = inputAs(rawInput, endpointId);
-      const user = await auth.changePassword({
-        ...input,
-        sessionToken: requireSessionToken(sessionToken),
-        request
-      });
-      return { body: { user: serializeUser(user) } };
-    }
-    case "requestMagicLink": {
-      const result = await auth.requestMagicLink({
-        ...inputAs(rawInput, endpointId),
-        request
-      });
-      return { body: serializeDelivery(result) };
-    }
-    case "verifyMagicLink": {
-      const result = await auth.verifyMagicLink({
-        ...inputAs(rawInput, endpointId),
-        request
-      });
-      return withCreatedSession(result);
-    }
-    case "requestEmailVerification": {
-      const result = await auth.requestEmailVerification({
-        ...inputAs(rawInput, endpointId),
-        request
-      });
-      return { body: serializeDelivery(result) };
-    }
-    case "verifyEmail": {
-      const user = await auth.verifyEmail({ ...inputAs(rawInput, endpointId), request });
-      return { body: { user: serializeUser(user) } };
-    }
-    case "requestPasswordReset": {
-      const result = await auth.requestPasswordReset({
-        ...inputAs(rawInput, endpointId),
-        request
-      });
-      return { body: serializeDelivery(result) };
-    }
-    case "resetPassword": {
-      const user = await auth.resetPassword({ ...inputAs(rawInput, endpointId), request });
-      return { body: { user: serializeUser(user) }, clearSession: true };
-    }
-    case "requestSmsOtp": {
-      const input = inputAs(rawInput, endpointId);
-      const userId = input.purpose === "phone_verification"
-        ? (await auth.requireCurrentSession(requireSessionToken(sessionToken))).user.id
-        : undefined;
-      const result = await auth.requestSmsOtp({ ...input, userId, request });
-      return { body: serializeDelivery(result) };
-    }
-    case "verifySmsOtp": {
-      const result = await auth.verifySmsOtp({ ...inputAs(rawInput, endpointId), request });
-      const body = {
-        user: serializeUser(result.user),
-        session: result.session ? serializeSession(result.session) : null
-      };
-      return result.session && result.sessionToken
-        ? {
-            body,
-            setSession: {
-              token: result.sessionToken,
-              expiresAt: result.session.expiresAt
-            }
-          }
-        : { body };
-    }
-    case "acceptInvite": {
-      const current = await auth.requireCurrentSession(requireSessionToken(sessionToken));
-      const result = await auth.acceptInvite({
-        ...inputAs(rawInput, endpointId),
-        userId: current.user.id,
-        request
-      });
-      return {
-        body: {
-          organisation: serializeOrganisation(result.organisation),
-          member: serializeMember(result.member)
-        }
-      };
-    }
-  }
-}
-
-function withCreatedSession(result: {
-  user: Parameters<typeof serializeUser>[0];
-  session: Parameters<typeof serializeSession>[0];
-  sessionToken: string;
-}): EndpointExecution {
-  return {
-    body: serializeAuthSession(result),
-    setSession: { token: result.sessionToken, expiresAt: result.session.expiresAt }
-  };
-}
-
-function inputAs<Id extends OwnAuthEndpointId>(
-  input: Record<string, unknown> | undefined,
-  _endpointId: Id
-): OwnAuthEndpointInputMap[Id] {
-  return input as unknown as OwnAuthEndpointInputMap[Id];
-}
-
-async function readAndValidateBody(
+  registered: NonNullable<ReturnType<OwnAuth["findPluginEndpoint"]>>,
   request: Request,
-  endpoint: OwnAuthEndpointDefinition,
-  maxRequestBodyBytes: number
-): Promise<Record<string, unknown> | undefined> {
-  if (!endpoint.request) {
-    return undefined;
+  requestUrl: URL,
+  options: OwnAuthHandlerOptions
+): Promise<Response> {
+  const credential = readSessionToken(request, options.cookie);
+  try {
+    assertCsrfSafe(
+      request,
+      credential.source === "cookie",
+      pluginTrustedOrigins(registered, options)
+    );
+    const contract = pluginInputContract(registered.endpoint.input, registered.endpoint.method);
+    const input = await readEndpointInput(
+      request,
+      contract,
+      options.maxRequestBodyBytes ?? 64 * 1024
+    );
+    const context = options.getRequestContext
+      ? await options.getRequestContext(request)
+      : defaultRequestContext(request);
+    const body = await auth.executePluginEndpoint(
+      registered,
+      input,
+      credential.token,
+      context
+    );
+    const headers = responseHeaders();
+    headers.set("x-own-auth-plugin-fingerprint", auth.pluginContractFingerprint);
+    return new Response(JSON.stringify(body), { status: 200, headers });
+  } catch (error) {
+    return handleRequestError(error, request, requestUrl, options, false);
   }
-  const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim();
-  if (contentType !== "application/json") {
-    throw new OwnAuthHttpError(
-      "invalid_request",
-      "Content-Type must be application/json",
-      415
+}
+
+async function handleRequestError(
+  error: unknown,
+  request: Request,
+  requestUrl: URL,
+  options: OwnAuthHandlerOptions,
+  oauthCallback: boolean
+): Promise<Response> {
+  if (oauthCallback && error instanceof OAuthCallbackError) {
+    if (error.statusCode >= 500) await reportError(options.onError, error, request);
+    return createOAuthCallbackResponse(
+      {
+        body: {
+          status: "failure",
+          error: { code: error.code, message: error.safeMessage }
+        },
+        oauthCallback: error.callback
+      },
+      requestUrl,
+      responseHeaders()
     );
   }
 
-  const contentLength = Number(request.headers.get("content-length"));
-  if (Number.isFinite(contentLength) && contentLength > maxRequestBodyBytes) {
-    throw new OwnAuthHttpError("invalid_request", "Request body is too large", 413);
+  const known = knownHttpError(error);
+  if (known) {
+    if (known.status >= 500) await reportError(options.onError, error, request);
+    return errorResponse(known.code, known.message, known.status);
   }
 
-  let body: unknown;
-  try {
-    const text = await request.text();
-    if (new TextEncoder().encode(text).byteLength > maxRequestBodyBytes) {
-      throw new OwnAuthHttpError("invalid_request", "Request body is too large", 413);
-    }
-    body = JSON.parse(text) as unknown;
-  } catch (error) {
-    if (error instanceof OwnAuthHttpError) {
-      throw error;
-    }
-    throw new OwnAuthHttpError("invalid_request", "Request body must be valid JSON", 400);
-  }
-  return validateEndpointInput(endpoint, body);
+  await reportError(options.onError, error, request);
+  return errorResponse("internal_error", "Authentication request failed", 500);
 }
 
-function requireSessionToken(token: string | null): string {
-  if (!token) {
-    throw new AuthError("invalid_session", "Invalid or expired session", 401);
+function knownHttpError(error: unknown): {
+  code: OwnAuthHttpErrorCode;
+  message: string;
+  status: number;
+} | null {
+  if (error instanceof AuthError) {
+    return { code: error.code, message: error.safeMessage, status: error.statusCode };
   }
-  return token;
+  if (error instanceof OwnAuthPluginError) {
+    return { code: error.code, message: error.safeMessage, status: error.statusCode };
+  }
+  if (error instanceof OwnAuthHttpError) {
+    return { code: error.code, message: error.message, status: error.statusCode };
+  }
+  return null;
+}
+
+function pluginTrustedOrigins(
+  registered: NonNullable<ReturnType<OwnAuth["findPluginEndpoint"]>>,
+  options: OwnAuthHandlerOptions
+): string[] {
+  return [...new Set([
+    ...(options.trustedOrigins ?? []),
+    ...(registered.plugin.trustedOrigins ?? [])
+  ])];
+}
+
+function applyCookies(
+  headers: Headers,
+  execution: EndpointExecution,
+  requestUrl: URL,
+  options: OwnAuthHandlerOptions
+): void {
+  if (execution.setSession) {
+    headers.append("set-cookie", createSessionCookie(
+      execution.setSession.token,
+      execution.setSession.expiresAt,
+      requestUrl,
+      options.cookie
+    ));
+  } else if (execution.clearSession) {
+    headers.append("set-cookie", clearSessionCookie(requestUrl, options.cookie));
+  }
+
+  if (execution.setMfaChallenge) {
+    headers.append("set-cookie", createMfaChallengeCookie(
+      execution.setMfaChallenge.token,
+      execution.setMfaChallenge.expiresAt,
+      requestUrl,
+      options.mfaCookie
+    ));
+  } else if (execution.clearMfaChallenge) {
+    headers.append("set-cookie", clearMfaChallengeCookie(requestUrl, options.mfaCookie));
+  }
 }
 
 function defaultRequestContext(request: Request): RequestContext {
@@ -335,9 +259,7 @@ function errorResponse(
 ): Response {
   const payload: OwnAuthErrorPayload = { error: { code, message } };
   const headers = responseHeaders();
-  for (const [name, value] of Object.entries(extraHeaders)) {
-    headers.set(name, value);
-  }
+  for (const [name, value] of Object.entries(extraHeaders)) headers.set(name, value);
   return new Response(JSON.stringify(payload), { status, headers });
 }
 
@@ -346,9 +268,7 @@ async function reportError(
   error: unknown,
   request: Request
 ): Promise<void> {
-  if (!onError) {
-    return;
-  }
+  if (!onError) return;
   try {
     await onError(error, request);
   } catch {

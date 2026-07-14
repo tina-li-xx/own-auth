@@ -6,6 +6,7 @@ import {
   MemoryEmailProvider,
   MemorySmsProvider
 } from "../src/index.js";
+import { jsonRequest } from "./http-test-helpers.js";
 
 function createHarness(options: Parameters<typeof createOwnAuthHandler>[1] = {}) {
   const auth = createOwnAuth({
@@ -15,23 +16,6 @@ function createHarness(options: Parameters<typeof createOwnAuthHandler>[1] = {})
     tokenPepper: "http-handler-test-pepper"
   });
   return { auth, handler: createOwnAuthHandler(auth, options) };
-}
-
-function jsonRequest(
-  path: string,
-  body: unknown,
-  headers: Record<string, string> = {},
-  baseURL = "http://localhost"
-): Request {
-  return new Request(`${baseURL}${path}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      origin: baseURL,
-      ...headers
-    },
-    body: JSON.stringify(body)
-  });
 }
 
 describe("createOwnAuthHandler", () => {

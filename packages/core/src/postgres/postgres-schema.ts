@@ -50,7 +50,10 @@ export const sessionColumns: ColumnMap<Session> = {
   ipAddress: "ip_address",
   userAgent: "user_agent",
   revokedAt: "revoked_at",
-  revokeReason: "revoke_reason"
+  revokeReason: "revoke_reason",
+  authenticationMethods: "authentication_methods",
+  assuranceLevel: "assurance_level",
+  authenticatedAt: "authenticated_at"
 };
 
 export const tokenColumns: ColumnMap<AuthToken> = {
@@ -186,7 +189,10 @@ export const sessionReturning = [
   "ip_address",
   "user_agent",
   "revoked_at",
-  "revoke_reason"
+  "revoke_reason",
+  "authentication_methods",
+  "assurance_level",
+  "authenticated_at"
 ].join(", ");
 
 export const tokenReturning = [

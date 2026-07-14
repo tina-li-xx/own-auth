@@ -11,6 +11,7 @@ import type {
 import type { SessionResult } from "./auth-engine-types.js";
 import type { AuthEngineContext } from "./auth-engine-context.js";
 import { hash } from "./auth-engine-token-helpers.js";
+import { isExternalAccountProvider } from "./oauth-types.js";
 
 export async function audit(
   ctx: AuthEngineContext,
@@ -41,7 +42,9 @@ export async function audit(
 export async function createSession(
   ctx: AuthEngineContext,
   user: User,
-  context?: RequestContext
+  context?: RequestContext,
+  authenticationMethods: string[] = ["password"],
+  assuranceLevel: "aal1" | "aal2" = "aal1"
 ): Promise<SessionResult> {
   assertUserEnabled(user);
 
@@ -58,7 +61,10 @@ export async function createSession(
     ipAddress: context?.ipAddress ?? null,
     userAgent: context?.userAgent ?? null,
     revokedAt: null,
-    revokeReason: null
+    revokeReason: null,
+    authenticationMethods,
+    assuranceLevel,
+    authenticatedAt: now
   });
 
   await audit(ctx, {
@@ -69,7 +75,7 @@ export async function createSession(
     metadata: { sessionId: session.id }
   });
 
-  return { user, session, sessionToken };
+  return { status: "complete", user, session, sessionToken };
 }
 
 export async function markUserLoggedIn(ctx: AuthEngineContext, user: User): Promise<User> {
@@ -161,6 +167,26 @@ export async function requireActiveUser(
   }
   assertUserEnabled(user);
   return user;
+}
+
+export async function hasRemainingAuthenticationMethod(
+  ctx: AuthEngineContext,
+  user: User,
+  excluded: { accountId?: string; passkeyId?: string }
+): Promise<boolean> {
+  const [accounts, passkeys] = await Promise.all([
+    ctx.storage.listAccountsByUserId(user.id),
+    ctx.storage.listPasskeyCredentialsByUserId(user.id)
+  ]);
+  return Boolean(
+    user.passwordHash ||
+    user.email ||
+    user.phone ||
+    accounts.some(
+      (account) => account.id !== excluded.accountId && isExternalAccountProvider(account.provider)
+    ) ||
+    passkeys.some((passkey) => passkey.id !== excluded.passkeyId)
+  );
 }
 
 export async function uniqueOrganisationSlug(

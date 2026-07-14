@@ -1,6 +1,6 @@
 # Rate Limiting
 
-Own Auth rate-limits every sensitive operation automatically. You don't configure individual limits, enable middleware, or write rate-limiting code. It's built in.
+Own Auth applies built-in rate limits to sensitive authentication entry points. Core limits do not need middleware or separate configuration.
 
 ## Built-in limits
 
@@ -14,13 +14,17 @@ Own Auth rate-limits every sensitive operation automatically. You don't configur
 | Password-reset request | Normalised email | 5 | 15 minutes |
 | SMS-code request | Normalised phone number | 5 | 15 minutes |
 | SMS-code verification | Normalised phone number | 10 | 15 minutes |
-| External-provider sign in | Provider account ID | 20 | 10 minutes |
+| Trusted external-provider sign in | Provider account ID | 20 | 10 minutes |
+| OAuth start | IP address, when available | 20 | 10 minutes |
+| OAuth callback | IP address, when available | 30 | 10 minutes |
+| Google One Tap prepare | IP address, when available | 20 | 10 minutes |
+| Google One Tap verify | IP address, when available | 30 | 10 minutes |
 | API-key creation | User or organisation owner | 20 | 1 hour |
 | Organisation invite | Organisation ID | 10 | 1 hour |
 
 These limits reduce password guessing, credential stuffing, repeated email and SMS sends, excessive invitations, and excessive key creation.
 
-SMS codes also allow five wrong guesses by default. After that, the code cannot be verified and a new code must be requested. This per-code attempt limit is configured separately through `sms.maxAttempts`.
+SMS codes allow five wrong guesses by default. MFA challenges also allow five failed attempts by default. These per-credential attempt limits are enforced separately from the shared rate-limit store through `sms.maxAttempts` and `mfa.maxAttempts`.
 
 ## What happens when a limit is exceeded
 
@@ -62,7 +66,7 @@ const auth = createOwnAuth({
 
 ## Configuration
 
-The built-in operation limits and windows are not configurable. This avoids accidentally weakening authentication protections in the current release.
+The built-in core operation limits and windows are not configurable. Plugins may declare their own namespaced endpoint rate limits, but cannot replace or weaken core limits.
 
 ## Next step
 

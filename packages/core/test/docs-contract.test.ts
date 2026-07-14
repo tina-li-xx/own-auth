@@ -21,6 +21,9 @@ const publicDocSources = new Set(
 const publicDocs = [...publicDocSources].map((source) =>
   readFileSync(new URL(source, repositoryRoot), "utf8")
 );
+const publicApi = JSON.parse(
+  readFileSync(new URL("etc/own-auth.api.json", repositoryRoot), "utf8")
+) as { methods: string[] };
 const examples = publicDocs.flatMap((document) =>
   [...document.matchAll(/```(?:ts|typescript)(?:[ \t]+[^\n]+)?\n([\s\S]*?)```/g)]
     .map((match) => match[1] ?? "")
@@ -62,10 +65,8 @@ describe("README contract", () => {
 
   it("documents every public Own Auth method", () => {
     const documented = publicDocs.join("\n");
-    const methods = Object.getOwnPropertyNames(OwnAuth.prototype)
-      .filter((method) => method !== "constructor");
 
-    for (const method of methods) {
+    for (const method of publicApi.methods) {
       expect(
         documented.includes(method),
         `Public Own Auth method is missing from the documentation: ${method}`

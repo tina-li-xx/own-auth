@@ -30,8 +30,14 @@ type Credentials = {
   name?: string;
 };
 
+type MfaBody = {
+  code: string;
+  method: "totp" | "recovery_code";
+};
+
 const app = express();
 const sessionCookieName = "own_auth_session";
+const mfaCookieName = "own_auth_mfa";
 const sessionCookieOptions = {
   httpOnly: true,
   path: "/",
@@ -71,6 +77,34 @@ app.post("/auth/signin", async (request, response) => {
     request.body as Credentials,
   );
 
+  if (result.status === "mfa_required") {
+    response.cookie(mfaCookieName, result.challengeToken, {
+      ...sessionCookieOptions,
+      expires: result.expiresAt,
+    });
+    return response.status(202).json({
+      status: result.status,
+      methods: result.methods,
+      expiresAt: result.expiresAt,
+    });
+  }
+
+  setSessionCookie(response, result.sessionToken, result.session.expiresAt);
+  return response.json({ user: result.user });
+});
+
+app.post("/auth/mfa", async (request, response) => {
+  const challengeToken = request.cookies[mfaCookieName];
+  if (!challengeToken) {
+    return response.status(401).json({ error: "MFA challenge expired" });
+  }
+
+  const { code, method } = request.body as MfaBody;
+  const result = method === "recovery_code"
+    ? await auth.completeMfaWithRecoveryCode({ challengeToken, code })
+    : await auth.completeMfaWithTotp({ challengeToken, code });
+
+  response.clearCookie(mfaCookieName, sessionCookieOptions);
   setSessionCookie(response, result.sessionToken, result.session.expiresAt);
   return response.json({ user: result.user });
 });

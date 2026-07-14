@@ -403,6 +403,9 @@ function sessionRow(overrides: Record<string, unknown> = {}): Record<string, unk
     user_agent: "vitest",
     revoked_at: null,
     revoke_reason: null,
+    authentication_methods: ["legacy"],
+    assurance_level: "aal1",
+    authenticated_at: "2026-01-01T00:00:00.000Z",
     ...overrides
   };
 }

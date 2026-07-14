@@ -23,7 +23,7 @@ Add that frontend origin to the handler's `trustedOrigins` when the client and A
 ## Sign up and sign in
 
 ```ts
-const session = await authClient.signUpEmailPassword({
+const result = await authClient.signUpEmailPassword({
   email: "alice@example.com",
   password: "her-secret-password",
   name: "Alice",
@@ -31,13 +31,115 @@ const session = await authClient.signUpEmailPassword({
 ```
 
 ```ts
-const session = await authClient.signInEmailPassword({
+const result = await authClient.signInEmailPassword({
   email: "alice@example.com",
   password: "her-secret-password",
 });
 ```
 
-The browser stores the `HttpOnly` cookie from the handler. Raw session tokens are not exposed to browser JavaScript.
+When `result.status` is `complete`, the browser stores the `HttpOnly` session cookie from the handler. When it is `mfa_required`, no session exists yet:
+
+```ts
+if (result.status === "mfa_required") {
+  showMfaForm(result.methods, result.expiresAt);
+} else {
+  console.log(result.user.email);
+}
+```
+
+Raw session and MFA challenge tokens are not exposed to browser JavaScript.
+
+## OAuth
+
+Redirect the current page to a provider:
+
+```ts
+await authClient.signInWithOAuth({
+  provider: "google",
+  destination: "/account",
+});
+```
+
+Or complete OAuth in a popup:
+
+```ts
+const result = await authClient.signInWithOAuth({
+  provider: "github",
+  mode: "popup",
+});
+```
+
+The popup opens synchronously, rejects blocked or closed popups, validates the callback origin, and times out after 120 seconds by default. Override that with `popupTimeoutMs`.
+
+Google One Tap can use the neutral prepare and verify methods directly. The optional browser helper coordinates Google Identity Services:
+
+```ts
+import { signInWithGoogleOneTap } from "own-auth/google-one-tap";
+
+const result = await signInWithGoogleOneTap(authClient, {
+  clientId: "your-google-client-id",
+});
+```
+
+## Multi-factor authentication
+
+The handler keeps the pending challenge in its temporary HttpOnly cookie. Complete it with a TOTP or recovery code:
+
+```ts
+const session = await authClient.completeMfaWithTotp({ code });
+```
+
+```ts
+const session = await authClient.completeMfaWithRecoveryCode({
+  code: recoveryCode,
+});
+```
+
+Enroll TOTP through `beginTotpEnrollment`, `confirmTotpEnrollment`, `regenerateRecoveryCodes`, and `disableTotp`. Recovery codes are returned once after confirmation or regeneration.
+
+## Passkeys
+
+Use the browser helper for the complete WebAuthn ceremony:
+
+```ts
+import {
+  authenticateWithPasskey,
+  registerPasskey,
+} from "own-auth/passkeys";
+
+await registerPasskey(authClient, { name: "Work laptop" });
+
+const session = await authenticateWithPasskey(authClient);
+```
+
+Passkeys can also complete a pending MFA challenge:
+
+```ts
+const session = await authenticateWithPasskey(authClient, { mfa: true });
+```
+
+The lower-level client methods remain available when an application needs direct control over WebAuthn options and responses.
+
+## Plugins
+
+Configure generated plugin manifests and their fingerprint on the client:
+
+```ts
+import {
+  createOwnAuthPluginClientConfiguration,
+} from "own-auth";
+import { createOwnAuthClient } from "own-auth/client";
+
+const pluginConfig = createOwnAuthPluginClientConfiguration(plugins);
+const authClient = createOwnAuthClient({
+  plugins: pluginConfig.plugins,
+  pluginFingerprint: pluginConfig.fingerprint,
+});
+
+const status = await authClient.plugin("example").call("getStatus");
+```
+
+The client rejects a response when the configured fingerprint differs from the server contract.
 
 ## Current session
 
@@ -104,6 +206,24 @@ The client includes:
 - `requestSmsOtp`
 - `verifySmsOtp`
 - `acceptInvite`
+- `signInWithOAuth`
+- `unlinkOAuthProvider`
+- `prepareGoogleOneTap`
+- `signInWithGoogleOneTap`
+- `completeMfaWithTotp`
+- `completeMfaWithRecoveryCode`
+- `beginTotpEnrollment`
+- `confirmTotpEnrollment`
+- `disableTotp`
+- `regenerateRecoveryCodes`
+- `beginPasskeyRegistration`
+- `completePasskeyRegistration`
+- `beginPasskeyAuthentication`
+- `completePasskeyAuthentication`
+- `listPasskeys`
+- `renamePasskey`
+- `revokePasskey`
+- `plugin`
 
 Each method's input and response types come from the same endpoint contract used by the handler and OpenAPI generator.
 

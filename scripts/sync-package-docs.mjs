@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
@@ -6,118 +6,43 @@ import ts from "typescript";
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const checkOnly = process.argv.includes("--check");
 const repositoryFileUrl = "https://github.com/tina-li-xx/own-auth/blob/main";
+const packageDocumentationFiles = listFiles("docs")
+  .filter(isPackageDocumentation)
+  .map((source) => ({ source, target: `packages/core/${source}` }));
+const packageDocumentationTargets = new Set(
+  packageDocumentationFiles.map(({ target }) => target)
+);
 
 const files = [
+  {
+    source: "CHANGELOG.md",
+    target: "packages/core/CHANGELOG.md"
+  },
   {
     source: "README.md",
     target: "packages/core/README.md",
     transform: packageReadme
   },
-  {
-    source: "docs/installation.md",
-    target: "packages/core/docs/installation.md"
-  },
-  {
-    source: "docs/configuration.md",
-    target: "packages/core/docs/configuration.md"
-  },
-  {
-    source: "docs/introduction.md",
-    target: "packages/core/docs/introduction.md"
-  },
-  {
-    source: "docs/security-model.md",
-    target: "packages/core/docs/security-model.md"
-  },
-  {
-    source: "docs/security/rate-limiting.md",
-    target: "packages/core/docs/security/rate-limiting.md"
-  },
-  {
-    source: "docs/security/audit-logs.md",
-    target: "packages/core/docs/security/audit-logs.md"
-  },
-  {
-    source: "docs/passwords.md",
-    target: "packages/core/docs/passwords.md"
-  },
-  {
-    source: "docs/magic-links.md",
-    target: "packages/core/docs/magic-links.md"
-  },
-  {
-    source: "docs/phone-login.md",
-    target: "packages/core/docs/phone-login.md"
-  },
-  {
-    source: "docs/email-verification.md",
-    target: "packages/core/docs/email-verification.md"
-  },
-  {
-    source: "docs/password-reset.md",
-    target: "packages/core/docs/password-reset.md"
-  },
-  {
-    source: "docs/external-providers.md",
-    target: "packages/core/docs/external-providers.md"
-  },
-  {
-    source: "docs/http-handler.md",
-    target: "packages/core/docs/http-handler.md"
-  },
-  {
-    source: "docs/typescript-client.md",
-    target: "packages/core/docs/typescript-client.md"
-  },
-  {
-    source: "docs/sessions/management.md",
-    target: "packages/core/docs/sessions/management.md"
-  },
-  {
-    source: "docs/organisations/overview.md",
-    target: "packages/core/docs/organisations/overview.md"
-  },
-  {
-    source: "docs/organisations/members.md",
-    target: "packages/core/docs/organisations/members.md"
-  },
-  {
-    source: "docs/organisations/roles.md",
-    target: "packages/core/docs/organisations/roles.md"
-  },
-  {
-    source: "docs/organisations/invites.md",
-    target: "packages/core/docs/organisations/invites.md"
-  },
-  {
-    source: "docs/api-keys/overview.md",
-    target: "packages/core/docs/api-keys/overview.md"
-  },
-  {
-    source: "docs/site-manifest.json",
-    target: "packages/core/docs/site-manifest.json"
-  },
-  {
-    source: "docs/frameworks/nextjs.md",
-    target: "packages/core/docs/frameworks/nextjs.md"
-  },
-  {
-    source: "docs/frameworks/express.md",
-    target: "packages/core/docs/frameworks/express.md"
-  },
-  {
-    source: "docs/frameworks/hono.md",
-    target: "packages/core/docs/frameworks/hono.md"
-  },
-  {
-    source: "docs/frameworks/fastify.md",
-    target: "packages/core/docs/frameworks/fastify.md"
-  },
+  ...packageDocumentationFiles,
   {
     content: `${JSON.stringify(publicApiSnapshot(), null, 2)}\n`,
     target: "etc/own-auth.api.json"
   }
 ];
+
+function listFiles(directory) {
+  return readdirSync(resolve(rootDir, directory), { withFileTypes: true })
+    .flatMap((entry) => {
+      const path = `${directory}/${entry.name}`;
+      return entry.isDirectory() ? listFiles(path) : [path];
+    })
+    .sort();
+}
+
+function isPackageDocumentation(path) {
+  return !path.startsWith("docs/architecture/") &&
+    path !== "docs/product-roadmap-review.md";
+}
 
 const staleFiles = [];
 
@@ -139,6 +64,16 @@ for (const file of files) {
   mkdirSync(dirname(targetPath), { recursive: true });
   writeFileSync(targetPath, expected);
   console.log(`Synced ${file.target}`);
+}
+
+for (const target of listFiles("packages/core/docs")) {
+  if (packageDocumentationTargets.has(target)) continue;
+  if (checkOnly) {
+    staleFiles.push(target);
+  } else {
+    rmSync(resolve(rootDir, target));
+    console.log(`Removed ${target}`);
+  }
 }
 
 function publicApiSnapshot() {
@@ -173,7 +108,16 @@ function publicApiSnapshot() {
       continue;
     }
     for (const member of statement.members) {
-      if (ts.isMethodDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const isPrivate = member.modifiers?.some(
+        (modifier) => modifier.kind === ts.SyntaxKind.PrivateKeyword
+      );
+      if (
+        ts.isMethodDeclaration(member) &&
+        !isPrivate &&
+        !hasInternalTag(member) &&
+        member.name &&
+        ts.isIdentifier(member.name)
+      ) {
         methods.push(member.name.text);
       }
     }
@@ -211,6 +155,10 @@ function publicApiSnapshot() {
     options: optionNames.sort(),
     typeExports: exportedTypes.sort()
   };
+}
+
+function hasInternalTag(node) {
+  return ts.getJSDocTags(node).some((tag) => tag.tagName.text === "internal");
 }
 
 function sourceFile(path) {

@@ -48,12 +48,18 @@ The hosted page opens the configured mobile app destination. See [Hosted Auth Li
 When the user opens the link, extract the token and verify it in the backend:
 
 ```ts
-const { user, session, sessionToken } = await auth.verifyMagicLink({
+const result = await auth.verifyMagicLink({
   token: tokenFromUrl,
 });
+
+if (result.status === "mfa_required") {
+  // Complete a configured second factor before creating a session.
+} else {
+  const { user, session, sessionToken } = result;
+}
 ```
 
-If the token is valid, it is consumed, a session is created, and the user is signed in. The same token cannot be used again.
+If the token is valid, it is consumed. Own Auth then creates a session or returns `mfa_required` when the user has a second factor enabled. The same token cannot be used again.
 
 ### Errors
 
@@ -68,9 +74,13 @@ If the token is valid, it is consumed, a session is created, and the user is sig
 import { AuthError } from "own-auth";
 
 try {
-  const { user, session, sessionToken } = await auth.verifyMagicLink({
+  const result = await auth.verifyMagicLink({
     token: tokenFromUrl,
   });
+
+  if (result.status === "mfa_required") {
+    // Show a second-factor form.
+  }
 } catch (error) {
   if (!(error instanceof AuthError)) {
     throw error;
@@ -99,7 +109,7 @@ try {
 5. The user opens the link and the application sends the token to its backend.
 6. The backend calls `verifyMagicLink({ token })`.
 7. Own Auth hashes the incoming token and looks up the matching database record.
-8. If the token exists, has not expired, and has not been consumed, Own Auth consumes it and creates a session.
+8. If the token exists, has not expired, and has not been consumed, Own Auth consumes it and either creates a session or starts MFA.
 
 The raw token never exists in the database. Reading `own_auth_tokens` does not reveal a usable magic link.
 

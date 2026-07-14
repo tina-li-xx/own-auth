@@ -4,6 +4,18 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import {
+  coreMigrationVersions,
+  readCoreMigrationSql
+} from "./core-migrations.js";
+import { loadOwnAuthConfig } from "./plugin-config.js";
+import {
+  applyPluginMigrations,
+  formatChecksumMismatch,
+  inspectPluginMigrations,
+  resolvePluginMigrations,
+  type ResolvedPluginMigration
+} from "./plugin-migrations.js";
 const { Pool } = pg;
 interface CliIo {
   stdout(message: string): void;
@@ -11,7 +23,11 @@ interface CliIo {
 }
 
 export interface CliDatabase {
-  query<Row = Record<string, unknown>>(sql: string): Promise<{ rows: Row[] }>;
+  query<Row = Record<string, unknown>>(
+    sql: string,
+    params?: readonly unknown[]
+  ): Promise<{ rows: Row[] }>;
+  transaction?<Result>(work: (database: CliDatabase) => Promise<Result>): Promise<Result>;
   end(): Promise<void>;
 }
 
@@ -23,6 +39,7 @@ interface ParsedArgs {
   command: "generate" | "migrate" | "status" | "help";
   databaseUrl?: string;
   out?: string;
+  config?: string;
   version: boolean;
 }
 const defaultIo: CliIo = {
@@ -33,9 +50,37 @@ const defaultDependencies: CliDependencies = {
   createDatabase(databaseUrl) {
     const pool = new Pool({ connectionString: databaseUrl });
     return {
-      async query<Row>(sql: string) {
-        const result = await pool.query(sql);
+      async query<Row>(sql: string, params?: readonly unknown[]) {
+        const result = await pool.query(sql, params ? [...params] : undefined);
         return { rows: result.rows as Row[] };
+      },
+      async transaction<Result>(work: (database: CliDatabase) => Promise<Result>) {
+        const client = await pool.connect();
+        const transaction: CliDatabase = {
+          async query<Row>(sql: string, params?: readonly unknown[]) {
+            const result = await client.query(sql, params ? [...params] : undefined);
+            return { rows: result.rows as Row[] };
+          },
+          async end() {},
+          async transaction<NestedResult>(nested: (database: CliDatabase) => Promise<NestedResult>) {
+            return nested(transaction);
+          }
+        };
+        try {
+          await client.query("begin");
+          const result = await work(transaction);
+          await client.query("commit");
+          return result;
+        } catch (error) {
+          try {
+            await client.query("rollback");
+          } catch {
+            // Keep the migration error when rollback also fails.
+          }
+          throw error;
+        } finally {
+          client.release();
+        }
       },
       async end() {
         await pool.end();
@@ -43,12 +88,6 @@ const defaultDependencies: CliDependencies = {
     };
   }
 };
-const migrationFiles = [
-  "001_initial.sql",
-  "002_external_providers.sql"
-] as const;
-const migrationVersions = migrationFiles.map((file) => file.replace(/\.sql$/, ""));
-
 export async function runCli(
   argv = process.argv.slice(2),
   env: NodeJS.ProcessEnv = process.env,
@@ -65,8 +104,10 @@ export async function runCli(
       io.stdout(helpText());
       return 0;
     }
+    const loadedConfig = await loadOwnAuthConfig(args.config);
+    const pluginMigrations = resolvePluginMigrations(loadedConfig.config.plugins ?? []);
     if (args.command === "generate") {
-      const sql = await readMigrationSql();
+      const sql = `${await readCoreMigrationSql()}${renderPluginMigrationSql(pluginMigrations)}`;
       if (args.out) {
         const outPath = resolve(args.out);
         await mkdir(dirname(outPath), { recursive: true });
@@ -84,25 +125,25 @@ export async function runCli(
     }
 
     if (args.command === "migrate") {
-      await migrate(databaseUrl, await readMigrationSql(), dependencies);
+      const appliedPlugins = await migrate(
+        databaseUrl,
+        await readCoreMigrationSql(),
+        pluginMigrations,
+        dependencies
+      );
       io.stdout("Applied Own Auth core tables.\n");
+      if (pluginMigrations.length > 0) {
+        io.stdout(`Applied ${appliedPlugins} plugin migration${appliedPlugins === 1 ? "" : "s"}.\n`);
+      }
       return 0;
     }
 
-    return await printStatus(databaseUrl, io, dependencies) ? 0 : 1;
+    return await printStatus(databaseUrl, pluginMigrations, io, dependencies) ? 0 : 1;
   } catch (error) {
     io.stderr(`Error: ${error instanceof Error ? error.message : String(error)}\n\n`);
     io.stderr(helpText());
     return 1;
   }
-}
-
-export async function readMigrationSql(): Promise<string> {
-  const migrations = await Promise.all(
-    migrationFiles.map((file) => readFile(new URL(`../migrations/${file}`, import.meta.url), "utf8"))
-  );
-
-  return migrations.map((sql) => sql.trim()).join("\n\n") + "\n";
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -135,6 +176,11 @@ function parseArgs(argv: string[]): ParsedArgs {
       index += 1;
       continue;
     }
+    if (arg === "--config") {
+      parsed.config = requireValue(rest, index, arg);
+      index += 1;
+      continue;
+    }
     throw new Error(`Unknown option for ${command}: ${arg}`);
   }
   return parsed;
@@ -151,11 +197,13 @@ function requireValue(args: string[], index: number, name: string): string {
 async function migrate(
   databaseUrl: string,
   sql: string,
+  pluginMigrations: readonly ResolvedPluginMigration[],
   dependencies: CliDependencies
-): Promise<void> {
+): Promise<number> {
   const database = dependencies.createDatabase(databaseUrl);
   try {
     await database.query(sql);
+    return await applyPluginMigrations(database, pluginMigrations);
   } finally {
     await database.end();
   }
@@ -163,6 +211,7 @@ async function migrate(
 
 async function printStatus(
   databaseUrl: string,
+  pluginMigrations: readonly ResolvedPluginMigration[],
   io: CliIo,
   dependencies: CliDependencies
 ): Promise<boolean> {
@@ -186,8 +235,8 @@ async function printStatus(
     const appliedVersions = result.rows.map((row) => row.version);
     const applied = new Set(appliedVersions);
     const latestApplied = appliedVersions.at(-1) ?? "none";
-    const missing = migrationVersions.filter((version) => !applied.has(version));
-    const unknown = appliedVersions.filter((version) => !migrationVersions.includes(version));
+    const missing = coreMigrationVersions.filter((version) => !applied.has(version));
+    const unknown = appliedVersions.filter((version) => !coreMigrationVersions.includes(version));
 
     io.stdout(`Migration version: ${latestApplied}\n`);
 
@@ -197,6 +246,17 @@ async function printStatus(
     }
 
     if (missing.length > 0) {
+      io.stdout("Status: migrations required\n");
+      return false;
+    }
+
+    const pluginStatus = await inspectPluginMigrations(database, pluginMigrations);
+    if (pluginStatus.checksumMismatches.length > 0) {
+      io.stdout(`Status: ${formatChecksumMismatch(pluginStatus.checksumMismatches[0]!)}\n`);
+      return false;
+    }
+    if (pluginStatus.missing.length > 0) {
+      io.stdout(`Plugin migrations required: ${pluginStatus.missing.map(({ id }) => id).join(", ")}\n`);
       io.stdout("Status: migrations required\n");
       return false;
     }
@@ -218,9 +278,9 @@ function helpText(): string {
   return `Own Auth CLI
 
 Usage:
-  own-auth generate [--out <file>]
-  own-auth migrate [--database-url <url>]
-  own-auth status [--database-url <url>]
+  own-auth generate [--out <file>] [--config <file>]
+  own-auth migrate [--database-url <url>] [--config <file>]
+  own-auth status [--database-url <url>] [--config <file>]
 
 Commands:
   generate  Print the SQL migration, or write it with --out.
@@ -230,9 +290,27 @@ Commands:
 Options:
   --out, --output       Write generated SQL to a file.
   --database-url        Use this database URL instead of DATABASE_URL.
+  --config              Load plugins from an Own Auth config file.
   --help                Show this help.
   --version             Show the package version.
 `;
+}
+
+function renderPluginMigrationSql(migrations: readonly ResolvedPluginMigration[]): string {
+  if (migrations.length === 0) return "";
+  return migrations.map((migration) => `
+-- Plugin migration ${migration.id}
+begin;
+${migration.sql.trim()}
+insert into own_auth_plugin_migrations (id, plugin_id, plugin_version, checksum)
+values (${sqlLiteral(migration.id)}, ${sqlLiteral(migration.pluginId)}, ${sqlLiteral(migration.pluginVersion)}, ${sqlLiteral(migration.checksum)})
+on conflict (id) do nothing;
+commit;
+`).join("");
+}
+
+function sqlLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
 }
 
 function isDirectRun(): boolean {

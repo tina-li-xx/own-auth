@@ -1,8 +1,10 @@
 export type JsonRecord = Record<string, unknown>;
 
-export type ExternalAccountProvider = "apple" | "google";
+export type ExternalAccountProvider = "apple" | "github" | "google";
 
 export type AccountProvider = "password" | "magic_link" | "phone" | ExternalAccountProvider;
+
+export type SessionAssuranceLevel = "aal1" | "aal2";
 
 export type TokenType =
   | "email_verification"
@@ -28,6 +30,25 @@ export type AuditEventType =
   | "user.disabled"
   | "user.re_enabled"
   | "external_provider.linked"
+  | "external_provider.unlinked"
+  | "oauth.started"
+  | "oauth.signed_in"
+  | "oauth.failed"
+  | "oauth.credential_stored"
+  | "oauth.credential_refreshed"
+  | "oauth.credential_revoked"
+  | "mfa.totp_enrollment_started"
+  | "mfa.totp_enabled"
+  | "mfa.totp_disabled"
+  | "mfa.challenge_succeeded"
+  | "mfa.challenge_failed"
+  | "mfa.recovery_code_used"
+  | "mfa.recovery_codes_regenerated"
+  | "session.elevated"
+  | "passkey.registered"
+  | "passkey.authenticated"
+  | "passkey.renamed"
+  | "passkey.revoked"
   | "session.created"
   | "session.revoked"
   | "session.revoked_other"
@@ -51,7 +72,8 @@ export type AuditEventType =
   | "invite.accepted"
   | "invite.revoked"
   | "member.removed"
-  | "member.role_changed";
+  | "member.role_changed"
+  | `plugin.${string}`;
 
 export interface RequestContext {
   ipAddress?: string;
@@ -97,6 +119,9 @@ export interface Session {
   userAgent: string | null;
   revokedAt: Date | null;
   revokeReason: string | null;
+  authenticationMethods: string[];
+  assuranceLevel: SessionAssuranceLevel;
+  authenticatedAt: Date;
 }
 
 export interface AuthToken {

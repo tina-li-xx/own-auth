@@ -11,6 +11,15 @@ import type {
   TokenType,
   User
 } from "./types.js";
+import type {
+  MfaChallenge,
+  OAuthCredential,
+  OAuthTransaction,
+  PasskeyCredential,
+  RecoveryCode,
+  TotpFactor,
+  WebAuthnChallenge
+} from "./identity-types.js";
 
 export interface AuthStorage {
   createUser(user: User): Promise<User>;
@@ -20,7 +29,10 @@ export interface AuthStorage {
   getUserByPhone(phone: string): Promise<User | null>;
 
   createAccount(account: Account): Promise<Account>;
+  createUserAndAccount(user: User, account: Account): Promise<Account>;
   getAccountByProvider(provider: string, providerAccountId: string): Promise<Account | null>;
+  listAccountsByUserId(userId: string): Promise<Account[]>;
+  deleteAccount(id: string): Promise<boolean>;
 
   createSession(session: Session): Promise<Session>;
   getSessionByTokenHash(tokenHash: string): Promise<Session | null>;
@@ -83,4 +95,63 @@ export interface AuthStorage {
     apiKeyId?: string;
   }): Promise<AuditEvent[]>;
   deleteAuditEventsBefore(olderThan: Date): Promise<number>;
+
+  createOAuthTransaction(transaction: OAuthTransaction): Promise<OAuthTransaction>;
+  consumeOAuthTransaction(
+    stateHash: string,
+    flowKind: OAuthTransaction["flowKind"],
+    consumedAt: Date
+  ): Promise<OAuthTransaction | null>;
+
+  getOAuthCredentialByAccountId(accountId: string): Promise<OAuthCredential | null>;
+  upsertOAuthCredential(credential: OAuthCredential): Promise<OAuthCredential>;
+  rotateOAuthCredential(
+    id: string,
+    expectedCiphertext: string,
+    patch: Partial<OAuthCredential>
+  ): Promise<OAuthCredential | null>;
+  deleteOAuthCredentialByAccountId(accountId: string): Promise<boolean>;
+
+  createTotpFactor(factor: TotpFactor): Promise<TotpFactor>;
+  getTotpFactorById(id: string): Promise<TotpFactor | null>;
+  getActiveTotpFactorByUserId(userId: string): Promise<TotpFactor | null>;
+  updateTotpFactor(id: string, patch: Partial<TotpFactor>): Promise<TotpFactor | null>;
+  activateTotpFactor(id: string, timestep: number, activatedAt: Date): Promise<TotpFactor | null>;
+  useTotpTimestep(id: string, timestep: number, usedAt: Date): Promise<TotpFactor | null>;
+
+  replaceRecoveryCodes(userId: string, codes: RecoveryCode[]): Promise<void>;
+  consumeRecoveryCode(
+    userId: string,
+    codeHash: string,
+    consumedAt: Date
+  ): Promise<RecoveryCode | null>;
+
+  createMfaChallenge(challenge: MfaChallenge): Promise<MfaChallenge>;
+  getMfaChallengeById(id: string): Promise<MfaChallenge | null>;
+  getMfaChallengeByTokenHash(tokenHash: string): Promise<MfaChallenge | null>;
+  incrementMfaChallengeAttempts(id: string, attemptedAt: Date): Promise<MfaChallenge | null>;
+  consumeMfaChallenge(id: string, consumedAt: Date): Promise<MfaChallenge | null>;
+
+  createPasskeyCredential(credential: PasskeyCredential): Promise<PasskeyCredential>;
+  getPasskeyCredentialById(id: string): Promise<PasskeyCredential | null>;
+  getPasskeyCredentialByCredentialId(credentialId: string): Promise<PasskeyCredential | null>;
+  listPasskeyCredentialsByUserId(userId: string): Promise<PasskeyCredential[]>;
+  updatePasskeyCredential(
+    id: string,
+    patch: Partial<PasskeyCredential>
+  ): Promise<PasskeyCredential | null>;
+  updatePasskeyCounter(
+    id: string,
+    expectedCounter: number,
+    nextCounter: number,
+    usedAt: Date
+  ): Promise<PasskeyCredential | null>;
+  deletePasskeyCredential(id: string): Promise<boolean>;
+
+  createWebAuthnChallenge(challenge: WebAuthnChallenge): Promise<WebAuthnChallenge>;
+  consumeWebAuthnChallenge(
+    challengeHash: string,
+    purpose: WebAuthnChallenge["purpose"],
+    consumedAt: Date
+  ): Promise<WebAuthnChallenge | null>;
 }

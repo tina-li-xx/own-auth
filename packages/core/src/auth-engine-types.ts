@@ -1,4 +1,5 @@
 import type {
+  Account,
   ApiKeyDetails,
   Invitation,
   JsonRecord,
@@ -11,14 +12,31 @@ import type {
   SmsOtpPurpose,
   User
 } from "./types.js";
+import type { MfaMethod, OAuthInteractionMode, OAuthIntent } from "./identity-types.js";
+import type {
+  AuthenticationResponseJSON,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON
+} from "@simplewebauthn/server";
 export { day, defaultTokenTtls, hour, minute } from "./auth-engine-options.js";
-export type { OwnAuthOptions, TokenTtlConfig } from "./auth-engine-options.js";
+export type { OwnAuthOptions, PasskeyOptions, TokenTtlConfig } from "./auth-engine-options.js";
 
 export interface SessionResult {
+  status: "complete";
   user: User;
   session: Session;
   sessionToken: string;
 }
+
+export interface MfaRequiredResult {
+  status: "mfa_required";
+  challengeToken: string;
+  methods: MfaMethod[];
+  expiresAt: Date;
+}
+
+export type SignInResult = SessionResult | MfaRequiredResult;
 
 export interface DeliveryResult {
   sent: boolean;
@@ -76,6 +94,166 @@ export interface VerifiedExternalIdentityInput {
   request?: RequestContext;
 }
 
+export interface LinkOAuthProviderInput extends VerifiedExternalIdentityInput {
+  actorUserId: string;
+}
+
+export interface UnlinkOAuthProviderInput {
+  actorUserId: string;
+  provider: ExternalAccountProvider;
+  providerAccountId: string;
+  request?: RequestContext;
+}
+
+export interface CreateOAuthAuthorizationUrlInput {
+  provider: ExternalAccountProvider;
+  intent?: OAuthIntent;
+  destination?: string;
+  mode?: OAuthInteractionMode;
+  openerOrigin?: string;
+  actorUserId?: string;
+  request?: RequestContext;
+}
+
+export interface OAuthAuthorizationResult {
+  url: string;
+  expiresAt: Date;
+}
+
+export interface CompleteOAuthSignInInput {
+  provider: ExternalAccountProvider;
+  callbackParameters: URLSearchParams;
+  request?: RequestContext;
+}
+
+interface OAuthCompletionMetadata {
+  destination: string | null;
+  interactionMode: OAuthInteractionMode;
+  openerOrigin: string | null;
+}
+
+export type OAuthCompletionResult =
+  | (OAuthCompletionMetadata & SessionResult)
+  | (OAuthCompletionMetadata & MfaRequiredResult)
+  | (OAuthCompletionMetadata & { status: "linked"; account: Account });
+
+export interface BeginTotpEnrollmentInput {
+  sessionToken: string;
+  request?: RequestContext;
+}
+
+export interface BeginTotpEnrollmentResult {
+  factorId: string;
+  secret: string;
+  uri: string;
+}
+
+export interface ConfirmTotpEnrollmentInput {
+  sessionToken: string;
+  factorId: string;
+  code: string;
+  request?: RequestContext;
+}
+
+export interface ConfirmTotpEnrollmentResult {
+  recoveryCodes: string[];
+}
+
+export interface DisableTotpInput {
+  sessionToken: string;
+  code: string;
+  request?: RequestContext;
+}
+
+export interface CompleteMfaInput {
+  challengeToken: string;
+  code: string;
+  request?: RequestContext;
+}
+
+export interface RegenerateRecoveryCodesInput {
+  sessionToken: string;
+  code: string;
+  request?: RequestContext;
+}
+
+export interface BeginPasskeyRegistrationInput {
+  sessionToken: string;
+  request?: RequestContext;
+}
+
+export interface BeginPasskeyRegistrationResult {
+  options: PublicKeyCredentialCreationOptionsJSON;
+}
+
+export interface CompletePasskeyRegistrationInput {
+  sessionToken: string;
+  response: RegistrationResponseJSON;
+  name?: string;
+  request?: RequestContext;
+}
+
+export interface BeginPasskeyAuthenticationInput {
+  userId?: string;
+  mfaChallengeToken?: string;
+  request?: RequestContext;
+}
+
+export interface BeginPasskeyAuthenticationResult {
+  options: PublicKeyCredentialRequestOptionsJSON;
+}
+
+export interface CompletePasskeyAuthenticationInput {
+  response: AuthenticationResponseJSON;
+  request?: RequestContext;
+}
+
+export interface ListPasskeysInput {
+  sessionToken: string;
+}
+
+export interface RenamePasskeyInput {
+  sessionToken: string;
+  passkeyId: string;
+  name: string;
+  request?: RequestContext;
+}
+
+export interface RevokePasskeyInput {
+  sessionToken: string;
+  passkeyId: string;
+  request?: RequestContext;
+}
+
+export interface PrepareGoogleOneTapInput {
+  request?: RequestContext;
+}
+
+export interface PreparedGoogleOneTap {
+  nonce: string;
+  expiresAt: Date;
+}
+
+export interface GoogleOneTapInput {
+  credential: string;
+  nonce: string;
+  request?: RequestContext;
+}
+
+export interface GetExternalAccessTokenInput {
+  actorUserId: string;
+  provider: ExternalAccountProvider;
+  providerAccountId?: string;
+  request?: RequestContext;
+}
+
+export interface ExternalAccessTokenResult {
+  accessToken: string;
+  scopes: string[];
+}
+
+export type RevokeExternalProviderAccessInput = GetExternalAccessTokenInput;
+
 export interface RequestTokenInput {
   email: string;
   redirectUrl?: string;
@@ -112,11 +290,9 @@ export interface VerifySmsOtpInput {
   request?: RequestContext;
 }
 
-export interface SmsOtpVerificationResult {
-  user: User;
-  session: Session | null;
-  sessionToken: string | null;
-}
+export type SmsOtpVerificationResult =
+  | SignInResult
+  | { status: "verified"; user: User; session: null; sessionToken: null };
 
 export interface CreateApiKeyInput {
   name: string;

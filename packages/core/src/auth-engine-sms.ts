@@ -5,11 +5,11 @@ import { minute, type DeliveryResult, type RequestSmsOtpInput, type SmsOtpVerifi
 import {
   assertUserEnabled,
   audit,
-  createSession,
   hash,
   rateLimit,
   type AuthEngineContext
 } from "./auth-engine-internals.js";
+import { completeFirstFactor } from "./auth-engine-mfa.js";
 import { createUser } from "./auth-engine-users.js";
 
 export async function requestSmsOtp(
@@ -130,17 +130,8 @@ export async function verifySmsOtp(
   });
 
   if (purpose !== "phone_login") {
-    return { user, session: null, sessionToken: null };
+    return { status: "verified", user, session: null, sessionToken: null };
   }
 
-  const sessionResult = await createSession(ctx, user, input.request);
-  await audit(ctx, {
-    eventType: "user.signed_in",
-    actorUserId: user.id,
-    targetUserId: user.id,
-    context: input.request,
-    metadata: { method: "phone_otp" }
-  });
-
-  return sessionResult;
+  return completeFirstFactor(ctx, user, "phone", input.request);
 }

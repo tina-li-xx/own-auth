@@ -116,4 +116,31 @@ describe("OwnAuthClient", () => {
       expect(error).toBeInstanceOf(OwnAuthClientError);
     }
   });
+
+  it.each([null, "different-fingerprint"])(
+    "rejects plugin responses with an absent or stale contract fingerprint: %s",
+    async (serverFingerprint) => {
+      const client = createOwnAuthClient({
+        baseURL: "http://localhost/api/auth",
+        pluginFingerprint: "expected-fingerprint",
+        plugins: [{
+          id: "example",
+          methods: {
+            ping: { method: "POST", path: "/plugins/example/ping" }
+          }
+        }],
+        fetch: (async () => Response.json(
+          { ok: true },
+          serverFingerprint
+            ? { headers: { "x-own-auth-plugin-fingerprint": serverFingerprint } }
+            : undefined
+        )) as typeof fetch
+      });
+
+      await expect(client.plugin("example").call("ping")).rejects.toMatchObject({
+        code: "internal_error",
+        status: 409
+      });
+    }
+  );
 });

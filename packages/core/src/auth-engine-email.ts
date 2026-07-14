@@ -6,7 +6,7 @@ import {
   type RequestEmailVerificationInput,
   type RequestTokenInput,
   type ResetPasswordInput,
-  type SessionResult,
+  type SignInResult,
   type VerifyTokenInput
 } from "./auth-engine-types.js";
 import {
@@ -14,10 +14,10 @@ import {
   assertUserEnabled,
   audit,
   consumeToken,
-  createSession,
   hashPasswordInput,
   type AuthEngineContext
 } from "./auth-engine-internals.js";
+import { completeFirstFactor } from "./auth-engine-mfa.js";
 import { requestEmailToken } from "./auth-engine-email-token.js";
 import { revokeAllSessionsForUser } from "./auth-engine-sessions.js";
 import { createUser } from "./auth-engine-users.js";
@@ -46,7 +46,7 @@ export async function requestMagicLink(
 export async function verifyMagicLink(
   ctx: AuthEngineContext,
   input: VerifyTokenInput
-): Promise<SessionResult> {
+): Promise<SignInResult> {
   const token = await consumeToken(ctx, input.token, "magic_link");
   let user = token.userId ? await ctx.storage.getUserById(token.userId) : null;
 
@@ -71,23 +71,13 @@ export async function verifyMagicLink(
     })) ?? user;
   }
 
-  const result = await createSession(ctx, user, input.request);
-
   await audit(ctx, {
     eventType: "magic_link.used",
     actorUserId: user.id,
     targetUserId: user.id,
     context: input.request
   });
-  await audit(ctx, {
-    eventType: "user.signed_in",
-    actorUserId: user.id,
-    targetUserId: user.id,
-    context: input.request,
-    metadata: { method: "magic_link" }
-  });
-
-  return result;
+  return completeFirstFactor(ctx, user, "magic_link", input.request);
 }
 
 export async function requestEmailVerification(

@@ -2,38 +2,68 @@ export { OwnAuth, createOwnAuth } from "./auth-engine.js";
 export type {
   AcceptInviteInput,
   AcceptInviteResult,
+  BeginTotpEnrollmentInput,
+  BeginTotpEnrollmentResult,
+  BeginPasskeyAuthenticationInput,
+  BeginPasskeyAuthenticationResult,
+  BeginPasskeyRegistrationInput,
+  BeginPasskeyRegistrationResult,
   ChangeMemberRoleInput,
   CleanupAuditLogsInput,
   CreateApiKeyInput,
   ChangePasswordInput,
+  CompleteOAuthSignInInput,
+  CompleteMfaInput,
+  CompletePasskeyAuthenticationInput,
+  CompletePasskeyRegistrationInput,
+  ConfirmTotpEnrollmentInput,
+  ConfirmTotpEnrollmentResult,
   CreatedApiKey,
   CreateOrganisationInput,
   CreateUserInput,
+  CreateOAuthAuthorizationUrlInput,
   DeleteOrganisationInput,
+  DisableTotpInput,
   DeliveryResult,
+  ExternalAccessTokenResult,
   GetOrganisationInput,
+  GetExternalAccessTokenInput,
   GetMemberInput,
+  GoogleOneTapInput,
   InvitationResult,
   InviteMemberInput,
   ListApiKeysInput,
+  ListPasskeysInput,
   ListAuditEventsInput,
   ListInvitationsInput,
   ListMembersInput,
   ListOrganisationsInput,
   ListSessionsInput,
   OwnAuthOptions,
+  OAuthAuthorizationResult,
+  OAuthCompletionResult,
+  PrepareGoogleOneTapInput,
+  PreparedGoogleOneTap,
+  RegenerateRecoveryCodesInput,
+  RenamePasskeyInput,
   RequestEmailVerificationInput,
   RequestSmsOtpInput,
   RequestTokenInput,
   ResetPasswordInput,
   RevokeAllSessionsInput,
+  RevokeExternalProviderAccessInput,
+  RevokePasskeyInput,
   RevokeApiKeyInput,
   RevokeInvitationInput,
   RevokeSessionInput,
   RemoveMemberInput,
   SessionResult,
+  SignInResult,
+  MfaRequiredResult,
   SignInEmailPasswordInput,
   VerifiedExternalIdentityInput,
+  LinkOAuthProviderInput,
+  UnlinkOAuthProviderInput,
   SignUpEmailPasswordInput,
   SmsOtpVerificationResult,
   UpdateOrganisationInput,
@@ -43,6 +73,80 @@ export type {
 } from "./auth-engine-types.js";
 export { AuthError, toAuthError } from "./errors.js";
 export type { AuthErrorCode } from "./errors.js";
+export { EncryptionKeyRing, createEncryptionKeyRing } from "./encryption.js";
+export type {
+  DecryptedValue,
+  EncryptedValue,
+  EncryptionKeyInput,
+  EncryptionKeyRingOptions,
+  EncryptionPurpose
+} from "./encryption.js";
+export type {
+  MfaChallenge,
+  MfaFactorStatus,
+  MfaMethod,
+  OAuthCredential,
+  OAuthFlowKind,
+  OAuthIntent,
+  OAuthInteractionMode,
+  OAuthTransaction,
+  PasskeyCredential,
+  RecoveryCode,
+  TotpFactor,
+  WebAuthnChallenge,
+  WebAuthnChallengePurpose
+} from "./identity-types.js";
+export type {
+  AppleOAuthOptions,
+  GitHubOAuthOptions,
+  GoogleOAuthOptions,
+  OAuthAccountLinking,
+  OAuthAuthorizationRequest,
+  OAuthExchangeResult,
+  OAuthOptions,
+  OAuthProviderAdapter,
+  OAuthRefreshResult,
+  VerifiedProviderIdentity
+} from "./oauth-types.js";
+export {
+  createOwnAuthPluginClientManifest,
+  defineOwnAuthConfig,
+  defineOwnAuthPlugin,
+  OwnAuthPluginError
+} from "./plugin-definition.js";
+export {
+  createOwnAuthPluginClientConfiguration,
+  createOwnAuthPluginContractFingerprint
+} from "./plugin-contract.js";
+export type {
+  OwnAuthPluginClientConfiguration
+} from "./plugin-contract.js";
+export {
+  createConfiguredOwnAuthOpenApiDocument
+} from "./plugin-openapi.js";
+export type {
+  OwnAuthConfiguredOpenApiDocument,
+  OwnAuthConfiguredOpenApiOptions
+} from "./plugin-openapi.js";
+export type {
+  CallOwnAuthPluginMethodOptions,
+  OwnAuthConfig,
+  OwnAuthPluginAfterHook,
+  OwnAuthPluginAfterHookContext,
+  OwnAuthPluginBeforeHook,
+  OwnAuthPluginClientManifest,
+  OwnAuthPluginClientMethod,
+  OwnAuthPluginContext,
+  OwnAuthPluginDefinition,
+  OwnAuthPluginEndpoint,
+  OwnAuthPluginHookContext,
+  OwnAuthPluginMigration,
+  OwnAuthPluginRateLimit,
+  OwnAuthPluginRuntimeOptions,
+  OwnAuthPluginServerMethod,
+  PluginSessionRequirement
+} from "./plugin-types.js";
+export { OWN_AUTH_VERSION } from "./version.js";
 export { InMemoryAuthStorage } from "./memory-storage.js";
 export type { AuthStorage } from "./storage.js";
 export {
@@ -90,6 +194,7 @@ export type {
   OrganisationRole,
   RequestContext,
   Session,
+  SessionAssuranceLevel,
   SmsOtp,
   SmsOtpPurpose,
   TokenType,
@@ -97,18 +202,23 @@ export type {
   VerifiedApiKey
 } from "./types.js";
 export {
+  clearMfaChallengeCookie,
   clearSessionCookie,
+  createMfaChallengeCookie,
   createOwnAuthHandler,
   createOwnAuthOpenApiDocument,
   createSessionCookie,
+  defaultMfaCookieName,
   defaultSessionCookieName,
   getOwnAuthEndpoint,
   ownAuthEndpointContract,
+  readMfaChallengeToken,
   readSessionToken
 } from "./http/index.js";
 export type {
   AuthSessionPayload,
   DeliveryPayload,
+  MfaRequiredPayload,
   OwnAuthEndpointDefinition,
   OwnAuthEndpointId,
   OwnAuthEndpointInputMap,
@@ -119,10 +229,13 @@ export type {
   OwnAuthHttpErrorCode,
   OwnAuthOpenApiDocument,
   OwnAuthOpenApiOptions,
+  OwnAuthMfaCookieOptions,
   OwnAuthSessionCookieOptions,
   PublicAuthSession,
   PublicAuthUser,
   PublicOrganisation,
   PublicOrganisationMember,
+  PublicPasskey,
+  SignInPayload,
   SameSitePolicy
 } from "./http/index.js";

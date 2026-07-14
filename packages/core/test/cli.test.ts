@@ -6,6 +6,7 @@ import {
   runCli,
   type CliDependencies
 } from "../src/cli.js";
+import { coreMigrationVersions } from "../src/core-migrations.js";
 
 function createIo() {
   let stdout = "";
@@ -35,6 +36,7 @@ describe("own-auth CLI", () => {
     expect(output().stdout).toContain("create table if not exists own_auth_migrations");
     expect(output().stdout).toContain("create table if not exists own_auth_users");
     expect(output().stdout).toContain("002_external_providers");
+    expect(output().stdout).toContain("007_plugin_migrations");
     expect(output().stderr).toBe("");
   });
 
@@ -65,10 +67,7 @@ describe("own-auth CLI", () => {
   });
 
   it("reports a connected database at the current migration version", async () => {
-    const { dependencies, ended, queries } = statusDatabase([
-      "001_initial",
-      "002_external_providers"
-    ]);
+    const { dependencies, ended, queries } = statusDatabase(coreMigrationVersions);
     const { io, output } = createIo();
     const exitCode = await runCli(
       ["status"],
@@ -80,7 +79,7 @@ describe("own-auth CLI", () => {
     expect(exitCode).toBe(0);
     expect(output().stdout).toBe(
       "Database: connected\n" +
-      "Migration version: 002_external_providers\n" +
+      "Migration version: 007_plugin_migrations\n" +
       "Status: current\n"
     );
     expect(output().stderr).toBe("");
@@ -128,7 +127,7 @@ describe("own-auth CLI", () => {
   });
 });
 
-function statusDatabase(versions: string[], tableExists = true) {
+function statusDatabase(versions: readonly string[], tableExists = true) {
   const queries: string[] = [];
   let databaseEnded = false;
 

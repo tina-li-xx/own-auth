@@ -5,15 +5,41 @@ import {
   type OwnAuthEndpointId,
   type OwnAuthEndpointInputMap,
   type OwnAuthEndpointOutputMap,
-  type OwnAuthErrorPayload,
-  type OwnAuthHttpErrorCode,
-  type PublicAuthUser
+  type PublicAuthUser,
+  type SignInPayload
 } from "./http/contract.js";
+import {
+  clientErrorFromResponse,
+  OwnAuthClientError,
+  readJsonResponse
+} from "./client-error.js";
+import {
+  getBrowserOrigin,
+  navigateBrowser,
+  runOAuthPopup,
+  type OAuthPopupResult
+} from "./client-oauth-popup.js";
+import {
+  callOwnAuthPluginMethod,
+  type OwnAuthPluginClient
+} from "./client-plugin.js";
+import type { OwnAuthPluginClientManifest } from "./plugin-types.js";
+
+export { OwnAuthClientError } from "./client-error.js";
+export type { OAuthPopupResult } from "./client-oauth-popup.js";
+export type { OwnAuthPluginClient } from "./client-plugin.js";
+
+export type OAuthSignInInput = Omit<
+  OwnAuthEndpointInputMap["oauthStart"],
+  "openerOrigin"
+> & { popupTimeoutMs?: number };
 
 export interface OwnAuthClientOptions {
   baseURL?: string;
   fetch?: typeof globalThis.fetch;
   headers?: OwnAuthClientHeaders | (() => OwnAuthClientHeaders | Promise<OwnAuthClientHeaders>);
+  plugins?: readonly OwnAuthPluginClientManifest[];
+  pluginFingerprint?: string;
 }
 
 export type OwnAuthClientHeaders =
@@ -29,22 +55,12 @@ export interface OwnAuthSessionSnapshot {
 
 export type OwnAuthSessionListener = () => void;
 
-export class OwnAuthClientError extends Error {
-  readonly code: OwnAuthHttpErrorCode;
-  readonly status: number;
-
-  constructor(code: OwnAuthHttpErrorCode, message: string, status: number) {
-    super(message);
-    this.name = "OwnAuthClientError";
-    this.code = code;
-    this.status = status;
-  }
-}
-
 export class OwnAuthClient {
   private readonly baseURL: string;
   private readonly fetchImpl: typeof globalThis.fetch;
   private readonly configuredHeaders?: OwnAuthClientOptions["headers"];
+  private readonly pluginManifests: ReadonlyMap<string, OwnAuthPluginClientManifest>;
+  private readonly pluginFingerprint?: string;
   private readonly listeners = new Set<OwnAuthSessionListener>();
   private sessionLoaded = false;
   private sessionRequest: Promise<AuthSessionPayload | null> | null = null;
@@ -58,6 +74,11 @@ export class OwnAuthClient {
     this.baseURL = (options.baseURL ?? "/api/auth").replace(/\/+$/, "");
     this.fetchImpl = options.fetch ?? globalThis.fetch;
     this.configuredHeaders = options.headers;
+    this.pluginManifests = new Map((options.plugins ?? []).map((plugin) => [plugin.id, plugin]));
+    this.pluginFingerprint = options.pluginFingerprint;
+    if (this.pluginManifests.size !== (options.plugins ?? []).length) {
+      throw new Error("Own Auth client plugin IDs must be unique");
+    }
   }
 
   getSessionSnapshot = (): OwnAuthSessionSnapshot => this.snapshot;
@@ -108,8 +129,8 @@ export class OwnAuthClient {
 
   async signInEmailPassword(
     input: OwnAuthEndpointInputMap["signInEmailPassword"]
-  ): Promise<AuthSessionPayload> {
-    return this.setCreatedSession(await this.request("signInEmailPassword", input));
+  ): Promise<SignInPayload> {
+    return this.acceptSignInResult(await this.request("signInEmailPassword", input));
   }
 
   async signOut(): Promise<void> {
@@ -134,8 +155,8 @@ export class OwnAuthClient {
 
   async verifyMagicLink(
     input: OwnAuthEndpointInputMap["verifyMagicLink"]
-  ): Promise<AuthSessionPayload> {
-    return this.setCreatedSession(await this.request("verifyMagicLink", input));
+  ): Promise<SignInPayload> {
+    return this.acceptSignInResult(await this.request("verifyMagicLink", input));
   }
 
   requestEmailVerification(
@@ -177,9 +198,7 @@ export class OwnAuthClient {
     input: OwnAuthEndpointInputMap["verifySmsOtp"]
   ): Promise<OwnAuthEndpointOutputMap["verifySmsOtp"]> {
     const result = await this.request("verifySmsOtp", input);
-    if (result.session) {
-      this.setCreatedSession({ user: result.user, session: result.session });
-    }
+    if (result.status === "complete") this.setCreatedSession(result);
     return result;
   }
 
@@ -187,6 +206,146 @@ export class OwnAuthClient {
     input: OwnAuthEndpointInputMap["acceptInvite"]
   ): Promise<OwnAuthEndpointOutputMap["acceptInvite"]> {
     return this.request("acceptInvite", input);
+  }
+
+  plugin(pluginId: string): OwnAuthPluginClient {
+    return {
+      call: <Output>(method: string, input?: unknown) =>
+        this.callPluginMethod<Output>(pluginId, method, input)
+    };
+  }
+
+  async callPluginMethod<Output = unknown>(
+    pluginId: string,
+    methodName: string,
+    input?: unknown
+  ): Promise<Output> {
+    const manifest = this.pluginManifests.get(pluginId);
+    return callOwnAuthPluginMethod<Output>({
+      baseURL: this.baseURL,
+      fetch: this.fetchImpl,
+      fingerprint: this.pluginFingerprint,
+      headers: new Headers(await this.resolveHeaders()),
+      input,
+      manifest,
+      methodName,
+      pluginId
+    });
+  }
+
+  signInWithOAuth(
+    input: OAuthSignInInput & { mode: "popup" }
+  ): Promise<OAuthPopupResult>;
+  signInWithOAuth(
+    input: OAuthSignInInput & { mode?: "redirect" }
+  ): Promise<void>;
+  async signInWithOAuth(input: OAuthSignInInput): Promise<OAuthPopupResult | void> {
+    const { popupTimeoutMs, ...requestInput } = input;
+    if (input.mode === "popup") {
+      return runOAuthPopup(
+        () => this.request("oauthStart", {
+          ...requestInput,
+          mode: "popup",
+          openerOrigin: getBrowserOrigin()
+        }),
+        () => this.getSession(),
+        new URL(this.baseURL, getBrowserOrigin()).origin,
+        popupTimeoutMs
+      );
+    }
+    const result = await this.request("oauthStart", {
+      ...requestInput,
+      mode: "redirect"
+    });
+    navigateBrowser(result.url);
+  }
+
+  unlinkOAuthProvider(
+    input: OwnAuthEndpointInputMap["unlinkOAuthProvider"]
+  ): Promise<OwnAuthEndpointOutputMap["unlinkOAuthProvider"]> {
+    return this.request("unlinkOAuthProvider", input);
+  }
+
+  prepareGoogleOneTap(): Promise<OwnAuthEndpointOutputMap["prepareGoogleOneTap"]> {
+    return this.request("prepareGoogleOneTap", undefined);
+  }
+
+  async signInWithGoogleOneTap(
+    input: OwnAuthEndpointInputMap["signInGoogleOneTap"]
+  ): Promise<SignInPayload> {
+    return this.acceptSignInResult(await this.request("signInGoogleOneTap", input));
+  }
+
+  async completeMfaWithTotp(
+    input: OwnAuthEndpointInputMap["completeMfaTotp"]
+  ): Promise<AuthSessionPayload> {
+    return this.setCreatedSession(await this.request("completeMfaTotp", input));
+  }
+
+  async completeMfaWithRecoveryCode(
+    input: OwnAuthEndpointInputMap["completeMfaRecovery"]
+  ): Promise<AuthSessionPayload> {
+    return this.setCreatedSession(await this.request("completeMfaRecovery", input));
+  }
+
+  beginTotpEnrollment(): Promise<OwnAuthEndpointOutputMap["beginTotpEnrollment"]> {
+    return this.request("beginTotpEnrollment", undefined);
+  }
+
+  confirmTotpEnrollment(
+    input: OwnAuthEndpointInputMap["confirmTotpEnrollment"]
+  ): Promise<OwnAuthEndpointOutputMap["confirmTotpEnrollment"]> {
+    return this.request("confirmTotpEnrollment", input);
+  }
+
+  async disableTotp(
+    input: OwnAuthEndpointInputMap["disableTotp"]
+  ): Promise<void> {
+    await this.request("disableTotp", input);
+  }
+
+  regenerateRecoveryCodes(
+    input: OwnAuthEndpointInputMap["regenerateRecoveryCodes"]
+  ): Promise<OwnAuthEndpointOutputMap["regenerateRecoveryCodes"]> {
+    return this.request("regenerateRecoveryCodes", input);
+  }
+
+  beginPasskeyRegistration(): Promise<OwnAuthEndpointOutputMap["beginPasskeyRegistration"]> {
+    return this.request("beginPasskeyRegistration", undefined);
+  }
+
+  completePasskeyRegistration(
+    input: OwnAuthEndpointInputMap["completePasskeyRegistration"]
+  ): Promise<OwnAuthEndpointOutputMap["completePasskeyRegistration"]> {
+    return this.request("completePasskeyRegistration", input);
+  }
+
+  beginPasskeyAuthentication(
+    input: OwnAuthEndpointInputMap["beginPasskeyAuthentication"] = {}
+  ): Promise<OwnAuthEndpointOutputMap["beginPasskeyAuthentication"]> {
+    return this.request("beginPasskeyAuthentication", input);
+  }
+
+  async completePasskeyAuthentication(
+    input: OwnAuthEndpointInputMap["completePasskeyAuthentication"]
+  ): Promise<AuthSessionPayload> {
+    return this.setCreatedSession(await this.request("completePasskeyAuthentication", input));
+  }
+
+  listPasskeys(): Promise<OwnAuthEndpointOutputMap["listPasskeys"]> {
+    return this.request("listPasskeys", undefined);
+  }
+
+  renamePasskey(
+    input: OwnAuthEndpointInputMap["renamePasskey"]
+  ): Promise<OwnAuthEndpointOutputMap["renamePasskey"]> {
+    return this.request("renamePasskey", input);
+  }
+
+  async revokePasskey(
+    input: OwnAuthEndpointInputMap["revokePasskey"]
+  ): Promise<void> {
+    await this.request("revokePasskey", input);
   }
 
   private async request<Id extends OwnAuthEndpointId>(
@@ -207,7 +366,7 @@ export class OwnAuthClient {
     }
 
     const response = await this.fetchImpl(`${this.baseURL}${endpoint.path}`, init);
-    const body = await readJson(response);
+    const body = await readJsonResponse(response);
     if (!response.ok) {
       throw clientErrorFromResponse(body, response.status);
     }
@@ -225,6 +384,11 @@ export class OwnAuthClient {
     this.sessionLoaded = true;
     this.updateSnapshot({ data: session, isPending: false, error: null });
     return session;
+  }
+
+  private acceptSignInResult(result: SignInPayload): SignInPayload {
+    if (result.status === "complete") this.setCreatedSession(result);
+    return result;
   }
 
   private updateUser(user: PublicAuthUser): void {
@@ -250,42 +414,8 @@ export function createOwnAuthClient(options?: OwnAuthClientOptions): OwnAuthClie
   return new OwnAuthClient(options);
 }
 
-async function readJson(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    throw new OwnAuthClientError(
-      "internal_error",
-      "Own Auth returned an invalid response",
-      response.status
-    );
-  }
-}
-
-function clientErrorFromResponse(body: unknown, status: number): OwnAuthClientError {
-  if (isErrorPayload(body)) {
-    return new OwnAuthClientError(body.error.code, body.error.message, status);
-  }
-  return new OwnAuthClientError("internal_error", "Authentication request failed", status);
-}
-
 function toClientError(error: unknown): OwnAuthClientError {
   return error instanceof OwnAuthClientError
     ? error
     : new OwnAuthClientError("internal_error", "Authentication request failed", 500);
-}
-
-function isErrorPayload(value: unknown): value is OwnAuthErrorPayload {
-  if (!value || typeof value !== "object" || !("error" in value)) {
-    return false;
-  }
-  const error = (value as { error?: unknown }).error;
-  return Boolean(
-    error &&
-    typeof error === "object" &&
-    "code" in error &&
-    typeof error.code === "string" &&
-    "message" in error &&
-    typeof error.message === "string"
-  );
 }

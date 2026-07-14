@@ -2,12 +2,25 @@ import type { EmailProvider, SmsProvider } from "./providers.js";
 import type { RateLimitStore } from "./rate-limit.js";
 import type { AuthStorage } from "./storage.js";
 import type { TokenType } from "./types.js";
+import type { EncryptionKeyRingOptions } from "./encryption.js";
+import type { OAuthOptions } from "./oauth-types.js";
+import type {
+  OwnAuthPluginDefinition,
+  OwnAuthPluginRuntimeOptions
+} from "./plugin-types.js";
 
 export const minute = 60 * 1000;
 export const hour = 60 * minute;
 export const day = 24 * hour;
 
 export type TokenTtlConfig = Partial<Record<TokenType, number>>;
+
+export interface PasskeyOptions {
+  rpId: string;
+  rpName: string;
+  origins: string[];
+  timeoutMs?: number;
+}
 
 export interface OwnAuthOptions {
   storage?: AuthStorage;
@@ -33,6 +46,17 @@ export interface OwnAuthOptions {
   password?: {
     minLength?: number;
   };
+  encryption?: EncryptionKeyRingOptions;
+  oauth?: OAuthOptions;
+  mfa?: {
+    issuer?: string;
+    challengeTtlMs?: number;
+    maxAttempts?: number;
+    recoveryCodeCount?: number;
+  };
+  passkeys?: PasskeyOptions;
+  plugins?: readonly OwnAuthPluginDefinition[];
+  pluginRuntime?: OwnAuthPluginRuntimeOptions;
 }
 
 export const defaultTokenTtls: Required<TokenTtlConfig> = {

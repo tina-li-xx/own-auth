@@ -10,22 +10,22 @@ import {
   minute,
   type ChangePasswordInput,
   type CreateUserInput,
+  type SessionResult,
   type SignInEmailPasswordInput,
   type SignUpEmailPasswordInput,
-  type SessionResult,
+  type SignInResult,
   type UserStatusInput
 } from "./auth-engine-types.js";
 import {
   accountFor,
   assertUserEnabled,
   audit,
-  createSession,
   hashPasswordInput,
-  markUserLoggedIn,
   rateLimit,
   userFor,
   type AuthEngineContext
 } from "./auth-engine-internals.js";
+import { completeFirstFactor } from "./auth-engine-mfa.js";
 import {
   requireCurrentSession,
   revokeAllSessionsForUser,
@@ -97,14 +97,17 @@ export async function signUpEmailPassword(
     context: input.request
   });
 
-  const result = await createSession(ctx, user, input.request);
-  return { ...result, user: await markUserLoggedIn(ctx, user) };
+  const result = await completeFirstFactor(ctx, user, "password", input.request);
+  if (result.status !== "complete") {
+    throw new Error("A new user cannot require an existing MFA factor");
+  }
+  return result;
 }
 
 export async function signInEmailPassword(
   ctx: AuthEngineContext,
   input: SignInEmailPasswordInput
-): Promise<SessionResult> {
+): Promise<SignInResult> {
   const email = normalizeEmail(input.email);
   await rateLimit(ctx, "signin", email, 10, 10 * minute);
 
@@ -127,17 +130,7 @@ export async function signInEmailPassword(
     })) ?? user;
   }
 
-  const activeUser = await markUserLoggedIn(ctx, authenticatedUser);
-  const result = await createSession(ctx, activeUser, input.request);
-
-  await audit(ctx, {
-    eventType: "user.signed_in",
-    actorUserId: activeUser.id,
-    targetUserId: activeUser.id,
-    context: input.request
-  });
-
-  return result;
+  return completeFirstFactor(ctx, authenticatedUser, "password", input.request);
 }
 
 export async function changePassword(

@@ -29,7 +29,7 @@ import {
   mapToken,
   mapUser
 } from "./postgres-mappers.js";
-import { expectOne, toPostgresValue } from "./postgres-row.js";
+import { PostgresIdentityStorage } from "./postgres-identity-storage.js";
 import {
   accountColumns,
   accountReturning,
@@ -52,12 +52,11 @@ import {
   userColumns,
   userReturning
 } from "./postgres-schema.js";
-import type { ColumnMap, PostgresQueryable, Row } from "./postgres-types.js";
+import type { PostgresQueryable } from "./postgres-types.js";
 
 export type { PostgresQueryable, PostgresQueryResult } from "./postgres-types.js";
 
-export class PostgresAuthStorage implements AuthStorage {
-  constructor(private readonly db: PostgresQueryable) {}
+export class PostgresAuthStorage extends PostgresIdentityStorage implements AuthStorage {
 
   async createUser(user: User): Promise<User> {
     const row = await this.insertOne("own_auth_users", userColumns, user, userReturning);
@@ -89,6 +88,39 @@ export class PostgresAuthStorage implements AuthStorage {
     return mapAccount(row);
   }
 
+  async createUserAndAccount(user: User, account: Account): Promise<Account> {
+    const userEntries = Object.entries(userColumns).filter(
+      ([key]) => user[key as keyof User] !== undefined
+    );
+    const accountEntries = Object.entries(accountColumns).filter(
+      ([key]) => account[key as keyof Account] !== undefined
+    );
+    const values = [
+      ...userEntries.map(([key]) => user[key as keyof User]),
+      ...accountEntries.map(([key]) => account[key as keyof Account])
+    ];
+    const userPlaceholders = userEntries.map((_, index) => `$${index + 1}`);
+    const accountOffset = userEntries.length;
+    const accountPlaceholders = accountEntries.map(
+      (_, index) => `$${accountOffset + index + 1}`
+    );
+    const result = await this.db.query<Record<string, unknown>>(
+      `with inserted_user as (
+         insert into own_auth_users (${userEntries.map(([, column]) => column).join(", ")})
+         values (${userPlaceholders.join(", ")}) returning id
+       )
+       insert into own_auth_accounts (${accountEntries.map(([, column]) => column).join(", ")})
+       select ${accountPlaceholders.join(", ")} from inserted_user
+       returning ${accountReturning}`,
+      values
+    );
+    const row = result.rows[0];
+    if (!row) {
+      throw new Error("Postgres identity creation returned no account");
+    }
+    return mapAccount(row);
+  }
+
   async getAccountByProvider(
     provider: string,
     providerAccountId: string
@@ -98,6 +130,22 @@ export class PostgresAuthStorage implements AuthStorage {
       [provider, providerAccountId]
     );
     return row ? mapAccount(row) : null;
+  }
+
+  async listAccountsByUserId(userId: string): Promise<Account[]> {
+    const rows = await this.selectMany(
+      `${accountReturning} from own_auth_accounts where user_id = $1 order by created_at asc`,
+      [userId]
+    );
+    return rows.map(mapAccount);
+  }
+
+  async deleteAccount(id: string): Promise<boolean> {
+    const result = await this.db.query<{ id: string }>(
+      "delete from own_auth_accounts where id = $1 returning id",
+      [id]
+    );
+    return result.rows.length > 0;
   }
 
   async createSession(session: Session): Promise<Session> {
@@ -408,59 +456,6 @@ export class PostgresAuthStorage implements AuthStorage {
     return result.rows.length;
   }
 
-  private async insertOne<Entity extends { id: string }>(
-    table: string,
-    columns: ColumnMap<Entity>,
-    entity: Entity,
-    returning: string
-  ): Promise<Row> {
-    const entries = Object.entries(columns).filter(([key]) => entity[key as keyof Entity] !== undefined);
-    const columnNames = entries.map(([, column]) => column);
-    const params = entries.map(([key]) => toPostgresValue(entity[key as keyof Entity]));
-    const placeholders = params.map((_, index) => `$${index + 1}`);
-    const result = await this.db.query<Row>(
-      `insert into ${table} (${columnNames.join(", ")}) values (${placeholders.join(", ")}) returning ${returning}`,
-      params
-    );
-
-    return expectOne(result.rows);
-  }
-
-  private async updateOne<Entity extends { id: string }>(
-    table: string,
-    columns: ColumnMap<Entity>,
-    id: string,
-    patch: Partial<Entity>,
-    returning: string
-  ): Promise<Row | null> {
-    const entries = Object.entries(columns).filter(
-      ([key]) => key !== "id" && patch[key as keyof Entity] !== undefined
-    );
-
-    if (entries.length === 0) {
-      return this.selectOne(`${returning} from ${table} where id = $1`, [id]);
-    }
-
-    const params = entries.map(([key]) => toPostgresValue(patch[key as keyof Entity]));
-    params.push(id);
-    const assignments = entries.map(([, column], index) => `${column} = $${index + 1}`);
-    const result = await this.db.query<Row>(
-      `update ${table} set ${assignments.join(", ")} where id = $${params.length} returning ${returning}`,
-      params
-    );
-
-    return result.rows[0] ?? null;
-  }
-
-  private async selectOne(sql: string, params: readonly unknown[]): Promise<Row | null> {
-    const result = await this.db.query<Row>(`select ${sql}`, params);
-    return result.rows[0] ?? null;
-  }
-
-  private async selectMany(sql: string, params: readonly unknown[]): Promise<Row[]> {
-    const result = await this.db.query<Row>(`select ${sql}`, params);
-    return result.rows;
-  }
 }
 
 export function createPostgresAuthStorage(db: PostgresQueryable): PostgresAuthStorage {

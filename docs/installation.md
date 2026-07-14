@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Node.js 18 or later
+- Node.js 20 or later
 - A Postgres database, local or hosted
 
 Own Auth also supports Cloudflare Workers. Enable Node.js compatibility in the Worker's Wrangler configuration:
@@ -68,6 +68,14 @@ This creates the tables Own Auth needs in your database:
 - `own_auth_api_keys`
 - `own_auth_audit_events`
 - `own_auth_rate_limits`
+- `own_auth_oauth_transactions`
+- `own_auth_mfa_factors`
+- `own_auth_recovery_codes`
+- `own_auth_mfa_challenges`
+- `own_auth_oauth_credentials`
+- `own_auth_passkeys`
+- `own_auth_webauthn_challenges`
+- `own_auth_plugin_migrations`
 
 All Own Auth tables are prefixed with `own_auth_` to avoid conflicts. Your existing application tables are not modified.
 

@@ -1,4 +1,6 @@
 import type { AuthStorage } from "./storage.js";
+import { MemoryIdentityStorage } from "./memory-identity-storage.js";
+import { cloneStored as clone, updateStoredEntity } from "./memory-storage-helpers.js";
 import type {
   Account,
   ApiKey,
@@ -13,25 +15,6 @@ import type {
   User
 } from "./types.js";
 
-function clone<T>(value: T): T {
-  return structuredClone(value);
-}
-
-function updateStoredEntity<T extends { id: string }>(
-  store: Map<string, T>,
-  id: string,
-  patch: Partial<T>
-): T | null {
-  const existing = store.get(id);
-  if (!existing) {
-    return null;
-  }
-
-  const updated = clone({ ...existing, ...patch });
-  store.set(id, updated);
-  return clone(updated);
-}
-
 function isUsableSmsOtp(otp: SmsOtp, at: Date): boolean {
   return (
     !otp.consumedAt &&
@@ -40,9 +23,8 @@ function isUsableSmsOtp(otp: SmsOtp, at: Date): boolean {
   );
 }
 
-export class InMemoryAuthStorage implements AuthStorage {
+export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthStorage {
   private readonly users = new Map<string, User>();
-  private readonly accounts = new Map<string, Account>();
   private readonly sessions = new Map<string, Session>();
   private readonly tokens = new Map<string, AuthToken>();
   private readonly smsOtps = new Map<string, SmsOtp>();
@@ -86,22 +68,21 @@ export class InMemoryAuthStorage implements AuthStorage {
     return null;
   }
 
-  async createAccount(account: Account): Promise<Account> {
-    this.accounts.set(account.id, clone(account));
-    return clone(account);
-  }
-
-  async getAccountByProvider(
-    provider: string,
-    providerAccountId: string
-  ): Promise<Account | null> {
-    for (const account of this.accounts.values()) {
-      if (account.provider === provider && account.providerAccountId === providerAccountId) {
-        return clone(account);
-      }
+  async createUserAndAccount(user: User, account: Account): Promise<Account> {
+    if (
+      (user.email && await this.getUserByEmail(user.email)) ||
+      (user.phone && await this.getUserByPhone(user.phone)) ||
+      await this.getAccountByProvider(account.provider, account.providerAccountId)
+    ) {
+      throw new Error("User or external account already exists");
     }
-
-    return null;
+    this.users.set(user.id, clone(user));
+    try {
+      return await this.createAccount(account);
+    } catch (error) {
+      this.users.delete(user.id);
+      throw error;
+    }
   }
 
   async createSession(session: Session): Promise<Session> {

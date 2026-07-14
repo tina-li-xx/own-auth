@@ -28,6 +28,24 @@ The raw token is sent to the user in an email link or SMS and is never persisted
 - **Expiring.** Sessions have an absolute TTL and an idle timeout. Both are enforced server-side on every `getCurrentSession` call.
 - **No client-side session state.** Own Auth never stores session data in a JWT or client-side token. The session token is an opaque reference to a server-side record. Revocation is instant, with no window where a revoked session remains valid.
 
+Sessions record the authentication methods used, an `aal1` or `aal2` assurance level, and the time authentication completed. Existing sessions are migrated to `authenticationMethods: ["legacy"]` and `assuranceLevel: "aal1"`.
+
+## Multi-factor authentication
+
+TOTP, recovery codes, and passkeys can complete a pending second-factor challenge. The first factor creates a hashed, expiring, attempt-limited challenge instead of a session. A session is created only after the challenge is atomically consumed.
+
+- TOTP uses SHA-1, six digits, 30-second periods, and a one-step clock tolerance.
+- A successfully used TOTP timestep is recorded through an atomic comparison update and cannot be reused.
+- Recovery codes are random, independently hashed, shown once, and atomically consumed.
+- Regenerating recovery codes invalidates every previous code.
+- Successful MFA creates an `aal2` session containing both authentication methods.
+
+## Passkeys
+
+WebAuthn registration and authentication validate the expected origin, RP ID, challenge, signature, credential owner, and user-verification result. Challenges are hashed, expiring, and atomically single-use.
+
+Non-zero authenticator counters use atomic comparison updates. Valid multi-device passkeys whose counters remain zero follow WebAuthn's multi-device behavior. Non-discoverable credentials are supported for username-first sign-in and MFA, while usernameless sign-in accepts discoverable credentials only.
+
 ## Redirect protection
 
 Magic-link redirect targets are checked against `redirectAllowlist`.
@@ -40,6 +58,16 @@ Magic-link redirect targets are checked against `redirectAllowlist`.
 
 Configure only destinations controlled by the application. See [Magic Links](/docs/magic-links) for setup.
 
+## OAuth
+
+OAuth redirect transactions store only a peppered state hash, provider, intent, validated destination, interaction mode, opener origin, expiry, and consumption time. State is atomically consumed before the authorization code is exchanged.
+
+PKCE verifier and OIDC nonce values are derived independently from the raw state and are never stored. Google and Apple responses verify signature, issuer, audience, expiry, nonce, subject, and verified-email claims. GitHub identities use the authenticated API response and only verified email addresses.
+
+Explicit provider linking is the default. A matching verified email does not silently link to an existing user unless `oauth.accountLinking` is set to `verified_email`. Unverified emails are never used for account linking.
+
+Popup callbacks post only completion state to the exact stored opener origin. OAuth codes, provider tokens, session tokens, and MFA challenge tokens never enter `postMessage`.
+
 ## Organisation permissions
 
 Organisation reads and mutations verify the actor's active membership and required role permission. This includes members, invitations, organisation API keys, and organisation audit events. Owners and administrators receive explicit permission sets, while members receive only member-level access.
@@ -48,7 +76,7 @@ Pass `actorUserId` from the authenticated session. Own Auth performs the organis
 
 ## Rate limiting
 
-Every sensitive operation is rate-limited automatically. You don't enable it, configure it, or write middleware. See [Rate limiting](/docs/rate-limiting) for the full table of limits.
+Sensitive authentication entry points have built-in rate-limit buckets. OAuth and One Tap IP limits are applied when request IP context is available. MFA challenges and SMS codes also enforce per-credential attempt limits. See [Rate limiting](/docs/rate-limiting) for the full table.
 
 Rate limiting protects against brute-force attacks, credential stuffing, SMS pumping, and abuse of email-sending endpoints.
 
@@ -93,11 +121,25 @@ The pepper must be:
 
 If the pepper may have been compromised, rotate it. Changing the pepper is equivalent to a full token, session, and API-key reset, and recovery is a manual process.
 
+## Encryption key ring
+
+TOTP secrets and optional provider refresh credentials use AES-256-GCM with a new 96-bit nonce and authenticated record metadata. HKDF-SHA256 derives separate keys for `own-auth:totp:v1` and `own-auth:oauth-refresh:v1`, so ciphertext from one purpose cannot be used as the other.
+
+The current key encrypts and decrypts. Previous keys decrypt only, and successful reads rotate old ciphertext to the current key. Unknown key IDs fail closed with `encryption_key_unavailable`.
+
+Access tokens are never persisted. Refresh credentials are stored only when `offlineAccess: true` is configured for a provider and are never exposed through the HTTP handler or browser client.
+
+## Plugins
+
+Plugin routes are namespaced and cannot replace core routes, error identifiers, cookie policy, CSRF behavior, or core security checks. Before-hooks fail closed on denial, errors, rejection, or timeout. After-hooks receive secret-redacted data and cannot change a committed authentication result.
+
+Plugin migrations are checksummed and each pending migration runs in its own Postgres transaction. A failure rolls back the current migration and stops the runner without undoing earlier committed migrations.
+
 ## Audit logs
 
 Supported security-sensitive operations write audit events containing the actor, target user, organisation, API-key record, request context, and event-specific metadata when those values are available.
 
-Own Auth's event writers do not add passwords, raw tokens, SMS codes, API-key values, or the token pepper. Applications must also keep secrets out of their own metadata fields. See [Audit Logs](/docs/audit-logs) for the event list and access-control requirements.
+Own Auth's event writers do not add passwords, raw tokens, SMS codes, API-key values, or the token pepper. See [Audit Logs](/docs/audit-logs) for the event list and access-control requirements.
 
 ## What Own Auth doesn't do
 
@@ -113,12 +155,14 @@ Own Auth does not:
 - [ ] `OWN_AUTH_TOKEN_PEPPER` contains a long random secret and is available to every server instance.
 - [ ] `DATABASE_URL` points to durable Postgres and uses TLS when required by the provider.
 - [ ] Current Own Auth migrations have been applied.
-- [ ] `exposeRawTokens` is disabled.
 - [ ] Web session cookies use `HttpOnly`, `Secure`, an appropriate `SameSite` value, and explicit expiry.
 - [ ] Cookie-based endpoints have an appropriate CSRF strategy.
 - [ ] Web auth links use HTTPS, and mobile or desktop link schemes are limited to destinations controlled by the application.
 - [ ] `redirectAllowlist` contains only approved application destinations.
 - [ ] Real email and SMS providers are configured for the auth methods in use.
+- [ ] The encryption key ring is configured and backed up before enabling TOTP or provider offline access.
+- [ ] OAuth callback URLs exactly match the URLs registered with each provider.
+- [ ] Passkey RP ID and expected origins exactly match the deployed application.
 - [ ] The default Postgres rate-limit store is active, or a durable `rateLimitStore` is supplied with custom storage.
 - [ ] Every `actorUserId` comes from a verified session rather than client input.
 - [ ] Audit-log access is restricted and a retention policy has been chosen.

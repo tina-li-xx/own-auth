@@ -41,14 +41,53 @@ The auth engine remains framework-independent. The handler only translates HTTP 
 | `POST` | `/api/auth/sms/request` | Send an SMS code |
 | `POST` | `/api/auth/sms/verify` | Verify an SMS code |
 | `POST` | `/api/auth/invitations/accept` | Accept an organisation invitation |
+| `POST` | `/api/auth/oauth/start` | Start redirect or popup OAuth |
+| `GET` | `/api/auth/oauth/google/callback` | Complete Google OAuth |
+| `GET` | `/api/auth/oauth/github/callback` | Complete GitHub OAuth |
+| `GET` | `/api/auth/oauth/apple/callback` | Complete an Apple query callback |
+| `POST` | `/api/auth/oauth/apple/callback` | Complete an Apple `form_post` callback |
+| `POST` | `/api/auth/oauth/google/one-tap/prepare` | Create a Google One Tap nonce transaction |
+| `POST` | `/api/auth/oauth/google/one-tap/verify` | Verify a Google One Tap credential |
+| `POST` | `/api/auth/oauth/unlink` | Unlink a provider from the current user |
+| `POST` | `/api/auth/mfa/totp/complete` | Complete MFA with TOTP |
+| `POST` | `/api/auth/mfa/recovery/complete` | Complete MFA with a recovery code |
+| `POST` | `/api/auth/mfa/totp/enroll` | Begin TOTP enrollment |
+| `POST` | `/api/auth/mfa/totp/confirm` | Confirm TOTP and create recovery codes |
+| `POST` | `/api/auth/mfa/totp/disable` | Disable TOTP |
+| `POST` | `/api/auth/mfa/recovery/regenerate` | Replace all recovery codes |
+| `POST` | `/api/auth/passkeys/register/options` | Create passkey registration options |
+| `POST` | `/api/auth/passkeys/register/verify` | Verify passkey registration |
+| `POST` | `/api/auth/passkeys/authenticate/options` | Create passkey authentication options |
+| `POST` | `/api/auth/passkeys/authenticate/verify` | Verify passkey authentication or MFA |
+| `GET` | `/api/auth/passkeys` | List the current user's passkeys |
+| `POST` | `/api/auth/passkeys/rename` | Rename a passkey |
+| `POST` | `/api/auth/passkeys/revoke` | Revoke a passkey |
+| configured | `/api/auth/plugins/{plugin-id}/...` | Run a namespaced plugin endpoint |
 
 The exported `ownAuthEndpointContract` contains each route's method, path, request schema, response schema, session behavior, and auth error codes.
 
 JSON request bodies are limited to 64 KiB by default. Change `maxRequestBodyBytes` only when an application genuinely needs a different limit.
 
+## Request context
+
+Pass a trusted client IP from the framework or hosting adapter so IP-based OAuth and One Tap limits can run. The handler does not trust forwarding headers by default because applications differ in which proxies they trust.
+
+```ts
+export const authHandler = createOwnAuthHandler(auth, {
+  getRequestContext(request) {
+    return {
+      ipAddress: getTrustedClientIp(request),
+      userAgent: request.headers.get("user-agent") ?? undefined,
+    };
+  },
+});
+```
+
+Do not copy an arbitrary `X-Forwarded-For` value directly. Resolve the address through the framework or platform's trusted-proxy configuration.
+
 ## Sessions
 
-Signup, signin, magic-link verification, and phone login set an `HttpOnly` session cookie. The JSON response never contains the raw session token, password hash, or session-token hash.
+Completed signup, signin, magic-link verification, phone login, OAuth, One Tap, and passkey authentication set an `HttpOnly` session cookie. The JSON response never contains the raw session token, password hash, or session-token hash.
 
 The default cookie is:
 
@@ -68,6 +107,28 @@ export const authHandler = createOwnAuthHandler(auth, {
   },
 });
 ```
+
+## MFA challenges
+
+When a first factor succeeds for a user with MFA enabled, the handler does not set a session cookie. It stores the pending challenge in a separate temporary `HttpOnly` cookie and returns only the available methods and expiry:
+
+```json
+{
+  "status": "mfa_required",
+  "methods": ["totp", "recovery_code", "passkey"],
+  "expiresAt": "2026-07-14T12:00:00.000Z"
+}
+```
+
+The default challenge cookie is `own_auth_mfa`. It is cleared after successful MFA, signout, or password reset. Browser JavaScript never receives the challenge token.
+
+## OAuth callbacks
+
+Google and GitHub use GET callbacks. Apple supports GET and its required `application/x-www-form-urlencoded` POST callback. Apple form bodies are always limited to 64 KiB, even when `maxRequestBodyBytes` is larger.
+
+Redirect callbacks set the session or MFA cookie and return to the transaction's validated destination. Popup callbacks post only `complete`, `mfa_required`, `linked`, or `failure` to the exact stored opener origin. They never post OAuth codes, provider tokens, session tokens, or MFA challenge tokens.
+
+Provider and account-resolution failures are returned through the popup message or redirect query parameters. Direct callback HTTP errors are reserved for malformed or rate-limited requests.
 
 ## CSRF protection
 
@@ -102,8 +163,11 @@ Every failure uses the same response shape:
 | `404` | Route or required resource not found |
 | `409` | Existing email, member, key, or invitation conflict |
 | `413` | Request body is larger than the configured limit |
+| `415` | Request uses an unsupported content type |
 | `429` | Rate limit or OTP attempt limit reached |
 | `500` | Unexpected server failure with a safe public message |
+| `502` | OAuth provider request failed |
+| `504` | A plugin before-hook timed out |
 
 Catch `OwnAuthClientError` in client code to read the typed `code`, `message`, and HTTP `status`.
 
@@ -124,3 +188,14 @@ const openapi = createOwnAuthOpenApiDocument({
 When the handler uses a custom cookie name, pass the same value as `sessionCookieName`.
 
 Request schemas, response schemas, operation IDs, and endpoint error codes come from `ownAuthEndpointContract`. There is no second route definition to keep in sync.
+
+The core document remains stable and excludes plugin routes. Generate the configured plugin document separately:
+
+```ts
+import { createConfiguredOwnAuthOpenApiDocument } from "own-auth";
+
+const openapi = createConfiguredOwnAuthOpenApiDocument(plugins);
+console.log(openapi["x-own-auth-plugin-fingerprint"]);
+```
+
+The fingerprint covers the core version and complete configured plugin endpoint contract. Regenerate plugin clients when it changes.

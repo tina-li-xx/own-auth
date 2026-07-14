@@ -4,13 +4,15 @@ import type {
   Session,
   User
 } from "../types.js";
+import type { PasskeyCredential } from "../identity-types.js";
 import type {
   AuthSessionPayload,
   DeliveryPayload,
   PublicAuthSession,
   PublicAuthUser,
   PublicOrganisation,
-  PublicOrganisationMember
+  PublicOrganisationMember,
+  PublicPasskey
 } from "./contract.js";
 
 export function serializeUser(user: User): PublicAuthUser {
@@ -38,7 +40,10 @@ export function serializeSession(session: Session): PublicAuthSession {
     expiresAt: session.expiresAt.toISOString(),
     idleExpiresAt: session.idleExpiresAt.toISOString(),
     ipAddress: session.ipAddress,
-    userAgent: session.userAgent
+    userAgent: session.userAgent,
+    authenticationMethods: [...session.authenticationMethods],
+    assuranceLevel: session.assuranceLevel,
+    authenticatedAt: session.authenticatedAt.toISOString()
   };
 }
 
@@ -47,8 +52,21 @@ export function serializeAuthSession(input: {
   session: Session;
 }): AuthSessionPayload {
   return {
+    status: "complete",
     user: serializeUser(input.user),
     session: serializeSession(input.session)
+  };
+}
+
+export function serializePasskey(passkey: PasskeyCredential): PublicPasskey {
+  return {
+    id: passkey.id,
+    name: passkey.name,
+    discoverable: passkey.discoverable,
+    deviceType: passkey.deviceType,
+    backedUp: passkey.backedUp,
+    createdAt: passkey.createdAt.toISOString(),
+    lastUsedAt: toIso(passkey.lastUsedAt)
   };
 }
 

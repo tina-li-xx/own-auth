@@ -19,6 +19,9 @@ export default {
       email,
       password: "secure-worker-password"
     });
+    if (signin.status !== "complete") {
+      throw new Error("Cloudflare compatibility user unexpectedly requires MFA");
+    }
     const current = await auth.getCurrentSession(signin.sessionToken);
 
     return Response.json({

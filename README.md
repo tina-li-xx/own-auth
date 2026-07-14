@@ -6,7 +6,7 @@ Framework-independent authentication for TypeScript. Backed by Postgres, control
 
 ## Quickstart
 
-Get your first login working in under five minutes. You need Node.js 18+ and a Postgres database.
+Get your first login working in under five minutes. You need Node.js 20+ and a Postgres database.
 
 ### Install
 
@@ -100,17 +100,21 @@ try {
 ### Sign In
 
 ```ts signin.ts
-const { user, session, sessionToken } = await auth.signInEmailPassword({
+const result = await auth.signInEmailPassword({
   email: "alice@example.com",
   password: "her-secret-password",
 });
 
-// sessionToken      -> send this to the client securely
-// session.userId    -> "usr_a1b2c3..."
-// session.expiresAt -> 2026-08-09T...
+if (result.status === "mfa_required") {
+  // Show one of result.methods and complete the second factor.
+} else {
+  // result.sessionToken      -> send this to the client securely
+  // result.session.userId    -> "usr_a1b2c3..."
+  // result.session.expiresAt -> 2026-08-09T...
+}
 ```
 
-The session token identifies the user on future requests. Send it to the client as a cookie, a header, or however your application handles tokens.
+For users without MFA, sign-in completes immediately and the session token identifies the user on future requests. Send it to the client as a cookie, a header, or however your application handles tokens. Users with MFA receive `status: "mfa_required"` and no session until they complete a second factor.
 
 If the credentials are wrong, `signInEmailPassword` throws `AuthError` with the code `invalid_credentials`. The error deliberately does not reveal whether the email or password was wrong.
 
@@ -180,7 +184,7 @@ import { auth } from "./auth";
 export const authHandler = createOwnAuthHandler(auth);
 ```
 
-The handler provides signup, signin, sessions, signout, password flows, magic links, email verification, SMS verification, and invitation acceptance under `/api/auth`. It sets secure `HttpOnly` session cookies, checks browser request origins, and returns one documented error format.
+The handler provides signup, signin, sessions, signout, password flows, magic links, email verification, SMS verification, invitation acceptance, OAuth, MFA, and passkeys under `/api/auth`. It sets secure `HttpOnly` cookies, checks browser request origins, and returns one documented error format.
 
 Browser TypeScript can use the matching client:
 
@@ -209,6 +213,10 @@ You have basic email/password auth. Here is where to go next:
 
 **Auth methods**: Add passwordless login with [magic links](https://own-auth.com/docs/magic-links), or phone-based login with [SMS verification](https://own-auth.com/docs/phone-login).
 
+**OAuth**: Add Google, GitHub, or Apple through [OAuth and external providers](https://own-auth.com/docs/external-providers).
+
+**MFA and passkeys**: Add [TOTP and recovery codes](https://own-auth.com/docs/mfa), or use [passkeys](https://own-auth.com/docs/passkeys) for sign-in and MFA.
+
 **Sessions**: Learn how [session management](https://own-auth.com/docs/sessions) works, including revoking sessions across devices.
 
 **Organisations**: Add [teams, roles, and invitations](https://own-auth.com/docs/organisations) for multi-tenant applications.
@@ -218,6 +226,8 @@ You have basic email/password auth. Here is where to go next:
 **Email delivery**: Set up your own email provider, or use [Own Auth Delivery](https://own-auth.com/docs/sending-email) to send magic links, verification emails, and invitations without configuring SMTP.
 
 **Security**: Read the [security model](https://own-auth.com/docs/security-model) to understand hashing, token expiry, rate limiting, and audit logs.
+
+**Extensions**: Add namespaced behavior through the public [plugin contract](https://own-auth.com/docs/plugins).
 
 **Framework guides**: See integration guides for [Next.js](https://own-auth.com/docs/frameworks/nextjs), [Express](https://own-auth.com/docs/frameworks/express), [Hono](https://own-auth.com/docs/frameworks/hono), and [Fastify](https://own-auth.com/docs/frameworks/fastify).
 
@@ -370,7 +380,11 @@ await auth.requestMagicLink({
 });
 
 // Verify
-const { user, sessionToken } = await auth.verifyMagicLink({ token });
+const result = await auth.verifyMagicLink({ token });
+
+if (result.status === "mfa_required") {
+  // Complete a configured second factor before creating a session.
+}
 ```
 
 The app reads the token from the link, verifies it, saves the returned session, and then opens `redirectUrl`.
@@ -388,20 +402,24 @@ Six-digit codes, hashed and rate-limited.
 await auth.requestSmsOtp({ phone: "+15551234567" });
 
 // Verify
-const { user, sessionToken } = await auth.verifySmsOtp({
+const result = await auth.verifySmsOtp({
   phone: "+15551234567",
   code: "123456",
 });
+
+if (result.status === "mfa_required") {
+  // Complete a configured second factor before creating a session.
+}
 ```
 
 New users are created automatically. Disable with `allowPhoneSignup: false`.
 
-## External Provider Sign In
+## OAuth And External Providers
 
-After your backend verifies an Apple or Google token, pass the verified provider identity to Own Auth.
+Own Auth includes Google, GitHub, and Apple redirect OAuth, popup OAuth, and Google One Tap. Native SDKs can still pass a provider identity that a trusted backend adapter has already verified.
 
 ```ts
-const { user, sessionToken } = await auth.signInWithVerifiedExternalIdentity({
+const result = await auth.signInWithVerifiedExternalIdentity({
   provider: "google",
   providerAccountId: googleUser.sub,
   email: googleUser.email,
@@ -409,9 +427,17 @@ const { user, sessionToken } = await auth.signInWithVerifiedExternalIdentity({
 });
 ```
 
-Own Auth links the provider account, creates or finds the user, creates the session, and writes the audit events.
+Own Auth resolves the linked provider account, applies the configured account-linking policy, and either creates a session or returns `mfa_required`.
 
 `signInWithVerifiedExternalIdentity` does not verify a provider token. Only call it after a trusted provider adapter has verified the token signature, issuer, audience, expiry, and nonce where required. See [External providers](./docs/external-providers.md).
+
+## Multi-Factor Authentication
+
+TOTP, one-time recovery codes, and passkeys can protect every first-factor flow. No session is created until MFA succeeds. See [Multi-Factor Authentication](./docs/mfa.md).
+
+## Passkeys
+
+Passkeys support usernameless or username-first primary sign-in and can complete pending MFA challenges. See [Passkeys](./docs/passkeys.md).
 
 ## Email Verification
 
@@ -596,11 +622,10 @@ createOwnAuth({
 
   // Security
   redirectAllowlist: [appLink],
-
-  // Development only. Exposes raw tokens in responses.
-  exposeRawTokens: false,
 });
 ```
+
+OAuth providers, the shared encryption key ring, TOTP, passkeys, and plugins are documented in the [Configuration guide](./docs/configuration.md).
 
 ## Database Setup
 
@@ -628,7 +653,10 @@ psql "$DATABASE_URL" -f own-auth.sql
 | **Users** | `createUser` `signUpEmailPassword` `signInEmailPassword` `disableUser` `enableUser` |
 | **Sessions** | `getCurrentSession` `requireCurrentSession` `signOut` `revokeSession` `revokeAllSessions` `listSessions` |
 | **Magic Links** | `requestMagicLink` `verifyMagicLink` |
-| **External Providers** | `signInWithVerifiedExternalIdentity` |
+| **OAuth** | `createOAuthAuthorizationUrl` `completeOAuthSignIn` `linkOAuthProvider` `unlinkOAuthProvider` `prepareGoogleOneTap` `signInWithGoogleOneTap` `signInWithVerifiedExternalIdentity` |
+| **Provider Credentials** | `getExternalAccessToken` `revokeExternalProviderAccess` |
+| **MFA** | `beginTotpEnrollment` `confirmTotpEnrollment` `completeMfaWithTotp` `completeMfaWithRecoveryCode` `regenerateRecoveryCodes` `disableTotp` |
+| **Passkeys** | `beginPasskeyRegistration` `completePasskeyRegistration` `beginPasskeyAuthentication` `completePasskeyAuthentication` `listPasskeys` `renamePasskey` `revokePasskey` |
 | **Email Verification** | `requestEmailVerification` `verifyEmail` |
 | **Passwords** | `requestPasswordReset` `resetPassword` `changePassword` |
 | **SMS OTP** | `requestSmsOtp` `verifySmsOtp` |
@@ -637,20 +665,28 @@ psql "$DATABASE_URL" -f own-auth.sql
 | **Members & Invites** | `getMember` `listMembers` `inviteMember` `acceptInvite` `revokeInvitation` `listInvitations` `changeMemberRole` `removeMember` |
 | **Permissions** | `checkPermission` `requirePermission` |
 | **Audit Logs** | `listAuditEvents` `cleanupAuditLogs` |
+| **Plugins** | `callPluginMethod` plus methods and endpoints declared by configured plugins |
 
 ## Security
 
 - New passwords are hashed with Argon2id; legacy scrypt hashes are upgraded after a successful sign in
-- Session tokens, magic links, reset tokens, SMS codes, and API keys hashed before storage
+- Session tokens, magic links, reset tokens, SMS codes, and API keys are hashed before storage
 - Single-use tokens with expiry
-- Rate limiting on all sensitive flows
+- Atomic OAuth state, One Tap nonce, MFA challenge, recovery-code, and WebAuthn challenge consumption
+- TOTP timestep and passkey counter replay protection
+- Purpose-separated AES-256-GCM encryption for TOTP and optional provider refresh credentials
+- Built-in rate limiting for password, email, SMS, OAuth, invitation, and API-key flows
 - Account enumeration protection on reset and verification endpoints
-- Redirect URL allowlist for magic links
+- Redirect URL allowlist for magic links and OAuth destinations
 
 ## Docs
 
 - [Installation](./docs/installation.md)
 - [Security Model](./docs/security-model.md)
+- [OAuth And External Providers](./docs/external-providers.md)
+- [Multi-Factor Authentication](./docs/mfa.md)
+- [Passkeys](./docs/passkeys.md)
+- [Plugins](./docs/plugins.md)
 - [Next.js](./docs/frameworks/nextjs.md)
 - [Express](./docs/frameworks/express.md)
 - [Hono](./docs/frameworks/hono.md)
@@ -672,7 +708,7 @@ pnpm build
 pnpm run release:publish
 ```
 
-This runs the release checks, publishes `own-auth`, then creates and pushes the matching Git tag, such as `v0.1.9`.
+This runs the release checks, publishes `own-auth`, then creates and pushes the matching Git tag.
 
 ## License
 

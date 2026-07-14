@@ -72,7 +72,10 @@ export function mapSession(row: Row): Session {
     ipAddress: nullableString(row.ip_address),
     userAgent: nullableString(row.user_agent),
     revokedAt: nullableDate(row.revoked_at),
-    revokeReason: nullableString(row.revoke_reason)
+    revokeReason: nullableString(row.revoke_reason),
+    authenticationMethods: stringArray(row.authentication_methods),
+    assuranceLevel: stringValue(row.assurance_level) as Session["assuranceLevel"],
+    authenticatedAt: dateValue(row.authenticated_at)
   };
 }
 

@@ -25,8 +25,14 @@ type Credentials = {
   name?: string;
 };
 
+type MfaBody = {
+  code: string;
+  method: "totp" | "recovery_code";
+};
+
 const app = Fastify({ logger: true });
 const sessionCookieName = "own_auth_session";
+const mfaCookieName = "own_auth_mfa";
 const sessionCookieOptions = {
   httpOnly: true,
   path: "/",
@@ -50,11 +56,47 @@ app.post<{ Body: Credentials }>("/auth/signup", async (request, reply) => {
 app.post<{ Body: Credentials }>("/auth/signin", async (request, reply) => {
   const result = await auth.signInEmailPassword(request.body);
 
+  if (result.status === "mfa_required") {
+    reply.setCookie(mfaCookieName, result.challengeToken, {
+      ...sessionCookieOptions,
+      expires: result.expiresAt,
+    });
+    return reply.code(202).send({
+      status: result.status,
+      methods: result.methods,
+      expiresAt: result.expiresAt,
+    });
+  }
+
   reply.setCookie(sessionCookieName, result.sessionToken, {
     ...sessionCookieOptions,
     expires: result.session.expiresAt,
   });
 
+  return reply.send({ user: result.user });
+});
+
+app.post<{ Body: MfaBody }>("/auth/mfa", async (request, reply) => {
+  const challengeToken = request.cookies[mfaCookieName];
+  if (!challengeToken) {
+    return reply.code(401).send({ error: "MFA challenge expired" });
+  }
+
+  const result = request.body.method === "recovery_code"
+    ? await auth.completeMfaWithRecoveryCode({
+        challengeToken,
+        code: request.body.code,
+      })
+    : await auth.completeMfaWithTotp({
+        challengeToken,
+        code: request.body.code,
+      });
+
+  reply.clearCookie(mfaCookieName, { path: sessionCookieOptions.path });
+  reply.setCookie(sessionCookieName, result.sessionToken, {
+    ...sessionCookieOptions,
+    expires: result.session.expiresAt,
+  });
   return reply.send({ user: result.user });
 });
 

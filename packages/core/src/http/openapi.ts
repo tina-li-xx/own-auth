@@ -3,7 +3,9 @@ import {
   type OwnAuthEndpointDefinition,
   type OwnAuthHttpErrorCode
 } from "./contract.js";
-import { defaultSessionCookieName } from "./cookies.js";
+import { OWN_AUTH_VERSION } from "../version.js";
+import { isRecord } from "../value-guards.js";
+import { defaultMfaCookieName, defaultSessionCookieName } from "./cookies.js";
 import { normalizeOwnAuthBasePath } from "./routing.js";
 
 export interface OwnAuthOpenApiOptions {
@@ -12,6 +14,7 @@ export interface OwnAuthOpenApiOptions {
   basePath?: string;
   serverUrl?: string;
   sessionCookieName?: string;
+  mfaCookieName?: string;
 }
 
 export interface OwnAuthOpenApiDocument {
@@ -30,7 +33,7 @@ export function createOwnAuthOpenApiDocument(
     openapi: "3.1.0",
     info: {
       title: options.title ?? "Own Auth HTTP API",
-      version: options.version ?? "1.0.0"
+      version: options.version ?? OWN_AUTH_VERSION
     },
     paths: {},
     components: {
@@ -43,6 +46,11 @@ export function createOwnAuthOpenApiDocument(
         bearerSession: {
           type: "http",
           scheme: "bearer"
+        },
+        mfaChallengeCookie: {
+          type: "apiKey",
+          in: "cookie",
+          name: options.mfaCookieName ?? defaultMfaCookieName
         }
       },
       schemas: {
@@ -89,25 +97,40 @@ function operationFor(endpoint: OwnAuthEndpointDefinition): Record<string, unkno
     "x-own-auth-errors": endpoint.errors
   };
 
-  if (endpoint.request) {
-    operation.requestBody = {
-      required: true,
-      content: {
-        "application/json": { schema: endpoint.request }
-      }
-    };
-  }
+  addRequestContract(operation, endpoint);
 
   if (endpoint.session === "required") {
     operation.security = [{ sessionCookie: [] }, { bearerSession: [] }];
   } else if (endpoint.session === "optional" || endpoint.session === "clear") {
     operation.security = [{}, { sessionCookie: [] }, { bearerSession: [] }];
   }
+  if (endpoint.id === "completeMfaTotp" || endpoint.id === "completeMfaRecovery") {
+    operation.security = [{ mfaChallengeCookie: [] }];
+  } else if (endpoint.id === "beginPasskeyAuthentication") {
+    operation.security = [{}, { mfaChallengeCookie: [] }];
+  }
 
   return operation;
 }
 
 function responsesFor(endpoint: OwnAuthEndpointDefinition): Record<string, unknown> {
+  if (endpoint.responseKind === "oauth_callback") {
+    const responses: Record<string, unknown> = {
+      "200": {
+        description: "Popup callback response",
+        content: { "text/html": { schema: { type: "string" } } }
+      },
+      "302": {
+        description: "Redirect callback response",
+        headers: { location: { schema: { type: "string", format: "uri" } } }
+      },
+      "400": errorOpenApiResponse("Invalid OAuth callback request"),
+      "429": errorOpenApiResponse("Rate limit exceeded"),
+      "500": errorOpenApiResponse("Internal error")
+    };
+    addBodyTransportErrors(responses, endpoint);
+    return responses;
+  }
   const responses: Record<string, unknown> = {
     "200": {
       description: "Successful response",
@@ -117,7 +140,7 @@ function responsesFor(endpoint: OwnAuthEndpointDefinition): Record<string, unkno
     }
   };
 
-  const statuses = new Set(endpoint.errors.map(statusForError));
+  const statuses = errorStatusesFor(endpoint.errors);
   statuses.add(400);
   statuses.add(403);
   statuses.add(500);
@@ -131,24 +154,119 @@ function responsesFor(endpoint: OwnAuthEndpointDefinition): Record<string, unkno
       }
     };
   }
+  addBodyTransportErrors(responses, endpoint);
 
   return responses;
 }
 
+function addBodyTransportErrors(
+  responses: Record<string, unknown>,
+  endpoint: OwnAuthEndpointDefinition
+): void {
+  if (!endpoint.request || (endpoint.requestTransport ?? "json") === "query") {
+    return;
+  }
+  responses["413"] = errorOpenApiResponse("Request body is too large");
+  responses["415"] = errorOpenApiResponse("Unsupported request content type");
+}
+
+function errorStatusesFor(errors: readonly OwnAuthHttpErrorCode[]): Set<number> {
+  return new Set(errors.flatMap(statusesForError));
+}
+
+function statusesForError(code: OwnAuthHttpErrorCode): number[] {
+  if (code === "oauth_provider_error") return [401, 502];
+  return [statusForError(code)];
+}
+
+function addRequestContract(
+  operation: Record<string, unknown>,
+  endpoint: OwnAuthEndpointDefinition
+): void {
+  if (!endpoint.request) return;
+  const transport = endpoint.requestTransport ?? "json";
+  if (transport === "query") {
+    operation.parameters = queryParametersForSchema(endpoint.request);
+    return;
+  }
+  const contentType = transport === "form"
+    ? "application/x-www-form-urlencoded"
+    : "application/json";
+  operation.requestBody = {
+    required: true,
+    content: { [contentType]: { schema: endpoint.request } }
+  };
+}
+
+export function queryParametersForSchema(
+  schema: Record<string, unknown>
+): Record<string, unknown>[] {
+  const properties = isRecord(schema.properties) ? schema.properties : {};
+  const required = new Set(Array.isArray(schema.required) ? schema.required : []);
+  return Object.entries(properties).map(([name, value]) => ({
+    name,
+    in: "query",
+    required: required.has(name),
+    schema: value
+  }));
+}
+
+function errorOpenApiResponse(description: string): Record<string, unknown> {
+  return {
+    description,
+    content: {
+      "application/json": { schema: { $ref: "#/components/schemas/OwnAuthError" } }
+    }
+  };
+}
+
 function statusForError(code: OwnAuthHttpErrorCode): number {
   if (code === "rate_limited" || code === "otp_attempts_exceeded") return 429;
-  if (code === "email_already_exists" || code === "invite_exists") return 409;
-  if (code === "permission_denied" || code === "disabled_user" || code === "csrf_failed") return 403;
-  if (code === "user_not_found" || code === "organisation_not_found") return 404;
+  if (
+    code === "email_already_exists" ||
+    code === "phone_already_exists" ||
+    code === "invite_exists" ||
+    code === "already_member" ||
+    code === "last_owner" ||
+    code === "account_linking_required" ||
+    code === "oauth_account_conflict" ||
+    code === "oauth_verified_email_required" ||
+    code === "authentication_method_required"
+  ) return 409;
+  if (
+    code === "permission_denied" ||
+    code === "disabled_user" ||
+    code === "csrf_failed" ||
+    code === "plugin_denied" ||
+    code.startsWith("plugin.")
+  ) return 403;
+  if (
+    code === "user_not_found" ||
+    code === "organisation_not_found" ||
+    code === "member_not_found" ||
+    code === "invitation_not_found" ||
+    code === "passkey_not_found" ||
+    code === "external_credential_missing"
+  ) return 404;
   if (
     code === "invalid_credentials" ||
     code === "invalid_session" ||
     code === "invalid_token" ||
     code === "expired_token" ||
     code === "token_already_used" ||
-    code === "invalid_otp"
+    code === "invalid_otp" ||
+    code === "mfa_challenge_invalid" ||
+    code === "mfa_code_invalid" ||
+    code === "mfa_timestep_reused" ||
+    code === "passkey_invalid"
   ) return 401;
-  if (code === "internal_error") return 500;
+  if (code === "plugin_hook_timeout") return 504;
+  if (
+    code === "internal_error" ||
+    code === "encryption_not_configured" ||
+    code === "encryption_key_unavailable" ||
+    code === "encrypted_data_invalid"
+  ) return 500;
   return 400;
 }
 
@@ -159,6 +277,8 @@ function errorDescription(status: number): string {
   if (status === 409) return "Resource conflict";
   if (status === 429) return "Rate limit exceeded";
   if (status === 500) return "Internal error";
+  if (status === 502) return "OAuth provider request failed";
+  if (status === 504) return "Plugin hook timed out";
   return "Invalid request";
 }
 

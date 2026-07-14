@@ -64,6 +64,41 @@ export const auth = createOwnAuth({
 
   // Redirect security
   redirectAllowlist: [appUrl],
+
+  // Google, GitHub, and Apple redirect OAuth
+  oauth: {
+    accountLinking: "explicit",
+    providers: {
+      google: {
+        clientId: process.env.GOOGLE_CLIENT_ID!,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+        redirectUri: "https://api.example.com/api/auth/oauth/google/callback",
+      },
+    },
+  },
+
+  // Shared encryption for TOTP and optional OAuth refresh credentials
+  encryption: {
+    current: {
+      id: "2026-01",
+      key: process.env.OWN_AUTH_ENCRYPTION_KEY!,
+    },
+  },
+
+  // Multi-factor authentication
+  mfa: {
+    issuer: "My App",
+    challengeTtlMs: 5 * 60 * 1000,
+    maxAttempts: 5,
+    recoveryCodeCount: 10,
+  },
+
+  // Passkeys and WebAuthn
+  passkeys: {
+    rpId: "example.com",
+    rpName: "My App",
+    origins: [appUrl],
+  },
 });
 ```
 
@@ -164,7 +199,7 @@ export const auth = createOwnAuth({
 
 ### `redirectAllowlist`
 
-An array of allowed magic-link redirect targets. The default contains `baseUrl`.
+An array of allowed magic-link and OAuth destination targets. The default contains `baseUrl`.
 
 Accepted targets:
 
@@ -174,6 +209,94 @@ Accepted targets:
 - Relative paths beginning with one slash, such as `/dashboard`
 
 HTTP is rejected outside localhost. Absolute targets must match an allowlisted protocol, hostname, port, and path prefix. For example, allowlisting `myapp://auth` accepts `myapp://auth/magic` but not `evilapp://auth/magic` or `myapp://other/magic`.
+
+### OAuth
+
+Configure Google, GitHub, and Apple under `oauth.providers`. Each provider needs a registered callback URL that points to the matching Own Auth HTTP-handler endpoint.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `oauth.accountLinking` | `"explicit" \| "verified_email"` | `"explicit"` | Require an existing user to deliberately link a provider, or automatically link a verified matching email. |
+| `oauth.providers.google` | `GoogleOAuthOptions` | none | Google redirect OAuth and Google One Tap. |
+| `oauth.providers.github` | `GitHubOAuthOptions` | none | GitHub redirect OAuth. |
+| `oauth.providers.apple` | `AppleOAuthOptions` | none | Apple redirect OAuth using `form_post`. |
+| `oauth.adapters` | `OAuthProviderAdapter[]` | `[]` | Additional trusted provider adapters. |
+| `oauth.fetch` | `typeof fetch` | `globalThis.fetch` | Optional fetch implementation for provider requests. |
+
+`offlineAccess: true` is opt-in per provider. It requires `encryption` and stores only the encrypted refresh credential. Access tokens remain server-only and are never persisted.
+
+See [OAuth And External Providers](/docs/external-providers) for provider-specific setup and account-linking behavior.
+
+### Encryption
+
+The shared encryption key ring protects TOTP secrets and optional OAuth refresh credentials.
+
+```ts
+const auth = createOwnAuth({
+  tokenPepper: process.env.OWN_AUTH_TOKEN_PEPPER,
+  encryption: {
+    current: {
+      id: "2026-01",
+      key: process.env.OWN_AUTH_ENCRYPTION_KEY!,
+    },
+    previous: [{
+      id: "2025-01",
+      key: process.env.OWN_AUTH_PREVIOUS_ENCRYPTION_KEY!,
+    }],
+  },
+});
+```
+
+Each key must be a 32-byte `Uint8Array` or a base64url string that decodes to exactly 32 bytes. Generate a base64url key with Node.js 20:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+`current` encrypts and decrypts. Entries in `previous` decrypt only. Records read with a previous key are re-encrypted with the current key. Removing a key while records still use it causes `encryption_key_unavailable`.
+
+Key IDs must be unique, non-empty, and at most 64 characters. Enabling `offlineAccess` without this encryption configuration fails when the auth instance is created.
+
+### Multi-factor authentication
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `mfa.issuer` | `string` | `Own Auth` | Issuer shown by authenticator applications. |
+| `mfa.challengeTtlMs` | `number` | `300000` (5 minutes) | How long a pending second-factor challenge remains valid. |
+| `mfa.maxAttempts` | `number` | `5` | Failed attempts allowed before a challenge is unusable. |
+| `mfa.recoveryCodeCount` | `number` | `10` | Recovery codes generated after TOTP confirmation. |
+
+The numeric MFA options must be positive integers. TOTP enrollment requires `encryption`. See [Multi-Factor Authentication](/docs/mfa).
+
+### Passkeys
+
+| Option | Type | Description |
+|---|---|---|
+| `passkeys.rpId` | `string` | WebAuthn relying-party domain. |
+| `passkeys.rpName` | `string` | Product name shown by the authenticator. |
+| `passkeys.origins` | `string[]` | Exact browser origins allowed to complete WebAuthn ceremonies. |
+| `passkeys.timeoutMs` | `number` | Registration and authentication timeout. Default: `60000` (60 seconds). |
+
+See [Passkeys](/docs/passkeys) for registration, primary sign-in, and MFA usage.
+
+### Plugins
+
+Install plugins on the auth instance through `plugins`. The default before-hook timeout is five seconds and can only be shortened:
+
+```ts
+const auth = createOwnAuth({
+  tokenPepper: process.env.OWN_AUTH_TOKEN_PEPPER,
+  plugins: [examplePlugin],
+  pluginRuntime: {
+    beforeHookTimeoutMs: 2_000,
+    onAfterHookError(error, details) {
+      reportPluginError(error, details);
+    },
+  },
+});
+```
+
+See [Plugins](/docs/plugins) for the public extension and migration contract.
 
 ## Validation
 

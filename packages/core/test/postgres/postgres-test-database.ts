@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import pg from "pg";
+import {
+  coreMigrationFiles,
+  readCoreMigration
+} from "../../src/core-migrations.js";
 import type { PostgresQueryable } from "../../src/postgres/postgres-types.js";
 
 const { Pool } = pg;
@@ -20,7 +23,13 @@ export interface PostgresTestDatabase {
   close(): Promise<void>;
 }
 
-export async function createPostgresTestDatabase(): Promise<PostgresTestDatabase> {
+export interface PostgresTestDatabaseOptions {
+  afterMigration?(file: (typeof coreMigrationFiles)[number], client: pg.PoolClient): Promise<void>;
+}
+
+export async function createPostgresTestDatabase(
+  options: PostgresTestDatabaseOptions = {}
+): Promise<PostgresTestDatabase> {
   const pool = new Pool({ connectionString: databaseUrl });
   const client = await pool.connect();
   const schema = `own_auth_test_${randomUUID().replace(/-/g, "")}`;
@@ -29,11 +38,10 @@ export async function createPostgresTestDatabase(): Promise<PostgresTestDatabase
     await client.query(`create schema ${quoteIdentifier(schema)}`);
     await setSearchPath(client, schema);
 
-    const migration = await readFile(
-      new URL("../../migrations/001_initial.sql", import.meta.url),
-      "utf8"
-    );
-    await client.query(migration);
+    for (const file of coreMigrationFiles) {
+      await client.query(await readCoreMigration(file));
+      await options.afterMigration?.(file, client);
+    }
   } catch (error) {
     client.release();
     await pool.end().catch(() => undefined);

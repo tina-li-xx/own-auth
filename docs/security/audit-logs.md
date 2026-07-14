@@ -7,11 +7,30 @@ Audit logs record who performed an authentication action, who or what it affecte
 | Event | Recorded when |
 |---|---|
 | `user.signed_up` | A user signs up or is created through an external provider. |
-| `user.signed_in` | A user signs in with a password, magic link, phone code, or external provider. |
+| `user.signed_in` | A user signs in with a password, magic link, phone code, OAuth provider, verified external identity, or passkey. |
 | `user.signed_out` | A user signs out with a session token. |
 | `user.disabled` | A user account is disabled. |
 | `user.re_enabled` | A disabled account is enabled again. |
-| `external_provider.linked` | An Apple or Google account is linked to a user. |
+| `external_provider.linked` | A provider account is linked to a user. |
+| `external_provider.unlinked` | A provider account is unlinked from a user. |
+| `oauth.started` | Redirect OAuth or Google One Tap starts. |
+| `oauth.signed_in` | OAuth or Google One Tap resolves an identity and completes its first factor. |
+| `oauth.failed` | An OAuth callback or One Tap verification fails. |
+| `oauth.credential_stored` | An encrypted provider refresh credential is stored. |
+| `oauth.credential_refreshed` | A provider access token is refreshed server-side. |
+| `oauth.credential_revoked` | Provider offline access is revoked and the local credential is deleted. |
+| `mfa.totp_enrollment_started` | TOTP enrollment starts. |
+| `mfa.totp_enabled` | A TOTP factor is confirmed and enabled. |
+| `mfa.totp_disabled` | A TOTP factor is disabled. |
+| `mfa.challenge_succeeded` | A pending MFA challenge is completed. |
+| `mfa.challenge_failed` | An MFA verification attempt fails. |
+| `mfa.recovery_code_used` | A recovery code is consumed. |
+| `mfa.recovery_codes_regenerated` | Recovery codes are replaced. |
+| `session.elevated` | MFA creates an `aal2` session. |
+| `passkey.registered` | A passkey is registered. |
+| `passkey.authenticated` | A passkey completes primary sign-in or MFA. |
+| `passkey.renamed` | A passkey is renamed. |
+| `passkey.revoked` | A passkey is revoked. |
 | `session.created` | A session is created. |
 | `session.revoked` | One session is revoked during signout or from a session list. |
 | `session.revoked_other` | Every session except the current one is revoked. |
@@ -36,6 +55,7 @@ Audit logs record who performed an authentication action, who or what it affecte
 | `invite.revoked` | An organisation invitation is revoked. |
 | `member.removed` | A member is removed from an organisation. |
 | `member.role_changed` | A member's organisation role is changed. |
+| `plugin.{plugin-id}.{event}` | A configured plugin writes one of its declared audit events. |
 
 Own Auth does not currently write events when sessions merely expire or when a rate limit rejects a request.
 
@@ -152,6 +172,11 @@ Metadata depends on the event:
 | `session.revoked_all` | `{ reason: "password_reset", revoked: 3 }` |
 | `user.signed_in` | `{ method: "magic_link" }` or `{ method: "phone_otp" }` when applicable |
 | `external_provider.linked` | `{ provider: "google" }` |
+| `oauth.started` | `{ provider: "google", intent: "sign_in", mode: "popup" }` |
+| `oauth.signed_in` | `{ provider: "google", mode: "redirect" }` |
+| `mfa.challenge_succeeded` | `{ method: "totp" }` |
+| `session.elevated` | `{ assuranceLevel: "aal2", method: "passkey" }` |
+| `passkey.registered` | `{ passkeyId: "psk_...", discoverable: true }` |
 | `sms_otp.sent` | `{ purpose: "phone_login", otpId: "otp_..." }` |
 | `api_key.created` | `{ name: "Production", scopes: ["reports:read"] }` |
 | `api_key.used` | `{ requiredScopes: ["reports:read"] }` |
@@ -160,6 +185,10 @@ Metadata depends on the event:
 | `member.invited` | `{ email: "bob@example.com", role: "member", invitationId: "inv_..." }` |
 | `member.role_changed` | `{ previousRole: "member", role: "owner", ownershipTransferredTo: null }` |
 | `member.removed` | `{ memberId: "mem_...", role: "owner", ownershipTransferredTo: "usr_..." }` |
+
+## Secret handling
+
+Audit events do not contain raw OAuth state, One Tap nonces, provider credentials, access or refresh tokens, session tokens, MFA challenge tokens, TOTP secrets, recovery codes, SMS codes, passkey responses, or WebAuthn challenges. Plugin after-hooks receive secret-redacted results, and plugin audit metadata must also exclude secrets.
 
 ## Retention
 

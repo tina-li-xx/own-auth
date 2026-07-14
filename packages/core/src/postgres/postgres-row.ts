@@ -11,6 +11,9 @@ export function expectOne(rows: Row[]): Row {
 }
 
 export function toPostgresValue(value: unknown): unknown {
+  if (ArrayBuffer.isView(value)) {
+    return value;
+  }
   if (value && typeof value === "object" && !(value instanceof Date) && !Array.isArray(value)) {
     return JSON.stringify(value);
   }
@@ -47,11 +50,32 @@ export function stringValue(value: unknown): string {
 }
 
 export function numberValue(value: unknown): number {
-  if (typeof value !== "number") {
+  const number = typeof value === "string" ? Number(value) : value;
+  if (typeof number !== "number" || !Number.isFinite(number)) {
     throw new Error("Expected Postgres number value");
   }
+  return number;
+}
 
+export function nullableNumber(value: unknown): number | null {
+  return value == null ? null : numberValue(value);
+}
+
+export function booleanValue(value: unknown): boolean {
+  if (typeof value !== "boolean") {
+    throw new Error("Expected Postgres boolean value");
+  }
   return value;
+}
+
+export function uint8ArrayValue(value: unknown): Uint8Array {
+  if (value instanceof Uint8Array) {
+    return new Uint8Array(value);
+  }
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+  throw new Error("Expected Postgres byte array value");
 }
 
 export function jsonRecord(value: unknown): JsonRecord {

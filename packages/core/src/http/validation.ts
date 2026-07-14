@@ -1,25 +1,26 @@
 import { AuthError } from "../errors.js";
+import { isRecord } from "../value-guards.js";
 import type { JsonSchema, OwnAuthEndpointDefinition } from "./contract.js";
 
 export function validateEndpointInput(
-  endpoint: OwnAuthEndpointDefinition,
+  endpoint: Pick<OwnAuthEndpointDefinition, "request">,
   value: unknown
 ): Record<string, unknown> | undefined {
   if (!endpoint.request) {
     return undefined;
   }
 
-  if (!matchesSchema(value, endpoint.request)) {
+  if (!matchesJsonSchema(value, endpoint.request)) {
     throw new AuthError("validation_error", "Invalid request body", 400);
   }
 
   return value as Record<string, unknown>;
 }
 
-function matchesSchema(value: unknown, schema: JsonSchema): boolean {
+export function matchesJsonSchema(value: unknown, schema: JsonSchema): boolean {
   const anyOf = schema.anyOf;
   if (Array.isArray(anyOf)) {
-    return anyOf.some((candidate) => isSchema(candidate) && matchesSchema(value, candidate));
+    return anyOf.some((candidate) => isSchema(candidate) && matchesJsonSchema(value, candidate));
   }
 
   if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
@@ -63,7 +64,7 @@ function matchesArray(value: unknown, schema: JsonSchema): boolean {
     return true;
   }
 
-  return value.every((item) => matchesSchema(item, schema.items as JsonSchema));
+  return value.every((item) => matchesJsonSchema(item, schema.items as JsonSchema));
 }
 
 function matchesObject(value: unknown, schema: JsonSchema): boolean {
@@ -91,14 +92,10 @@ function matchesObject(value: unknown, schema: JsonSchema): boolean {
 
   return Object.entries(value).every(([key, child]) => {
     const childSchema = properties[key];
-    return !childSchema || (isSchema(childSchema) && matchesSchema(child, childSchema));
+    return !childSchema || (isSchema(childSchema) && matchesJsonSchema(child, childSchema));
   });
 }
 
 function isSchema(value: unknown): value is JsonSchema {
   return isRecord(value);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

@@ -4,7 +4,7 @@ Sessions are how users stay signed in between requests. When a user signs in, Ow
 
 ## How sessions work
 
-1. The user signs in with a password, magic link, phone code, or external provider.
+1. The user signs in with a password, magic link, phone code, OAuth provider, verified external identity, or passkey.
 2. Own Auth creates a row in `own_auth_sessions` containing a hashed token, the user ID, activity timestamps, and expiry timestamps.
 3. The raw session token is returned to the application so it can be sent to the client.
 4. On later requests, the client sends the token back and the backend calls `getCurrentSession`.
@@ -16,13 +16,36 @@ The raw token is never stored in the database. Only its hash is stored, so readi
 Signup and signin methods create a session automatically:
 
 ```ts
-const { user, session, sessionToken } = await auth.signInEmailPassword({
+const result = await auth.signInEmailPassword({
   email: "alice@example.com",
   password: "her-secret-password",
 });
+
+if (result.status !== "complete") {
+  // Complete MFA before storing a session token.
+  return;
+}
+
+const { user, session, sessionToken } = result;
 ```
 
-`sessionToken` is the raw token. `session` is the stored session record, and `user` is the signed-in user.
+`sessionToken` is the raw token. `session` is the stored session record, and `user` is the signed-in user. Sign-in methods return `mfa_required` instead when another factor must be completed first.
+
+## Authentication assurance
+
+Every session records:
+
+- `authenticationMethods`: the first factor and any second factor used
+- `assuranceLevel`: `aal1` for one completed factor or `aal2` for MFA and user-verified passkeys
+- `authenticatedAt`: when the complete authentication ceremony finished
+
+```ts
+session.authenticationMethods; // ["password", "totp"]
+session.assuranceLevel; // "aal2"
+session.authenticatedAt; // Date
+```
+
+Sessions created before the MFA migration use `authenticationMethods: ["legacy"]` and `assuranceLevel: "aal1"`.
 
 ## Read the current session
 
@@ -121,7 +144,7 @@ This revokes every session for the signed-in user that has not already been revo
 Pass request metadata when signing in or signing up:
 
 ```ts
-const { user, session, sessionToken } = await auth.signInEmailPassword({
+const result = await auth.signInEmailPassword({
   email,
   password,
   request: {
@@ -129,6 +152,13 @@ const { user, session, sessionToken } = await auth.signInEmailPassword({
     userAgent: req.headers["user-agent"],
   },
 });
+
+if (result.status !== "complete") {
+  // Complete MFA first.
+  return;
+}
+
+const { user, session, sessionToken } = result;
 ```
 
 Own Auth stores the IP address and user agent with the session. Applications can use them to help users recognise their active devices.

@@ -7,6 +7,7 @@ export {
 export type {
   AuthSessionPayload,
   DeliveryPayload,
+  MfaRequiredPayload,
   JsonSchema,
   OwnAuthEndpointDefinition,
   OwnAuthEndpointId,
@@ -18,15 +19,22 @@ export type {
   PublicAuthSession,
   PublicAuthUser,
   PublicOrganisation,
-  PublicOrganisationMember
+  PublicOrganisationMember,
+  PublicPasskey,
+  SignInPayload
 } from "./contract.js";
 export {
+  clearMfaChallengeCookie,
   clearSessionCookie,
+  createMfaChallengeCookie,
   createSessionCookie,
+  defaultMfaCookieName,
   defaultSessionCookieName,
+  readMfaChallengeToken,
   readSessionToken
 } from "./cookies.js";
 export type {
+  OwnAuthMfaCookieOptions,
   OwnAuthSessionCookieOptions,
   SameSitePolicy
 } from "./cookies.js";

@@ -24,46 +24,84 @@ import * as email from "./auth-engine-email.js";
 import * as external from "./auth-engine-external.js";
 import * as invitations from "./auth-engine-invitations.js";
 import * as members from "./auth-engine-members.js";
+import * as mfa from "./auth-engine-mfa.js";
 import * as organisationAccess from "./auth-engine-organisation-access.js";
 import * as organisations from "./auth-engine-organisations.js";
+import * as oauth from "./auth-engine-oauth.js";
+import * as oauthCredentials from "./auth-engine-oauth-credentials.js";
+import * as passkeys from "./auth-engine-passkeys.js";
 import * as sessions from "./auth-engine-sessions.js";
 import * as sms from "./auth-engine-sms.js";
 import * as users from "./auth-engine-users.js";
+import { OwnAuthPluginRuntime, type RegisteredPluginEndpoint } from "./plugin-runtime.js";
+import type {
+  CallOwnAuthPluginMethodOptions,
+  OwnAuthPluginDefinition
+} from "./plugin-types.js";
 import type {
   AcceptInviteInput,
   AcceptInviteResult,
+  BeginTotpEnrollmentInput,
+  BeginTotpEnrollmentResult,
+  BeginPasskeyAuthenticationInput,
+  BeginPasskeyAuthenticationResult,
+  BeginPasskeyRegistrationInput,
+  BeginPasskeyRegistrationResult,
   ChangeMemberRoleInput,
+  CompleteOAuthSignInInput,
+  CompleteMfaInput,
+  CompletePasskeyAuthenticationInput,
+  CompletePasskeyRegistrationInput,
+  ConfirmTotpEnrollmentInput,
+  ConfirmTotpEnrollmentResult,
   ChangePasswordInput,
   CleanupAuditLogsInput,
   CreateApiKeyInput,
   CreatedApiKey,
   CreateOrganisationInput,
+  CreateOAuthAuthorizationUrlInput,
   CreateUserInput,
   DeleteOrganisationInput,
+  DisableTotpInput,
   DeliveryResult,
+  ExternalAccessTokenResult,
   GetOrganisationInput,
+  GetExternalAccessTokenInput,
   GetMemberInput,
   InvitationResult,
+  GoogleOneTapInput,
   InviteMemberInput,
   ListApiKeysInput,
+  ListPasskeysInput,
   ListAuditEventsInput,
   ListInvitationsInput,
   ListMembersInput,
   ListOrganisationsInput,
   ListSessionsInput,
   OwnAuthOptions,
+  OAuthAuthorizationResult,
+  OAuthCompletionResult,
+  PrepareGoogleOneTapInput,
+  PreparedGoogleOneTap,
+  RegenerateRecoveryCodesInput,
+  RenamePasskeyInput,
   RemoveMemberInput,
   RequestEmailVerificationInput,
   RequestSmsOtpInput,
   RequestTokenInput,
   ResetPasswordInput,
   RevokeAllSessionsInput,
+  RevokeExternalProviderAccessInput,
+  RevokePasskeyInput,
   RevokeApiKeyInput,
   RevokeInvitationInput,
   RevokeSessionInput,
   SessionResult,
+  SignInResult,
   SignInEmailPasswordInput,
   VerifiedExternalIdentityInput,
+  LinkOAuthProviderInput,
+  UnlinkOAuthProviderInput,
   SignUpEmailPasswordInput,
   SmsOtpVerificationResult,
   UpdateOrganisationInput,
@@ -71,6 +109,7 @@ import type {
   VerifySmsOtpInput,
   VerifyTokenInput
 } from "./auth-engine-types.js";
+import { isRecord } from "./value-guards.js";
 
 export type { OwnAuthOptions } from "./auth-engine-types.js";
 
@@ -78,106 +117,311 @@ export class OwnAuth {
   readonly storage: AuthStorage;
   readonly rateLimitStore: RateLimitStore;
   private readonly ctx: AuthEngineContext;
+  private readonly pluginRuntime: OwnAuthPluginRuntime;
 
   constructor(options: OwnAuthOptions = {}) {
     this.ctx = createAuthEngineContext(options);
     this.storage = this.ctx.storage;
     this.rateLimitStore = this.ctx.rateLimitStore;
+    this.pluginRuntime = new OwnAuthPluginRuntime(
+      options.plugins ?? [],
+      this.storage,
+      this.rateLimitStore,
+      () => this,
+      options.pluginRuntime
+    );
   }
 
-  createUser(input: CreateUserInput): Promise<User> { return users.createUser(this.ctx, input); }
-  signUpEmailPassword(input: SignUpEmailPasswordInput): Promise<SessionResult> { return users.signUpEmailPassword(this.ctx, input); }
-  signInEmailPassword(input: SignInEmailPasswordInput): Promise<SessionResult> { return users.signInEmailPassword(this.ctx, input); }
-  signInWithVerifiedExternalIdentity(input: VerifiedExternalIdentityInput): Promise<SessionResult> {
-    return external.signInWithVerifiedExternalIdentity(this.ctx, input);
+  get plugins(): readonly OwnAuthPluginDefinition[] { return this.pluginRuntime.definitions; }
+  get pluginContractFingerprint(): string { return this.pluginRuntime.fingerprint; }
+  /** @internal Used by createOwnAuthHandler. */
+  findPluginEndpoint(path: string, method: string): RegisteredPluginEndpoint | null {
+    return this.pluginRuntime.findEndpoint(path, method);
   }
-  changePassword(input: ChangePasswordInput): Promise<User> { return users.changePassword(this.ctx, input); }
-  getCurrentSession(sessionToken: string): Promise<CurrentSession | null> { return sessions.getCurrentSession(this.ctx, sessionToken); }
-  requireCurrentSession(sessionToken: string): Promise<CurrentSession> { return sessions.requireCurrentSession(this.ctx, sessionToken); }
-  signOut(sessionToken: string, context?: RequestContext): Promise<void> { return sessions.signOut(this.ctx, sessionToken, context); }
-  revokeSession(input: RevokeSessionInput): Promise<Session> { return sessions.revokeSession(this.ctx, input); }
+  /** @internal Used by createOwnAuthHandler. */
+  getPluginEndpointMethods(path: string): string[] {
+    return this.pluginRuntime.methodsForPath(path);
+  }
+  /** @internal Used by createOwnAuthHandler. */
+  executePluginEndpoint(
+    endpoint: RegisteredPluginEndpoint,
+    input: unknown,
+    sessionToken: string | null,
+    request: RequestContext
+  ): Promise<unknown> {
+    return this.pluginRuntime.executeEndpoint(endpoint, input, sessionToken, request);
+  }
+  callPluginMethod(
+    pluginId: string,
+    method: string,
+    input: unknown,
+    options?: CallOwnAuthPluginMethodOptions
+  ): Promise<unknown> {
+    return this.pluginRuntime.callServerMethod(pluginId, method, input, options);
+  }
+  private executeCore<Result>(
+    operation: string,
+    input: unknown,
+    work: () => Promise<Result>
+  ): Promise<Result> {
+    return this.pluginRuntime.runCoreOperation(
+      operation,
+      input,
+      requestContextFrom(input),
+      work
+    );
+  }
+
+  createUser(input: CreateUserInput): Promise<User> {
+    return this.executeCore("createUser", input, () => users.createUser(this.ctx, input));
+  }
+  signUpEmailPassword(input: SignUpEmailPasswordInput): Promise<SessionResult> {
+    return this.executeCore("signUpEmailPassword", input, () =>
+      users.signUpEmailPassword(this.ctx, input));
+  }
+  signInEmailPassword(input: SignInEmailPasswordInput): Promise<SignInResult> {
+    return this.executeCore("signInEmailPassword", input, () =>
+      users.signInEmailPassword(this.ctx, input));
+  }
+  signInWithVerifiedExternalIdentity(input: VerifiedExternalIdentityInput): Promise<SignInResult> {
+    return this.executeCore("signInWithVerifiedExternalIdentity", input, () =>
+      external.signInWithVerifiedExternalIdentity(this.ctx, input));
+  }
+  linkOAuthProvider(input: LinkOAuthProviderInput) {
+    return this.executeCore("linkOAuthProvider", input, () =>
+      external.linkOAuthProvider(this.ctx, input));
+  }
+  unlinkOAuthProvider(input: UnlinkOAuthProviderInput): Promise<void> {
+    return this.executeCore("unlinkOAuthProvider", input, () =>
+      external.unlinkOAuthProvider(this.ctx, input));
+  }
+  createOAuthAuthorizationUrl(input: CreateOAuthAuthorizationUrlInput): Promise<OAuthAuthorizationResult> {
+    return this.executeCore("createOAuthAuthorizationUrl", input, () =>
+      oauth.createOAuthAuthorizationUrl(this.ctx, input));
+  }
+  completeOAuthSignIn(input: CompleteOAuthSignInInput): Promise<OAuthCompletionResult> {
+    return this.executeCore("completeOAuthSignIn", input, () =>
+      oauth.completeOAuthSignIn(this.ctx, input));
+  }
+  prepareGoogleOneTap(input?: PrepareGoogleOneTapInput): Promise<PreparedGoogleOneTap> {
+    return this.executeCore("prepareGoogleOneTap", input, () =>
+      oauth.prepareGoogleOneTap(this.ctx, input));
+  }
+  signInWithGoogleOneTap(input: GoogleOneTapInput): Promise<OAuthCompletionResult> {
+    return this.executeCore("signInWithGoogleOneTap", input, () =>
+      oauth.signInWithGoogleOneTap(this.ctx, input));
+  }
+  beginTotpEnrollment(input: BeginTotpEnrollmentInput): Promise<BeginTotpEnrollmentResult> {
+    return this.executeCore("beginTotpEnrollment", input, () =>
+      mfa.beginTotpEnrollment(this.ctx, input));
+  }
+  confirmTotpEnrollment(input: ConfirmTotpEnrollmentInput): Promise<ConfirmTotpEnrollmentResult> {
+    return this.executeCore("confirmTotpEnrollment", input, () =>
+      mfa.confirmTotpEnrollment(this.ctx, input));
+  }
+  disableTotp(input: DisableTotpInput): Promise<void> {
+    return this.executeCore("disableTotp", input, () => mfa.disableTotp(this.ctx, input));
+  }
+  completeMfaWithTotp(input: CompleteMfaInput): Promise<SessionResult> {
+    return this.executeCore("completeMfaWithTotp", input, () =>
+      mfa.completeMfaWithTotp(this.ctx, input));
+  }
+  completeMfaWithRecoveryCode(input: CompleteMfaInput): Promise<SessionResult> {
+    return this.executeCore("completeMfaWithRecoveryCode", input, () =>
+      mfa.completeMfaWithRecoveryCode(this.ctx, input));
+  }
+  regenerateRecoveryCodes(input: RegenerateRecoveryCodesInput): Promise<string[]> {
+    return this.executeCore("regenerateRecoveryCodes", input, () =>
+      mfa.regenerateRecoveryCodes(this.ctx, input));
+  }
+  getExternalAccessToken(input: GetExternalAccessTokenInput): Promise<ExternalAccessTokenResult> {
+    return this.executeCore("getExternalAccessToken", input, () =>
+      oauthCredentials.getExternalAccessToken(this.ctx, input));
+  }
+  revokeExternalProviderAccess(input: RevokeExternalProviderAccessInput): Promise<void> {
+    return this.executeCore("revokeExternalProviderAccess", input, () =>
+      oauthCredentials.revokeExternalProviderAccess(this.ctx, input));
+  }
+  beginPasskeyRegistration(input: BeginPasskeyRegistrationInput): Promise<BeginPasskeyRegistrationResult> {
+    return this.executeCore("beginPasskeyRegistration", input, () =>
+      passkeys.beginPasskeyRegistration(this.ctx, input));
+  }
+  completePasskeyRegistration(input: CompletePasskeyRegistrationInput) {
+    return this.executeCore("completePasskeyRegistration", input, () =>
+      passkeys.completePasskeyRegistration(this.ctx, input));
+  }
+  beginPasskeyAuthentication(input?: BeginPasskeyAuthenticationInput): Promise<BeginPasskeyAuthenticationResult> {
+    return this.executeCore("beginPasskeyAuthentication", input, () =>
+      passkeys.beginPasskeyAuthentication(this.ctx, input));
+  }
+  completePasskeyAuthentication(input: CompletePasskeyAuthenticationInput): Promise<SessionResult> {
+    return this.executeCore("completePasskeyAuthentication", input, () =>
+      passkeys.completePasskeyAuthentication(this.ctx, input));
+  }
+  listPasskeys(input: ListPasskeysInput) {
+    return this.executeCore("listPasskeys", input, () => passkeys.listPasskeys(this.ctx, input));
+  }
+  renamePasskey(input: RenamePasskeyInput) {
+    return this.executeCore("renamePasskey", input, () => passkeys.renamePasskey(this.ctx, input));
+  }
+  revokePasskey(input: RevokePasskeyInput): Promise<void> {
+    return this.executeCore("revokePasskey", input, () => passkeys.revokePasskey(this.ctx, input));
+  }
+  changePassword(input: ChangePasswordInput): Promise<User> {
+    return this.executeCore("changePassword", input, () => users.changePassword(this.ctx, input));
+  }
+  getCurrentSession(sessionToken: string): Promise<CurrentSession | null> {
+    const input = { sessionToken };
+    return this.executeCore("getCurrentSession", input, () =>
+      sessions.getCurrentSession(this.ctx, sessionToken));
+  }
+  requireCurrentSession(sessionToken: string): Promise<CurrentSession> {
+    const input = { sessionToken };
+    return this.executeCore("requireCurrentSession", input, () =>
+      sessions.requireCurrentSession(this.ctx, sessionToken));
+  }
+  signOut(sessionToken: string, context?: RequestContext): Promise<void> {
+    const input = { sessionToken, request: context };
+    return this.executeCore("signOut", input, () => sessions.signOut(this.ctx, sessionToken, context));
+  }
+  revokeSession(input: RevokeSessionInput): Promise<Session> {
+    return this.executeCore("revokeSession", input, () => sessions.revokeSession(this.ctx, input));
+  }
   revokeAllSessions(input: RevokeAllSessionsInput): Promise<number> {
-    return sessions.revokeAllSessions(this.ctx, input);
+    return this.executeCore("revokeAllSessions", input, () =>
+      sessions.revokeAllSessions(this.ctx, input));
   }
-  requestMagicLink(input: RequestTokenInput): Promise<DeliveryResult> { return email.requestMagicLink(this.ctx, input); }
-  verifyMagicLink(input: VerifyTokenInput): Promise<SessionResult> { return email.verifyMagicLink(this.ctx, input); }
+  requestMagicLink(input: RequestTokenInput): Promise<DeliveryResult> {
+    return this.executeCore("requestMagicLink", input, () => email.requestMagicLink(this.ctx, input));
+  }
+  verifyMagicLink(input: VerifyTokenInput): Promise<SignInResult> {
+    return this.executeCore("verifyMagicLink", input, () => email.verifyMagicLink(this.ctx, input));
+  }
   requestEmailVerification(input: RequestEmailVerificationInput): Promise<DeliveryResult> {
-    return email.requestEmailVerification(this.ctx, input);
+    return this.executeCore("requestEmailVerification", input, () =>
+      email.requestEmailVerification(this.ctx, input));
   }
-  verifyEmail(input: VerifyTokenInput): Promise<User> { return email.verifyEmail(this.ctx, input); }
+  verifyEmail(input: VerifyTokenInput): Promise<User> {
+    return this.executeCore("verifyEmail", input, () => email.verifyEmail(this.ctx, input));
+  }
   requestPasswordReset(input: RequestEmailVerificationInput): Promise<DeliveryResult> {
-    return email.requestPasswordReset(this.ctx, input);
+    return this.executeCore("requestPasswordReset", input, () =>
+      email.requestPasswordReset(this.ctx, input));
   }
-  resetPassword(input: ResetPasswordInput): Promise<User> { return email.resetPassword(this.ctx, input); }
-  requestSmsOtp(input: RequestSmsOtpInput): Promise<DeliveryResult> { return sms.requestSmsOtp(this.ctx, input); }
-  verifySmsOtp(input: VerifySmsOtpInput): Promise<SmsOtpVerificationResult> { return sms.verifySmsOtp(this.ctx, input); }
-  createApiKey(input: CreateApiKeyInput): Promise<CreatedApiKey> { return apiKeys.createApiKey(this.ctx, input); }
-  verifyApiKey(rawKey: string, requiredScopes: string[] = []): Promise<VerifiedApiKey> { return apiKeys.verifyApiKey(this.ctx, rawKey, requiredScopes); }
+  resetPassword(input: ResetPasswordInput): Promise<User> {
+    return this.executeCore("resetPassword", input, () => email.resetPassword(this.ctx, input));
+  }
+  requestSmsOtp(input: RequestSmsOtpInput): Promise<DeliveryResult> {
+    return this.executeCore("requestSmsOtp", input, () => sms.requestSmsOtp(this.ctx, input));
+  }
+  verifySmsOtp(input: VerifySmsOtpInput): Promise<SmsOtpVerificationResult> {
+    return this.executeCore("verifySmsOtp", input, () => sms.verifySmsOtp(this.ctx, input));
+  }
+  createApiKey(input: CreateApiKeyInput): Promise<CreatedApiKey> {
+    return this.executeCore("createApiKey", input, () => apiKeys.createApiKey(this.ctx, input));
+  }
+  verifyApiKey(rawKey: string, requiredScopes: string[] = []): Promise<VerifiedApiKey> {
+    const input = { rawKey, requiredScopes };
+    return this.executeCore("verifyApiKey", input, () =>
+      apiKeys.verifyApiKey(this.ctx, rawKey, requiredScopes));
+  }
   revokeApiKey(input: RevokeApiKeyInput): Promise<ApiKeyDetails> {
-    return apiKeys.revokeApiKey(this.ctx, input);
+    return this.executeCore("revokeApiKey", input, () => apiKeys.revokeApiKey(this.ctx, input));
   }
   createOrganisation(input: CreateOrganisationInput): Promise<{
     organisation: Organisation;
     ownerMembership: OrganisationMember;
   }> {
-    return organisations.createOrganisation(this.ctx, input);
+    return this.executeCore("createOrganisation", input, () =>
+      organisations.createOrganisation(this.ctx, input));
   }
   getOrganisation(input: GetOrganisationInput): Promise<Organisation> {
-    return organisations.getOrganisation(this.ctx, input);
+    return this.executeCore("getOrganisation", input, () =>
+      organisations.getOrganisation(this.ctx, input));
   }
   deleteOrganisation(input: DeleteOrganisationInput): Promise<Organisation> {
-    return organisations.deleteOrganisation(this.ctx, input);
+    return this.executeCore("deleteOrganisation", input, () =>
+      organisations.deleteOrganisation(this.ctx, input));
   }
   updateOrganisation(organisationId: string, input: UpdateOrganisationInput): Promise<Organisation> {
-    return organisations.updateOrganisation(this.ctx, organisationId, input);
+    const operationInput = { organisationId, ...input };
+    return this.executeCore("updateOrganisation", operationInput, () =>
+      organisations.updateOrganisation(this.ctx, organisationId, input));
   }
-  inviteMember(input: InviteMemberInput): Promise<InvitationResult> { return invitations.inviteMember(this.ctx, input); }
+  inviteMember(input: InviteMemberInput): Promise<InvitationResult> {
+    return this.executeCore("inviteMember", input, () => invitations.inviteMember(this.ctx, input));
+  }
   acceptInvite(input: AcceptInviteInput): Promise<AcceptInviteResult> {
-    return invitations.acceptInvite(this.ctx, input);
+    return this.executeCore("acceptInvite", input, () => invitations.acceptInvite(this.ctx, input));
   }
-  changeMemberRole(input: ChangeMemberRoleInput): Promise<OrganisationMember> { return members.changeMemberRole(this.ctx, input); }
-  removeMember(input: RemoveMemberInput): Promise<OrganisationMember> { return members.removeMember(this.ctx, input); }
+  changeMemberRole(input: ChangeMemberRoleInput): Promise<OrganisationMember> {
+    return this.executeCore("changeMemberRole", input, () => members.changeMemberRole(this.ctx, input));
+  }
+  removeMember(input: RemoveMemberInput): Promise<OrganisationMember> {
+    return this.executeCore("removeMember", input, () => members.removeMember(this.ctx, input));
+  }
   getMember(input: GetMemberInput): Promise<OrganisationMemberDetails> {
-    return members.getMember(this.ctx, input);
+    return this.executeCore("getMember", input, () => members.getMember(this.ctx, input));
   }
   listMembers(input: ListMembersInput): Promise<OrganisationMemberDetails[]> {
-    return members.listMembers(this.ctx, input);
+    return this.executeCore("listMembers", input, () => members.listMembers(this.ctx, input));
   }
   checkPermission(
     organisationId: string,
     userId: string,
     permission: Permission
   ): Promise<boolean> {
-    return organisationAccess.checkPermission(this.ctx, organisationId, userId, permission);
+    const input = { organisationId, userId, permission };
+    return this.executeCore("checkPermission", input, () =>
+      organisationAccess.checkPermission(this.ctx, organisationId, userId, permission));
   }
   requirePermission(
     organisationId: string,
     userId: string,
     permission: Permission
   ): Promise<OrganisationMember> {
-    return organisationAccess.requirePermission(this.ctx, organisationId, userId, permission);
+    const input = { organisationId, userId, permission };
+    return this.executeCore("requirePermission", input, () =>
+      organisationAccess.requirePermission(this.ctx, organisationId, userId, permission));
   }
-  disableUser(input: UserStatusInput): Promise<User> { return users.disableUser(this.ctx, input); }
-  enableUser(input: UserStatusInput): Promise<User> { return users.enableUser(this.ctx, input); }
-  revokeInvitation(input: RevokeInvitationInput): Promise<Invitation> { return invitations.revokeInvitation(this.ctx, input); }
+  disableUser(input: UserStatusInput): Promise<User> {
+    return this.executeCore("disableUser", input, () => users.disableUser(this.ctx, input));
+  }
+  enableUser(input: UserStatusInput): Promise<User> {
+    return this.executeCore("enableUser", input, () => users.enableUser(this.ctx, input));
+  }
+  revokeInvitation(input: RevokeInvitationInput): Promise<Invitation> {
+    return this.executeCore("revokeInvitation", input, () =>
+      invitations.revokeInvitation(this.ctx, input));
+  }
   listSessions(input: ListSessionsInput): Promise<Session[]> {
-    return sessions.listSessions(this.ctx, input);
+    return this.executeCore("listSessions", input, () => sessions.listSessions(this.ctx, input));
   }
   listApiKeys(input: ListApiKeysInput): Promise<ApiKeyDetails[]> {
-    return apiKeys.listApiKeys(this.ctx, input);
+    return this.executeCore("listApiKeys", input, () => apiKeys.listApiKeys(this.ctx, input));
   }
   listOrganisations(input: ListOrganisationsInput): Promise<Organisation[]> {
-    return organisations.listOrganisations(this.ctx, input.actorUserId);
+    return this.executeCore("listOrganisations", input, () =>
+      organisations.listOrganisations(this.ctx, input.actorUserId));
   }
   listInvitations(input: ListInvitationsInput): Promise<Invitation[]> {
-    return invitations.listInvitations(this.ctx, input);
+    return this.executeCore("listInvitations", input, () =>
+      invitations.listInvitations(this.ctx, input));
   }
   listAuditEvents(input: ListAuditEventsInput): Promise<AuditEvent[]> {
-    return auditEvents.listAuditEvents(this.ctx, input);
+    return this.executeCore("listAuditEvents", input, () =>
+      auditEvents.listAuditEvents(this.ctx, input));
   }
   cleanupAuditLogs(input: CleanupAuditLogsInput): Promise<number> {
-    return auditEvents.cleanupAuditLogs(this.ctx, input);
+    return this.executeCore("cleanupAuditLogs", input, () =>
+      auditEvents.cleanupAuditLogs(this.ctx, input));
   }
+}
+
+function requestContextFrom(input: unknown): RequestContext {
+  return isRecord(input) && isRecord(input.request)
+    ? input.request as RequestContext
+    : {};
 }
 
 export function createOwnAuth(options?: OwnAuthOptions): OwnAuth {

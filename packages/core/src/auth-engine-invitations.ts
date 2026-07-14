@@ -1,7 +1,7 @@
 import { AuthError } from "./errors.js";
 import { createId } from "./crypto.js";
 import { isExpired, normalizeEmail } from "./normalise.js";
-import type { Invitation, OrganisationMember } from "./types.js";
+import type { Invitation } from "./types.js";
 import {
   hour,
   type AcceptInviteInput,

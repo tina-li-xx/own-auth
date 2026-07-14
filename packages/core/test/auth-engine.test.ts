@@ -262,19 +262,25 @@ describe("OwnAuth core", () => {
     });
   });
 
-  it("links a verified external provider identity to an existing user email", async () => {
+  it("links a verified external provider identity after explicit authorization", async () => {
     const { auth } = createTestAuth();
     const signup = await auth.signUpEmailPassword({
       email: "linked@example.com",
       password: "correct-horse"
     });
 
-    const signin = await auth.signInWithVerifiedExternalIdentity({
+    const identity = {
       provider: "apple",
       providerAccountId: "apple-user-1",
       email: "LINKED@example.com",
       emailVerified: true
+    } as const;
+
+    await expect(auth.signInWithVerifiedExternalIdentity(identity)).rejects.toMatchObject({
+      code: "account_linking_required"
     });
+    await auth.linkOAuthProvider({ ...identity, actorUserId: signup.user.id });
+    const signin = await auth.signInWithVerifiedExternalIdentity(identity);
 
     expect(signin.user.id).toBe(signup.user.id);
     const account = await auth.storage.getAccountByProvider("apple", "apple-user-1");

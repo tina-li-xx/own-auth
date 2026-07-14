@@ -13,7 +13,7 @@
         },
         {
           "title": "Quickstart",
-          "description": "Get your first login working in under five minutes. You need Node.js 18+ and a Postgres database.",
+          "description": "Get your first login working in under five minutes. You need Node.js 20+ and a Postgres database.",
           "href": "/docs/quickstart",
           "slug": ["quickstart"],
           "source": "README.md",
@@ -74,11 +74,25 @@
           "source": "docs/password-reset.md"
         },
         {
-          "title": "External Providers",
-          "description": "Create an Own Auth session from an Apple or Google identity that a trusted provider adapter has already verified.",
+          "title": "OAuth And External Providers",
+          "description": "Use Google, GitHub, or Apple redirect OAuth, Google One Tap, or a trusted verified identity from a native provider SDK.",
           "href": "/docs/external-providers",
           "slug": ["external-providers"],
           "source": "docs/external-providers.md"
+        },
+        {
+          "title": "Multi-Factor Authentication",
+          "description": "Add TOTP authenticator apps, one-time recovery codes, and pending MFA challenges without creating a session after only one factor.",
+          "href": "/docs/mfa",
+          "slug": ["mfa"],
+          "source": "docs/mfa.md"
+        },
+        {
+          "title": "Passkeys",
+          "description": "Use WebAuthn passkeys for primary sign-in or as a user-verified second factor.",
+          "href": "/docs/passkeys",
+          "slug": ["passkeys"],
+          "source": "docs/passkeys.md"
         }
       ]
     },
@@ -181,6 +195,13 @@
           "href": "/docs/typescript-client",
           "slug": ["typescript-client"],
           "source": "docs/typescript-client.md"
+        },
+        {
+          "title": "Plugins",
+          "description": "Extend Own Auth through namespaced methods, endpoints, hooks, rate limits, migrations, clients, and OpenAPI contracts.",
+          "href": "/docs/plugins",
+          "slug": ["plugins"],
+          "source": "docs/plugins.md"
         }
       ]
     },

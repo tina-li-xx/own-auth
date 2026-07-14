@@ -21,13 +21,19 @@ Own Auth removes spaces, parentheses, dots, and dashes before storing or compari
 ## Verify the code
 
 ```ts
-const { user, session, sessionToken } = await auth.verifySmsOtp({
+const result = await auth.verifySmsOtp({
   phone: "+14155551234",
   code: "483291",
 });
+
+if (result.status === "mfa_required") {
+  // Complete a configured second factor before creating a session.
+} else if (result.status === "complete") {
+  const { user, session, sessionToken } = result;
+}
 ```
 
-If the code is valid, Own Auth consumes it, verifies the phone number, creates a session, and signs the user in. The same code cannot be used again.
+If the code is valid, Own Auth consumes it and verifies the phone number. It then creates a session or returns `mfa_required` when the user has a second factor enabled. The same code cannot be used again.
 
 ### Errors
 
@@ -43,10 +49,14 @@ If the code is valid, Own Auth consumes it, verifies the phone number, creates a
 import { AuthError } from "own-auth";
 
 try {
-  const { user, session, sessionToken } = await auth.verifySmsOtp({
+  const result = await auth.verifySmsOtp({
     phone,
     code,
   });
+
+  if (result.status === "mfa_required") {
+    // Show a second-factor form.
+  }
 } catch (error) {
   if (!(error instanceof AuthError)) {
     throw error;
