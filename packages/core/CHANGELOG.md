@@ -10,6 +10,7 @@
 - Applications using the HTTP handler must use its temporary HttpOnly MFA cookie when a sign-in returns `status: "mfa_required"`.
 - Custom `AuthStorage` adapters must implement the new OAuth transaction, MFA, encrypted credential, passkey, WebAuthn challenge, and related atomic operations before using `0.3.0`.
 - Plugin migration SQL is now keyed by database dialect so generation can fail before deployment when a plugin does not support the selected database.
+- Plugin endpoint definitions now reject invalid methods, session requirements, missing handlers, and schemas outside Own Auth's supported subset when the plugin is configured.
 
 ### Added
 
@@ -23,6 +24,7 @@
 - Lazy Postgres initialization so importing `own-auth` with custom storage does not load `pg`.
 - `auth.close()` for idempotent shutdown of the Postgres pool owned by Own Auth.
 - Cloudflare D1 storage and rate-limit adapters through the explicit `own-auth/d1` package export.
+- Plugin `GET` endpoints can accept string-array query inputs through repeated query parameters; duplicate scalar parameters fail validation.
 - Versioned D1 migration generation through `npx own-auth generate --dialect d1` for Wrangler-managed deployment.
 - OpenTelemetry API instrumentation for core operations, HTTP handlers, provider calls, email and SMS delivery, plugins, and rate-limit denials. Applications configure their own SDK and exporters; without an SDK, telemetry is a no-op.
 - Signed core authentication webhooks with durable Postgres and D1 outboxes, leased concurrent processing, bounded retries, complete attempt history, manual retry, and retention cleanup.
@@ -34,6 +36,7 @@
 
 - OAuth state, One Tap nonces, MFA challenges, recovery codes, and WebAuthn challenges are consumed atomically.
 - Owner invitations now require an owner actor; administrators cannot grant the owner role.
+- Core endpoint and plugin contracts are runtime-owned and immutable, so caller mutation cannot change routes, session requirements, validation schemas, handlers, or client fingerprints after setup.
 - TOTP timesteps and passkey counters use atomic comparison updates to reject replay and concurrent reuse.
 - Provider refresh tokens and TOTP secrets use purpose-separated AES-256-GCM encryption through the shared encryption key ring.
 - Disabling TOTP invalidates its recovery codes, including codes attached to an outstanding MFA challenge.

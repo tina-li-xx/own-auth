@@ -5,9 +5,9 @@ import { enforceRateLimit, type RateLimitStore } from "./rate-limit.js";
 import type { AuthStorage } from "./storage.js";
 import type { CurrentSession, JsonRecord, RequestContext } from "./types.js";
 import {
+  createRuntimeOwnAuthPluginSet,
   OwnAuthPluginError,
-  pluginEndpointPath,
-  validatePluginSet
+  pluginEndpointPath
 } from "./plugin-definition.js";
 import type {
   CallOwnAuthPluginMethodOptions,
@@ -22,9 +22,9 @@ import { matchesJsonSchema } from "./http/validation.js";
 const maximumBeforeHookTimeoutMs = 5_000;
 
 export interface RegisteredPluginEndpoint {
-  plugin: OwnAuthPluginDefinition;
-  endpoint: OwnAuthPluginEndpoint;
-  path: string;
+  readonly plugin: OwnAuthPluginDefinition;
+  readonly endpoint: OwnAuthPluginEndpoint;
+  readonly path: string;
 }
 
 export class OwnAuthPluginRuntime {
@@ -37,20 +37,20 @@ export class OwnAuthPluginRuntime {
     plugins: readonly OwnAuthPluginDefinition[],
     private readonly storage: AuthStorage,
     private readonly rateLimitStore: RateLimitStore,
-    private readonly getAuth: () => OwnAuth,
+    private readonly getAuth: () => OwnAuth<string, string>,
     private readonly options: OwnAuthPluginRuntimeOptions = {}
   ) {
-    validatePluginSet(plugins);
-    this.validateStorageRequirements(plugins);
-    this.plugins = new Map(plugins.map((plugin) => [plugin.id, plugin]));
-    this.endpoints = plugins.flatMap((plugin) =>
+    const runtimePlugins = createRuntimeOwnAuthPluginSet(plugins);
+    this.validateStorageRequirements(runtimePlugins);
+    this.plugins = new Map(runtimePlugins.map((plugin) => [plugin.id, plugin]));
+    this.endpoints = Object.freeze(runtimePlugins.flatMap((plugin) =>
       (plugin.endpoints ?? []).map((endpoint) => ({
         plugin,
         endpoint,
         path: pluginEndpointPath(plugin.id, endpoint)
-      }))
-    );
-    this.contractFingerprint = createOwnAuthPluginContractFingerprint(plugins);
+      })).map((registered) => Object.freeze(registered))
+    ));
+    this.contractFingerprint = createOwnAuthPluginContractFingerprint(runtimePlugins);
     this.hookTimeoutMs = options.beforeHookTimeoutMs ?? maximumBeforeHookTimeoutMs;
     if (
       !Number.isInteger(this.hookTimeoutMs) ||
@@ -62,7 +62,7 @@ export class OwnAuthPluginRuntime {
   }
 
   get definitions(): readonly OwnAuthPluginDefinition[] {
-    return [...this.plugins.values()];
+    return Object.freeze([...this.plugins.values()]);
   }
 
   get fingerprint(): string {

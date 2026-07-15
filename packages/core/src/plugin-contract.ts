@@ -20,23 +20,30 @@ export function createOwnAuthPluginContractFingerprint(
     coreVersion,
     plugins: [...plugins]
       .sort((left, right) => left.id.localeCompare(right.id))
-      .map((plugin) => ({
-        id: plugin.id,
-        version: plugin.version,
-        endpoints: [...(plugin.endpoints ?? [])]
-          .sort((left, right) =>
-            `${left.method}:${pluginEndpointPath(plugin.id, left)}`
-              .localeCompare(`${right.method}:${pluginEndpointPath(plugin.id, right)}`)
-          )
-          .map((endpoint) => ({
-            method: endpoint.method,
-            path: pluginEndpointPath(plugin.id, endpoint),
-            input: endpoint.input ?? null,
-            output: endpoint.output,
-            errors: [...(endpoint.errors ?? [])].sort(),
-            session: endpoint.session ?? "none"
-          }))
-      }))
+      .map((plugin) => {
+        const clientManifest = createOwnAuthPluginClientManifest(plugin);
+        const clientMethods = Object.entries(clientManifest.methods)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([name, method]) => ({ name, ...method }));
+        return {
+          id: plugin.id,
+          version: plugin.version,
+          endpoints: [...(plugin.endpoints ?? [])]
+            .sort((left, right) =>
+              `${left.method}:${pluginEndpointPath(plugin.id, left)}`
+                .localeCompare(`${right.method}:${pluginEndpointPath(plugin.id, right)}`)
+            )
+            .map((endpoint) => ({
+              method: endpoint.method,
+              path: pluginEndpointPath(plugin.id, endpoint),
+              input: endpoint.input ?? null,
+              output: endpoint.output,
+              errors: [...(endpoint.errors ?? [])].sort(),
+              session: endpoint.session ?? "none"
+            })),
+          ...(clientMethods.length > 0 ? { clientMethods } : {})
+        };
+      })
   };
   return encodeHex(sha256(new TextEncoder().encode(canonicalJson(contract))));
 }

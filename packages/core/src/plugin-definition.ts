@@ -1,4 +1,6 @@
 import { normalizeTrustedWebOrigin } from "./url-security.js";
+import { cloneAndDeepFreeze } from "./immutable-config.js";
+import { isSupportedJsonSchema } from "./http/validation.js";
 import type {
   OwnAuthConfig,
   OwnAuthPluginClientManifest,
@@ -28,12 +30,19 @@ export function defineOwnAuthPlugin<const Plugin extends OwnAuthPluginDefinition
   plugin: Plugin
 ): Plugin {
   validatePlugin(plugin);
-  return Object.freeze(plugin);
+  return cloneAndDeepFreeze(plugin);
 }
 
 export function defineOwnAuthConfig<const Config extends OwnAuthConfig>(config: Config): Config {
   validatePluginSet(config.plugins ?? []);
-  return Object.freeze(config);
+  return cloneAndDeepFreeze(config);
+}
+
+export function createRuntimeOwnAuthPluginSet(
+  plugins: readonly OwnAuthPluginDefinition[]
+): readonly OwnAuthPluginDefinition[] {
+  validatePluginSet(plugins);
+  return cloneAndDeepFreeze(plugins);
 }
 
 export function createOwnAuthPluginClientManifest(
@@ -50,7 +59,7 @@ export function createOwnAuthPluginClientManifest(
       path: pluginEndpointPath(plugin.id, endpoint)
     };
   }
-  return Object.freeze({ id: plugin.id, methods: Object.freeze(methods) });
+  return cloneAndDeepFreeze({ id: plugin.id, methods });
 }
 
 export function validatePluginSet(plugins: readonly OwnAuthPluginDefinition[]): void {
@@ -63,10 +72,13 @@ export function validatePluginSet(plugins: readonly OwnAuthPluginDefinition[]): 
 }
 
 export function validatePlugin(plugin: OwnAuthPluginDefinition): void {
-  if (!pluginIdentifierPattern.test(plugin.id)) {
-    throw new Error(`Invalid plugin ID: ${plugin.id}`);
+  if (!plugin || typeof plugin !== "object") {
+    throw new Error("Own Auth plugins must be objects");
   }
-  if (!plugin.version.trim() || plugin.version.length > 128) {
+  if (typeof plugin.id !== "string" || !pluginIdentifierPattern.test(plugin.id)) {
+    throw new Error(`Invalid plugin ID: ${String(plugin.id)}`);
+  }
+  if (typeof plugin.version !== "string" || !plugin.version.trim() || plugin.version.length > 128) {
     throw new Error(`Plugin ${plugin.id} must have a non-empty version`);
   }
   assertUniqueMembers(plugin, "server method", Object.keys(plugin.serverMethods ?? {}));
@@ -96,17 +108,45 @@ function validateEndpoints(plugin: OwnAuthPluginDefinition): void {
   const paths = new Set<string>();
   const rateLimits = new Set((plugin.rateLimits ?? []).map(({ id }) => id));
   for (const endpoint of plugin.endpoints ?? []) {
+    if (!endpoint || typeof endpoint !== "object") {
+      throw new Error(`Plugin ${plugin.id} endpoints must be objects`);
+    }
     assertIdentifier(endpoint.id, `plugin ${plugin.id} endpoint ID`);
     if (ids.has(endpoint.id)) throw new Error(`Duplicate endpoint ${plugin.id}.${endpoint.id}`);
     ids.add(endpoint.id);
+    if (endpoint.method !== "GET" && endpoint.method !== "POST") {
+      throw new Error(`Plugin endpoint ${plugin.id}.${endpoint.id} has an invalid method`);
+    }
+    if (
+      endpoint.session !== undefined &&
+      endpoint.session !== "none" &&
+      endpoint.session !== "optional" &&
+      endpoint.session !== "required"
+    ) {
+      throw new Error(`Plugin endpoint ${plugin.id}.${endpoint.id} has an invalid session requirement`);
+    }
+    if (typeof endpoint.handler !== "function") {
+      throw new Error(`Plugin endpoint ${plugin.id}.${endpoint.id} needs a handler`);
+    }
+    if (endpoint.input !== undefined && !isSupportedJsonSchema(endpoint.input)) {
+      throw new Error(`Plugin endpoint ${plugin.id}.${endpoint.id} has an unsupported input schema`);
+    }
+    if (!isSupportedJsonSchema(endpoint.output)) {
+      throw new Error(`Plugin endpoint ${plugin.id}.${endpoint.id} has an unsupported output schema`);
+    }
     const path = endpoint.path ?? `/${endpoint.id}`;
+    if (typeof path !== "string") {
+      throw new Error(`Plugin ${plugin.id} endpoint ${endpoint.id} has an invalid path`);
+    }
     if (!/^\/[A-Za-z0-9/_-]*[A-Za-z0-9_-]$/.test(path) || path.includes("//")) {
       throw new Error(`Plugin ${plugin.id} endpoint ${endpoint.id} has an invalid path`);
     }
     const route = `${endpoint.method} ${path}`;
     if (paths.has(route)) throw new Error(`Duplicate plugin route ${plugin.id} ${route}`);
     paths.add(route);
-    if (!endpoint.summary.trim()) throw new Error(`Plugin endpoint ${plugin.id}.${endpoint.id} needs a summary`);
+    if (typeof endpoint.summary !== "string" || !endpoint.summary.trim()) {
+      throw new Error(`Plugin endpoint ${plugin.id}.${endpoint.id} needs a summary`);
+    }
     if (endpoint.rateLimit && !rateLimits.has(endpoint.rateLimit)) {
       throw new Error(`Plugin endpoint ${plugin.id}.${endpoint.id} references an unknown rate limit`);
     }
@@ -149,6 +189,9 @@ function validateTrustedOrigins(plugin: OwnAuthPluginDefinition): void {
 function validateClientMethods(plugin: OwnAuthPluginDefinition): void {
   const endpoints = new Set((plugin.endpoints ?? []).map(({ id }) => id));
   for (const [name, method] of Object.entries(plugin.clientMethods ?? {})) {
+    if (!method || typeof method !== "object" || typeof method.endpoint !== "string") {
+      throw new Error(`Plugin ${plugin.id} client method ${name} is invalid`);
+    }
     if (!endpoints.has(method.endpoint)) {
       throw new Error(`Plugin ${plugin.id} client method ${name} references an unknown endpoint`);
     }
@@ -181,6 +224,8 @@ function assertUniqueMembers(
   }
 }
 
-function assertIdentifier(value: string, label: string): void {
-  if (!identifierPattern.test(value)) throw new Error(`Invalid ${label}: ${value}`);
+function assertIdentifier(value: unknown, label: string): asserts value is string {
+  if (typeof value !== "string" || !identifierPattern.test(value)) {
+    throw new Error(`Invalid ${label}: ${String(value)}`);
+  }
 }

@@ -80,9 +80,18 @@ async function readLimitedBody(request: Request, maxBytes: number): Promise<stri
   }
 }
 
-function paramsToRecord(params: URLSearchParams): Record<string, string> {
-  const value: Record<string, string> = {};
-  for (const [name, entry] of params) value[name] = entry;
+function paramsToRecord(params: URLSearchParams): Record<string, string | string[]> {
+  const value: Record<string, string | string[]> = {};
+  for (const [name, entry] of params) {
+    const current = value[name];
+    if (current === undefined) {
+      value[name] = entry;
+    } else if (Array.isArray(current)) {
+      current.push(entry);
+    } else {
+      value[name] = [current, entry];
+    }
+  }
   return value;
 }
 

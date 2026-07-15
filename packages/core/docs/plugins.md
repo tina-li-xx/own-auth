@@ -44,6 +44,21 @@ export const auth = createOwnAuth({
 
 Plugin routes live under `/api/auth/plugins/{plugin-id}/...`. They cannot replace core routes, errors, cookies, CSRF behavior, or security checks.
 
+### Endpoint schemas
+
+Plugin endpoint schemas use a deliberately small JSON Schema subset that Own Auth can enforce consistently at startup and runtime:
+
+- `type`: `null`, `boolean`, `string`, `number`, `integer`, `array`, or `object`
+- `enum`, `const`, and `anyOf`
+- string `minLength` and `format` metadata
+- array `items`
+- object `properties`, `required`, and a boolean `additionalProperties`
+- `title` and `description` metadata
+
+Unsupported types, constraints, and malformed nested schemas fail when the plugin is configured instead of becoming unenforced contract documentation. `format` remains descriptive metadata; validate application-specific string formats in the plugin handler.
+
+`GET` endpoint inputs are read from query parameters, so their values remain strings. Declare an array of strings when a parameter may repeat; otherwise duplicate scalar parameters fail validation. Use a `POST` endpoint with a JSON body for typed numbers, booleans, or nested objects.
+
 ## Server methods and security declarations
 
 Server-only methods are also namespaced and called explicitly:

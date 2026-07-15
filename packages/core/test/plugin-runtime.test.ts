@@ -3,7 +3,8 @@ import {
   InMemoryAuthStorage,
   createOwnAuth,
   createOwnAuthPluginContractFingerprint,
-  defineOwnAuthPlugin
+  defineOwnAuthPlugin,
+  type OwnAuthPluginDefinition
 } from "../src/index.js";
 
 describe("plugin runtime", () => {
@@ -134,6 +135,102 @@ describe("plugin runtime", () => {
       createOwnAuthPluginContractFingerprint([second])
     );
   });
+
+  it("includes client method mappings in the plugin fingerprint", () => {
+    const first = mappedContractPlugin("read");
+    const second = mappedContractPlugin("write");
+
+    expect(createOwnAuthPluginContractFingerprint([first])).not.toBe(
+      createOwnAuthPluginContractFingerprint([second])
+    );
+  });
+
+  it.each([
+    ["method", { method: "DELETE" }],
+    ["session", { session: "create" }],
+    ["handler", { handler: undefined }],
+    ["input schema", { input: { type: "array", items: { type: "date" } } }],
+    ["output schema", { output: { type: "object", properties: { ok: { oneOf: [] } } } }]
+  ])("rejects an invalid plugin endpoint %s", (_label, override) => {
+    const endpoint = {
+      id: "read",
+      method: "GET",
+      summary: "Read plugin data",
+      output: { type: "string" },
+      handler: () => "ok",
+      ...override
+    };
+
+    expect(() => defineOwnAuthPlugin({
+      id: "invalid-contract",
+      version: "1.0.0",
+      endpoints: [endpoint]
+    } as unknown as OwnAuthPluginDefinition)).toThrow();
+  });
+
+  it("isolates runtime behavior and fingerprints from caller mutation", async () => {
+    const endpoint = {
+      id: "read",
+      method: "GET" as const,
+      summary: "Read plugin data",
+      output: {
+        type: "object",
+        properties: { value: { const: "original" } },
+        required: ["value"],
+        additionalProperties: false
+      },
+      handler: () => ({ value: "original" })
+    };
+    const plugin: OwnAuthPluginDefinition = {
+      id: "runtime-owned",
+      version: "1.0.0",
+      clientMethods: { read: { endpoint: "read" } },
+      endpoints: [endpoint]
+    };
+    const auth = createOwnAuth({
+      storage: new InMemoryAuthStorage(),
+      tokenPepper: "runtime-owned-plugin",
+      plugins: [plugin]
+    });
+    const fingerprint = auth.pluginContractFingerprint;
+
+    endpoint.handler = () => ({ value: "changed" });
+    endpoint.output.properties.value.const = "changed";
+    plugin.version = "2.0.0";
+    const registered = auth.findPluginEndpoint("/plugins/runtime-owned/read", "GET");
+
+    expect(registered).not.toBeNull();
+    await expect(auth.executePluginEndpoint(registered!, undefined, null, {})).resolves.toEqual({
+      value: "original"
+    });
+    expect(auth.pluginContractFingerprint).toBe(fingerprint);
+    expect(createOwnAuthPluginContractFingerprint(auth.plugins)).toBe(fingerprint);
+    expect(auth.plugins[0]).not.toBe(plugin);
+    expect(Object.isFrozen(auth.plugins)).toBe(true);
+    expect(Object.isFrozen(auth.plugins[0]?.endpoints?.[0]?.output)).toBe(true);
+  });
+
+  it("clones __proto__ as data without changing configuration prototypes", () => {
+    const properties = JSON.parse(
+      '{"__proto__":{"type":"string"}}'
+    ) as Record<string, Record<string, unknown>>;
+    const plugin = defineOwnAuthPlugin({
+      id: "safe-clone",
+      version: "1.0.0",
+      endpoints: [{
+        id: "read",
+        method: "GET",
+        summary: "Read plugin data",
+        output: { type: "object", properties, additionalProperties: false },
+        handler: () => ({ "__proto__": "safe" })
+      }]
+    });
+    const clonedProperties = plugin.endpoints[0]?.output.properties as Record<string, unknown>;
+
+    expect(Object.getPrototypeOf(clonedProperties)).toBe(Object.prototype);
+    expect(Object.prototype.hasOwnProperty.call(clonedProperties, "__proto__")).toBe(true);
+    expect(clonedProperties.__proto__).toEqual({ type: "string" });
+  });
 });
 
 function contractPlugin(output: Record<string, unknown>) {
@@ -148,5 +245,20 @@ function contractPlugin(output: Record<string, unknown>) {
       output,
       handler: () => "ok"
     }]
+  });
+}
+
+function mappedContractPlugin(endpoint: "read" | "write") {
+  return defineOwnAuthPlugin({
+    id: "mapped-contract",
+    version: "1.0.0",
+    clientMethods: { inspect: { endpoint } },
+    endpoints: ["read", "write"].map((id) => ({
+      id,
+      method: "GET" as const,
+      summary: `${id} plugin data`,
+      output: { type: "string" },
+      handler: () => id
+    }))
   });
 }

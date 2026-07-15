@@ -3,6 +3,8 @@ import { createOwnAuthClient, OwnAuthClientError } from "../src/client.js";
 import {
   createOwnAuth,
   createOwnAuthHandler,
+  createOwnAuthPluginClientConfiguration,
+  defineOwnAuthPlugin,
   InMemoryAuthStorage,
   MemoryEmailProvider,
   MemorySmsProvider
@@ -143,4 +145,50 @@ describe("OwnAuthClient", () => {
       });
     }
   );
+
+  it("round-trips repeated GET plugin inputs as arrays", async () => {
+    const plugin = defineOwnAuthPlugin({
+      id: "query-array",
+      version: "1.0.0",
+      clientMethods: { read: { endpoint: "read" } },
+      endpoints: [{
+        id: "read",
+        method: "GET",
+        summary: "Read repeated query values",
+        input: {
+          type: "object",
+          properties: { tags: { type: "array", items: { type: "string" } } },
+          required: ["tags"],
+          additionalProperties: false
+        },
+        output: {
+          type: "object",
+          properties: { tags: { type: "array", items: { type: "string" } } },
+          required: ["tags"],
+          additionalProperties: false
+        },
+        handler: ({ input }) => input
+      }]
+    });
+    const auth = createOwnAuth({
+      storage: new InMemoryAuthStorage(),
+      tokenPepper: "query-array-plugin",
+      plugins: [plugin]
+    });
+    const handler = createOwnAuthHandler(auth);
+    const configuration = createOwnAuthPluginClientConfiguration([plugin]);
+    const client = createOwnAuthClient({
+      baseURL: "http://localhost/api/auth",
+      pluginFingerprint: configuration.fingerprint,
+      plugins: configuration.plugins,
+      fetch: (async (
+        input: string | URL | Request,
+        init?: RequestInit
+      ) => handler(new Request(input, init))) as typeof fetch
+    });
+
+    await expect(client.plugin("query-array").call("read", {
+      tags: ["security", "portability"]
+    })).resolves.toEqual({ tags: ["security", "portability"] });
+  });
 });

@@ -136,6 +136,18 @@ describe("createOwnAuthHandler", () => {
     });
   });
 
+  it("rejects repeated scalar OAuth callback fields", async () => {
+    const { handler } = createHarness();
+    const response = await handler(new Request(
+      "http://localhost/api/auth/oauth/google/callback?code=first&code=second&state=state"
+    ));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "validation_error" }
+    });
+  });
+
   it("rejects JSON bodies over the configured limit", async () => {
     const { handler } = createHarness({ maxRequestBodyBytes: 16 });
     const response = await handler(jsonRequest("/api/auth/sign-in/email", {
