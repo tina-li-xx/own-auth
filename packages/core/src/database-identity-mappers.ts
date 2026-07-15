@@ -11,8 +11,8 @@ import type {
   TotpFactor,
   WebAuthnChallenge,
   WebAuthnChallengePurpose
-} from "../identity-types.js";
-import type { ExternalAccountProvider } from "../types.js";
+} from "./identity-types.js";
+import type { ExternalAccountProvider } from "./types.js";
 import {
   booleanValue,
   dateValue,
@@ -24,8 +24,8 @@ import {
   stringArray,
   stringValue,
   uint8ArrayValue
-} from "./postgres-row.js";
-import type { Row } from "./postgres-types.js";
+} from "./database-row.js";
+import type { DatabaseRow as Row } from "./database-types.js";
 
 export function mapOAuthTransaction(row: Row): OAuthTransaction {
   return {

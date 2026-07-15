@@ -1,6 +1,6 @@
 import type { AuthToken, SmsOtp, TokenType } from "../types.js";
-import { mapSmsOtp, mapToken } from "./postgres-mappers.js";
-import { smsOtpReturning, tokenReturning } from "./postgres-schema.js";
+import { mapSmsOtp, mapToken } from "../database-mappers.js";
+import { smsOtpReturning, tokenReturning } from "../database-schema.js";
 import type { PostgresQueryable, Row } from "./postgres-types.js";
 
 export async function atomicConsumeToken(

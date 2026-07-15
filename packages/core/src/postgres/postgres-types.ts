@@ -1,3 +1,5 @@
+import type { DatabaseRow, EntityColumnMap } from "../database-types.js";
+
 export interface PostgresQueryResult<Row> {
   rows: Row[];
 }
@@ -9,6 +11,6 @@ export interface PostgresQueryable {
   ): Promise<PostgresQueryResult<Row>>;
 }
 
-export type ColumnMap<Entity> = Record<keyof Entity & string, string>;
+export type ColumnMap<Entity> = EntityColumnMap<Entity>;
 
-export type Row = Record<string, unknown>;
+export type Row = DatabaseRow;

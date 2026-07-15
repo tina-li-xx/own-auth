@@ -1,0 +1,227 @@
+-- Own Auth initial Cloudflare D1 schema.
+-- Dates are stored as Unix milliseconds and JSON values as text.
+
+create table if not exists own_auth_migrations (
+  version text primary key,
+  applied_at integer not null default (cast(strftime('%s', 'now') as integer) * 1000)
+);
+
+create table if not exists own_auth_users (
+  id text primary key,
+  email text,
+  email_verified_at integer,
+  phone text,
+  phone_verified_at integer,
+  password_hash text,
+  name text,
+  image_url text,
+  disabled_at integer,
+  metadata text not null default '{}',
+  created_at integer not null,
+  updated_at integer not null,
+  last_login_at integer
+);
+
+create unique index if not exists own_auth_users_email_unique
+  on own_auth_users (lower(email)) where email is not null;
+create unique index if not exists own_auth_users_phone_unique
+  on own_auth_users (phone) where phone is not null;
+
+create table if not exists own_auth_accounts (
+  id text primary key,
+  user_id text not null references own_auth_users(id) on delete cascade,
+  provider text not null,
+  provider_account_id text not null,
+  provider_email text,
+  provider_phone text,
+  created_at integer not null,
+  updated_at integer not null,
+  constraint own_auth_accounts_provider_check
+    check (provider in ('password', 'magic_link', 'phone', 'apple', 'google'))
+);
+
+create unique index if not exists own_auth_accounts_provider_account_unique
+  on own_auth_accounts (provider, provider_account_id);
+create index if not exists own_auth_accounts_user_id_idx
+  on own_auth_accounts (user_id);
+
+create table if not exists own_auth_sessions (
+  id text primary key,
+  user_id text not null references own_auth_users(id) on delete cascade,
+  token_hash text not null unique,
+  created_at integer not null,
+  last_active_at integer not null,
+  expires_at integer not null,
+  idle_expires_at integer not null,
+  ip_address text,
+  user_agent text,
+  revoked_at integer,
+  revoke_reason text
+);
+
+create index if not exists own_auth_sessions_user_active_idx
+  on own_auth_sessions (user_id, revoked_at, expires_at, idle_expires_at);
+
+create table if not exists own_auth_tokens (
+  id text primary key,
+  token_hash text not null unique,
+  type text not null,
+  user_id text references own_auth_users(id) on delete cascade,
+  email text,
+  phone text,
+  organisation_id text references own_auth_organisations(id) on delete cascade,
+  expires_at integer not null,
+  used_at integer,
+  created_at integer not null,
+  constraint own_auth_tokens_type_check check (type in (
+    'email_verification',
+    'password_reset',
+    'magic_link',
+    'organisation_invite',
+    'phone_verification'
+  ))
+);
+
+create index if not exists own_auth_tokens_lookup_idx
+  on own_auth_tokens (token_hash, type, used_at, expires_at);
+
+create table if not exists own_auth_sms_otps (
+  id text primary key,
+  phone text not null,
+  user_id text references own_auth_users(id) on delete cascade,
+  code_hash text not null,
+  purpose text not null,
+  expires_at integer not null,
+  attempts integer not null default 0,
+  max_attempts integer not null default 5,
+  consumed_at integer,
+  created_at integer not null,
+  last_sent_at integer not null,
+  constraint own_auth_sms_otps_purpose_check
+    check (purpose in ('phone_login', 'phone_verification', 'account_recovery')),
+  constraint own_auth_sms_otps_attempts_check
+    check (attempts >= 0 and max_attempts > 0)
+);
+
+create index if not exists own_auth_sms_otps_latest_idx
+  on own_auth_sms_otps (phone, purpose, created_at desc);
+
+create table if not exists own_auth_organisations (
+  id text primary key,
+  name text not null,
+  slug text not null unique,
+  owner_user_id text not null references own_auth_users(id),
+  metadata text not null default '{}',
+  created_at integer not null,
+  updated_at integer not null,
+  disabled_at integer
+);
+
+create index if not exists own_auth_organisations_owner_idx
+  on own_auth_organisations (owner_user_id);
+
+create table if not exists own_auth_organisation_members (
+  id text primary key,
+  organisation_id text not null references own_auth_organisations(id) on delete cascade,
+  user_id text not null references own_auth_users(id) on delete cascade,
+  role text not null,
+  status text not null,
+  joined_at integer,
+  removed_at integer,
+  created_at integer not null,
+  updated_at integer not null,
+  constraint own_auth_organisation_members_role_check
+    check (role in ('owner', 'admin', 'member')),
+  constraint own_auth_organisation_members_status_check
+    check (status in ('active', 'suspended', 'removed'))
+);
+
+create unique index if not exists own_auth_organisation_members_unique
+  on own_auth_organisation_members (organisation_id, user_id);
+create index if not exists own_auth_organisation_members_user_idx
+  on own_auth_organisation_members (user_id, status);
+
+create table if not exists own_auth_invitations (
+  id text primary key,
+  token_id text references own_auth_tokens(id) on delete set null,
+  organisation_id text not null references own_auth_organisations(id) on delete cascade,
+  email text,
+  phone text,
+  role text not null,
+  invited_by_user_id text not null references own_auth_users(id),
+  status text not null,
+  expires_at integer not null,
+  accepted_at integer,
+  revoked_at integer,
+  created_at integer not null,
+  constraint own_auth_invitations_role_check
+    check (role in ('owner', 'admin', 'member')),
+  constraint own_auth_invitations_status_check
+    check (status in ('pending', 'accepted', 'expired', 'revoked')),
+  constraint own_auth_invitations_contact_check
+    check (email is not null or phone is not null)
+);
+
+create unique index if not exists own_auth_invitations_token_idx
+  on own_auth_invitations (token_id) where token_id is not null;
+create index if not exists own_auth_invitations_pending_email_idx
+  on own_auth_invitations (organisation_id, lower(email), status, created_at desc)
+  where email is not null;
+
+create table if not exists own_auth_api_keys (
+  id text primary key,
+  key_prefix text not null unique,
+  key_hash text not null,
+  name text not null,
+  user_id text references own_auth_users(id) on delete cascade,
+  organisation_id text references own_auth_organisations(id) on delete cascade,
+  scopes text not null default '[]',
+  status text not null default 'active',
+  expires_at integer,
+  last_used_at integer,
+  created_at integer not null,
+  revoked_at integer,
+  revoked_by text references own_auth_users(id),
+  metadata text not null default '{}',
+  constraint own_auth_api_keys_status_check check (status in ('active', 'revoked')),
+  constraint own_auth_api_keys_owner_check
+    check (user_id is not null or organisation_id is not null)
+);
+
+create index if not exists own_auth_api_keys_user_idx
+  on own_auth_api_keys (user_id, status);
+create index if not exists own_auth_api_keys_organisation_idx
+  on own_auth_api_keys (organisation_id, status);
+
+create table if not exists own_auth_audit_events (
+  id text primary key,
+  event_type text not null,
+  actor_user_id text references own_auth_users(id) on delete set null,
+  target_user_id text references own_auth_users(id) on delete set null,
+  organisation_id text references own_auth_organisations(id) on delete set null,
+  api_key_id text references own_auth_api_keys(id) on delete set null,
+  ip_address text,
+  user_agent text,
+  metadata text not null default '{}',
+  created_at integer not null
+);
+
+create index if not exists own_auth_audit_events_actor_idx
+  on own_auth_audit_events (actor_user_id, created_at desc);
+create index if not exists own_auth_audit_events_target_idx
+  on own_auth_audit_events (target_user_id, created_at desc);
+create index if not exists own_auth_audit_events_organisation_idx
+  on own_auth_audit_events (organisation_id, created_at desc);
+create index if not exists own_auth_audit_events_api_key_idx
+  on own_auth_audit_events (api_key_id, created_at desc);
+
+create table if not exists own_auth_rate_limits (
+  key text primary key,
+  count integer not null,
+  reset_at integer not null,
+  constraint own_auth_rate_limits_count_check check (count >= 0)
+);
+
+insert into own_auth_migrations (version)
+values ('001_initial')
+on conflict (version) do nothing;

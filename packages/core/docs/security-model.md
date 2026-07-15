@@ -133,7 +133,7 @@ Access tokens are never persisted. Refresh credentials are stored only when `off
 
 Plugin routes are namespaced and cannot replace core routes, error identifiers, cookie policy, CSRF behavior, or core security checks. Before-hooks fail closed on denial, errors, rejection, or timeout. After-hooks receive secret-redacted data and cannot change a committed authentication result.
 
-Plugin migrations are checksummed and each pending migration runs in its own Postgres transaction. A failure rolls back the current migration and stops the runner without undoing earlier committed migrations.
+Plugin migrations are checksummed per database dialect. Postgres runs each pending migration in its own transaction. D1 migrations are generated as versioned files and applied transactionally by Wrangler.
 
 ## Audit logs
 
@@ -145,7 +145,7 @@ Own Auth's event writers do not add passwords, raw tokens, SMS codes, API-key va
 
 Own Auth does not:
 
-- **Encrypt data at rest.** User emails, names, and metadata are stored in plain text in the Postgres database. If column-level encryption is required, apply it at the database level.
+- **Encrypt data at rest.** User emails, names, and metadata are stored in plain text in the configured database. If column-level encryption is required, apply it at the database level.
 - **Manage TLS.** Application and database connections must use TLS in production. Own Auth does not configure it.
 - **Handle CORS.** Cross-origin request policies are the application's responsibility.
 - **Manage secrets.** The token pepper, database URL, provider credentials, and API keys must be secured using the deployment platform's secret management.
@@ -153,7 +153,7 @@ Own Auth does not:
 ## Production checklist
 
 - [ ] `OWN_AUTH_TOKEN_PEPPER` contains a long random secret and is available to every server instance.
-- [ ] `DATABASE_URL` points to durable Postgres and uses TLS when required by the provider.
+- [ ] `DATABASE_URL` points to durable Postgres, or the Worker uses the intended D1 binding.
 - [ ] Current Own Auth migrations have been applied.
 - [ ] Web session cookies use `HttpOnly`, `Secure`, an appropriate `SameSite` value, and explicit expiry.
 - [ ] Cookie-based endpoints have an appropriate CSRF strategy.
@@ -163,7 +163,7 @@ Own Auth does not:
 - [ ] The encryption key ring is configured and backed up before enabling TOTP or provider offline access.
 - [ ] OAuth callback URLs exactly match the URLs registered with each provider.
 - [ ] Passkey RP ID and expected origins exactly match the deployed application.
-- [ ] The default Postgres rate-limit store is active, or a durable `rateLimitStore` is supplied with custom storage.
+- [ ] The built-in Postgres or D1 rate-limit store is active, or a durable `rateLimitStore` is supplied with custom storage.
 - [ ] Every `actorUserId` comes from a verified session rather than client input.
 - [ ] Audit-log access is restricted and a retention policy has been chosen.
-- [ ] Postgres backups, access controls, monitoring, and encryption meet the application's requirements.
+- [ ] Database backups, access controls, monitoring, and encryption meet the application's requirements.

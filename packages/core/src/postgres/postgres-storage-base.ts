@@ -1,3 +1,4 @@
+import { databaseColumnEntries } from "../database-types.js";
 import { expectOne, toPostgresValue } from "./postgres-row.js";
 import type { ColumnMap, PostgresQueryable, Row } from "./postgres-types.js";
 
@@ -10,11 +11,9 @@ export class PostgresStorageBase {
     entity: Entity,
     returning: string
   ): Promise<Row> {
-    const entries = Object.entries(columns).filter(
-      ([key]) => entity[key as keyof Entity] !== undefined
-    );
+    const entries = databaseColumnEntries(columns, entity);
     const columnNames = entries.map(([, column]) => column);
-    const params = entries.map(([key]) => toPostgresValue(entity[key as keyof Entity]));
+    const params = entries.map(([key]) => toPostgresValue(entity[key]));
     const placeholders = params.map((_, index) => `$${index + 1}`);
     const result = await this.db.query<Row>(
       `insert into ${table} (${columnNames.join(", ")}) values (${placeholders.join(", ")}) returning ${returning}`,
@@ -30,14 +29,12 @@ export class PostgresStorageBase {
     patch: Partial<Entity>,
     returning: string
   ): Promise<Row | null> {
-    const entries = Object.entries(columns).filter(
-      ([key]) => key !== "id" && patch[key as keyof Entity] !== undefined
-    );
+    const entries = databaseColumnEntries(columns, patch).filter(([key]) => key !== "id");
     if (entries.length === 0) {
       return this.selectOne(`${returning} from ${table} where id = $1`, [id]);
     }
 
-    const params = entries.map(([key]) => toPostgresValue(patch[key as keyof Entity]));
+    const params = entries.map(([key]) => toPostgresValue(patch[key]));
     params.push(id);
     const assignments = entries.map(([, column], index) => `${column} = $${index + 1}`);
     const result = await this.db.query<Row>(

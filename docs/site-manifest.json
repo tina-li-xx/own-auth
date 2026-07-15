@@ -6,7 +6,7 @@
       "pages": [
         {
           "title": "Introduction",
-          "description": "Own Auth is an auth library that runs in your backend and stores everything in your Postgres database. Users, sessions, magic links, phone codes, API keys, and organisations are all in tables you own, on a server you control.",
+          "description": "Own Auth is an auth library that runs in your backend and stores authentication data in Postgres or Cloudflare D1. Users, sessions, magic links, phone codes, API keys, and organisations stay in tables you control.",
           "href": "/docs",
           "slug": [],
           "source": "docs/introduction.md"
@@ -158,7 +158,7 @@
       "pages": [
         {
           "title": "Rate Limiting",
-          "description": "Own Auth rate-limits sensitive authentication operations automatically. With the default Postgres setup, there is no middleware to enable and no separate rate-limit service to configure.",
+          "description": "Own Auth rate-limits sensitive authentication operations automatically. Postgres and Cloudflare D1 store counters beside the auth data, with no separate rate-limit service to configure.",
           "href": "/docs/rate-limiting",
           "slug": ["rate-limiting"],
           "source": "docs/security/rate-limiting.md"
@@ -202,6 +202,13 @@
           "href": "/docs/plugins",
           "slug": ["plugins"],
           "source": "docs/plugins.md"
+        },
+        {
+          "title": "Cloudflare D1",
+          "description": "Run Own Auth in Cloudflare Workers with durable D1 storage and rate limiting.",
+          "href": "/docs/cloudflare-d1",
+          "slug": ["cloudflare-d1"],
+          "source": "docs/cloudflare-d1.md"
         }
       ]
     },

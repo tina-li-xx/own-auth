@@ -2,20 +2,10 @@
 
 ## Requirements
 
-- Node.js 20 or later
-- A Postgres database, local or hosted
+- Node.js 20 or later, or a Cloudflare Worker with `nodejs_compat`
+- A Postgres database, or Cloudflare D1 when deploying to Workers
 
-Own Auth also supports Cloudflare Workers. Enable Node.js compatibility in the Worker's Wrangler configuration:
-
-```jsonc
-{
-  "compatibility_flags": ["nodejs_compat"]
-}
-```
-
-Password hashing uses the same Argon2id format and security parameters in Node.js and Cloudflare Workers, so passwords remain compatible between runtimes.
-
-Cloudflare deployments can pass edge-compatible `storage` and `rateLimitStore` adapters. That path does not load the Node.js `pg` driver, and the application remains responsible for closing resources created by its adapters.
+Cloudflare Workers use the explicit `own-auth/d1` adapter without loading the Node.js `pg` driver. See [Cloudflare D1](/docs/cloudflare-d1) for the complete Worker setup.
 
 ## Install the package
 
@@ -32,7 +22,7 @@ yarn add own-auth
 
 ## Set up your environment
 
-Own Auth reads two environment variables:
+The default Postgres setup reads two environment variables:
 
 ```bash
 # .env
@@ -41,6 +31,8 @@ OWN_AUTH_TOKEN_PEPPER=your-random-secret-string
 ```
 
 `DATABASE_URL` is your Postgres connection string. Any Postgres provider works: local, Supabase, Neon, Railway, RDS, or a VPS running Postgres.
+
+Cloudflare D1 uses a Worker binding instead of `DATABASE_URL`. The token pepper remains a server-only Worker secret.
 
 `OWN_AUTH_TOKEN_PEPPER` adds an extra layer of protection when hashing tokens. Generate a long random string, keep it secret, and use it only on the backend. If you change it, existing sessions, auth links, SMS codes, and API keys become invalid.
 
@@ -51,6 +43,8 @@ openssl rand -base64 32
 ```
 
 ## Run migrations
+
+For Postgres:
 
 ```bash
 npx own-auth migrate
@@ -80,6 +74,8 @@ This creates the tables Own Auth needs in your database:
 - `own_auth_plugin_migrations`
 
 All Own Auth tables are prefixed with `own_auth_` to avoid conflicts. Your existing application tables are not modified.
+
+For Cloudflare D1, generate versioned files and apply them with Wrangler. See [Cloudflare D1](/docs/cloudflare-d1).
 
 ## Verify
 

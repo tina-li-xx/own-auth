@@ -88,14 +88,19 @@ After-hooks run after committed work. They receive secret-redacted input and res
 
 ## Migrations
 
-Declare idempotent, forward-only Postgres migrations:
+Declare idempotent, forward-only SQL for each database dialect the plugin supports:
 
 ```ts
 migrations: [{
   id: "001_records",
-  sql: `create table if not exists plugin_example_records (
-    id text primary key
-  )`,
+  sql: {
+    postgres: `create table if not exists plugin_example_records (
+      id text primary key
+    )`,
+    d1: `create table if not exists plugin_example_records (
+      id text primary key
+    )`,
+  },
 }]
 ```
 
@@ -115,7 +120,15 @@ npx own-auth migrate
 npx own-auth status
 ```
 
-Every migration has a namespaced ID and SHA-256 checksum. Each pending migration runs in its own transaction. A failure rolls back that migration, stops the runner, and leaves previously committed migrations intact. Automatic down migrations are not supported.
+For D1, generate Wrangler migration files:
+
+```bash
+npx own-auth generate --dialect d1 --out-dir migrations
+```
+
+Generation fails before deployment when a configured plugin has no SQL for the selected dialect.
+
+Every migration has a namespaced ID and SHA-256 checksum. Postgres applies each pending migration in its own transaction. D1 writes each plugin migration as a versioned file for Wrangler to apply transactionally. Automatic down migrations are not supported.
 
 ## Client and OpenAPI contracts
 

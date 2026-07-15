@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -6,7 +6,7 @@ import {
   runCli,
   type CliDependencies
 } from "../src/cli.js";
-import { coreMigrationVersions } from "../src/core-migrations.js";
+import { coreMigrationFiles, coreMigrationVersions } from "../src/core-migrations.js";
 
 function createIo() {
   let stdout = "";
@@ -48,6 +48,45 @@ describe("own-auth CLI", () => {
     expect(exitCode).toBe(0);
     expect(output().stdout).toContain("Wrote Own Auth migration");
     await expect(readFile(file, "utf8")).resolves.toContain("own_auth_users");
+  });
+
+  it("writes versioned D1 migration files without overwriting edits", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "own-auth-d1-"));
+    try {
+      const first = createIo();
+      const firstExitCode = await runCli(
+        ["generate", "--dialect", "d1", "--out-dir", directory],
+        {},
+        first.io
+      );
+
+      expect(firstExitCode).toBe(0);
+      expect((await readdir(directory)).sort()).toEqual(
+        coreMigrationFiles.map((file) => file.replace(/^(\d+)_/, "$1_own_auth_")).sort()
+      );
+      await expect(
+        readFile(join(directory, "001_own_auth_initial.sql"), "utf8")
+      ).resolves.toContain("Dates are stored as Unix milliseconds");
+
+      const current = createIo();
+      await expect(runCli(
+        ["generate", "--dialect", "d1", "--out-dir", directory],
+        {},
+        current.io
+      )).resolves.toBe(0);
+      expect(current.output().stdout).toContain("D1 migrations are current");
+
+      await writeFile(join(directory, "001_own_auth_initial.sql"), "-- edited\n", "utf8");
+      const edited = createIo();
+      await expect(runCli(
+        ["generate", "--dialect", "d1", "--out-dir", directory],
+        {},
+        edited.io
+      )).resolves.toBe(1);
+      expect(edited.output().stderr).toContain("Generated D1 migration was modified");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("requires a database URL before migrating", async () => {

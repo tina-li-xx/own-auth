@@ -9,6 +9,7 @@
 - `signUpEmailPassword` still completes immediately and keeps its existing session result shape because a newly created user cannot already have MFA factors.
 - Applications using the HTTP handler must use its temporary HttpOnly MFA cookie when a sign-in returns `status: "mfa_required"`.
 - Custom `AuthStorage` adapters must implement the new OAuth transaction, MFA, encrypted credential, passkey, WebAuthn challenge, and related atomic operations before using `0.3.0`.
+- Plugin migration SQL is now keyed by database dialect so generation can fail before deployment when a plugin does not support the selected database.
 
 ### Added
 
@@ -21,6 +22,8 @@
 - Migrations `003_oauth_transactions` through `007_plugin_migrations`.
 - Lazy Postgres initialization so importing `own-auth` with custom storage does not load `pg`.
 - `auth.close()` for idempotent shutdown of the Postgres pool owned by Own Auth.
+- Cloudflare D1 storage and rate-limit adapters through the explicit `own-auth/d1` package export.
+- Versioned D1 migration generation through `npx own-auth generate --dialect d1` for Wrangler-managed deployment.
 
 ### Security
 

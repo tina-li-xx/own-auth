@@ -1,5 +1,6 @@
 import { sha256 } from "@noble/hashes/sha256.js";
 import { encodeHex } from "./encoding.js";
+import type { DatabaseDialect } from "./core-migrations.js";
 import type { OwnAuthPluginDefinition } from "./plugin-types.js";
 
 export interface PluginMigrationDatabase {
@@ -29,17 +30,27 @@ export interface PluginMigrationStatus {
 }
 
 export function resolvePluginMigrations(
-  plugins: readonly OwnAuthPluginDefinition[]
+  plugins: readonly OwnAuthPluginDefinition[],
+  dialect: DatabaseDialect = "postgres"
 ): ResolvedPluginMigration[] {
   return [...plugins]
     .sort((left, right) => left.id.localeCompare(right.id))
-    .flatMap((plugin) => (plugin.migrations ?? []).map((migration) => ({
-      id: `${plugin.id}:${migration.id}`,
-      pluginId: plugin.id,
-      pluginVersion: plugin.version,
-      checksum: checksum(migration.sql),
-      sql: migration.sql
-    })));
+    .flatMap((plugin) => (plugin.migrations ?? []).map((migration) => {
+      const sql = migration.sql[dialect]?.trim();
+      if (!sql) {
+        throw new Error(
+          `Plugin ${plugin.id} does not provide a ${dialect === "d1" ? "D1" : "Postgres"} ` +
+          `migration for ${plugin.id}:${migration.id}`
+        );
+      }
+      return {
+        id: `${plugin.id}:${migration.id}`,
+        pluginId: plugin.id,
+        pluginVersion: plugin.version,
+        checksum: checksum(sql),
+        sql
+      };
+    }));
 }
 
 export async function applyPluginMigrations(

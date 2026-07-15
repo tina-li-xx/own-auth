@@ -17,8 +17,8 @@ import type {
   SmsOtpPurpose,
   TokenType,
   User
-} from "../types.js";
-import type { Row } from "./postgres-types.js";
+} from "./types.js";
+import type { DatabaseRow as Row } from "./database-types.js";
 import {
   dateValue,
   jsonRecord,
@@ -27,7 +27,7 @@ import {
   numberValue,
   stringArray,
   stringValue
-} from "./postgres-row.js";
+} from "./database-row.js";
 
 export function mapUser(row: Row): User {
   return {

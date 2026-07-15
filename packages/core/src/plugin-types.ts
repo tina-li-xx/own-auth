@@ -1,4 +1,5 @@
 import type { OwnAuth } from "./auth-engine.js";
+import type { DatabaseDialect } from "./core-migrations.js";
 import type { JsonSchema, OwnAuthHttpMethod } from "./http/contract.js";
 import type { AuthStorage } from "./storage.js";
 import type { CurrentSession, JsonRecord, RequestContext } from "./types.js";
@@ -76,7 +77,7 @@ export interface OwnAuthPluginAfterHookContext extends OwnAuthPluginHookContext 
 
 export interface OwnAuthPluginMigration {
   id: string;
-  sql: string;
+  sql: Partial<Record<DatabaseDialect, string>>;
 }
 
 export interface OwnAuthPluginDefinition {

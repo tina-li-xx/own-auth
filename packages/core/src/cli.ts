@@ -5,8 +5,11 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import {
+  type CoreMigration,
+  type DatabaseDialect,
   coreMigrationVersions,
-  readCoreMigrationSql
+  readCoreMigrationSql,
+  readCoreMigrations
 } from "./core-migrations.js";
 import { loadOwnAuthConfig } from "./plugin-config.js";
 import {
@@ -39,7 +42,9 @@ interface ParsedArgs {
   command: "generate" | "migrate" | "status" | "help";
   databaseUrl?: string;
   out?: string;
+  outDir?: string;
   config?: string;
+  dialect: DatabaseDialect;
   version: boolean;
 }
 const defaultIo: CliIo = {
@@ -105,8 +110,25 @@ export async function runCli(
       return 0;
     }
     const loadedConfig = await loadOwnAuthConfig(args.config);
-    const pluginMigrations = resolvePluginMigrations(loadedConfig.config.plugins ?? []);
+    const pluginMigrations = resolvePluginMigrations(
+      loadedConfig.config.plugins ?? [],
+      args.dialect
+    );
     if (args.command === "generate") {
+      if (args.dialect === "d1") {
+        const outDir = resolve(args.outDir ?? "migrations");
+        const written = await writeD1Migrations(
+          outDir,
+          await readCoreMigrations("d1"),
+          pluginMigrations
+        );
+        io.stdout(
+          written > 0
+            ? `Wrote ${written} Own Auth D1 migration${written === 1 ? "" : "s"} to ${outDir}\n`
+            : `Own Auth D1 migrations are current in ${outDir}\n`
+        );
+        return 0;
+      }
       const sql = `${await readCoreMigrationSql()}${renderPluginMigrationSql(pluginMigrations)}`;
       if (args.out) {
         const outPath = resolve(args.out);
@@ -114,7 +136,7 @@ export async function runCli(
         await writeFile(outPath, sql, "utf8");
         io.stdout(`Wrote Own Auth migration to ${outPath}\n`);
       } else {
-        io.stdout(sql.endsWith("\n") ? sql : `${sql}\n`);
+        io.stdout(withTrailingNewline(sql));
       }
 
       return 0;
@@ -148,26 +170,40 @@ export async function runCli(
 
 function parseArgs(argv: string[]): ParsedArgs {
   if (argv.length === 0) {
-    return { command: "help", version: false };
+    return { command: "help", dialect: "postgres", version: false };
   }
   const [command, ...rest] = argv;
   if (command === "--help" || command === "-h" || command === "help") {
-    return { command: "help", version: false };
+    return { command: "help", dialect: "postgres", version: false };
   }
   if (command === "--version" || command === "-v") {
-    return { command: "help", version: true };
+    return { command: "help", dialect: "postgres", version: true };
   }
   if (command !== "generate" && command !== "migrate" && command !== "status") {
     throw new Error(`Unknown command: ${command}`);
   }
-  const parsed: ParsedArgs = { command, version: false };
+  const parsed: ParsedArgs = { command, dialect: "postgres", version: false };
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
     if (arg === "--help" || arg === "-h") {
-      return { command: "help", version: false };
+      return { command: "help", dialect: "postgres", version: false };
     }
     if ((arg === "--out" || arg === "--output") && command === "generate") {
       parsed.out = requireValue(rest, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === "--out-dir" && command === "generate") {
+      parsed.outDir = requireValue(rest, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === "--dialect" && command === "generate") {
+      const dialect = requireValue(rest, index, arg);
+      if (dialect !== "postgres" && dialect !== "d1") {
+        throw new Error("--dialect must be postgres or d1");
+      }
+      parsed.dialect = dialect;
       index += 1;
       continue;
     }
@@ -182,6 +218,12 @@ function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
     throw new Error(`Unknown option for ${command}: ${arg}`);
+  }
+  if (parsed.dialect === "d1" && parsed.out) {
+    throw new Error("D1 generation uses --out-dir, not --out");
+  }
+  if (parsed.dialect === "postgres" && parsed.outDir) {
+    throw new Error("Postgres generation uses --out, not --out-dir");
   }
   return parsed;
 }
@@ -278,17 +320,20 @@ function helpText(): string {
   return `Own Auth CLI
 
 Usage:
-  own-auth generate [--out <file>] [--config <file>]
+  own-auth generate [--dialect postgres] [--out <file>] [--config <file>]
+  own-auth generate --dialect d1 [--out-dir <directory>] [--config <file>]
   own-auth migrate [--database-url <url>] [--config <file>]
   own-auth status [--database-url <url>] [--config <file>]
 
 Commands:
-  generate  Print the SQL migration, or write it with --out.
+  generate  Generate Postgres SQL or versioned D1 migration files.
   migrate   Apply the SQL migration to DATABASE_URL.
   status    Check the database connection and migration version.
 
 Options:
   --out, --output       Write generated SQL to a file.
+  --out-dir             Write D1 migrations to a directory (default: ./migrations).
+  --dialect             Generate migrations for postgres or d1.
   --database-url        Use this database URL instead of DATABASE_URL.
   --config              Load plugins from an Own Auth config file.
   --help                Show this help.
@@ -302,11 +347,70 @@ function renderPluginMigrationSql(migrations: readonly ResolvedPluginMigration[]
 -- Plugin migration ${migration.id}
 begin;
 ${migration.sql.trim()}
-insert into own_auth_plugin_migrations (id, plugin_id, plugin_version, checksum)
-values (${sqlLiteral(migration.id)}, ${sqlLiteral(migration.pluginId)}, ${sqlLiteral(migration.pluginVersion)}, ${sqlLiteral(migration.checksum)})
-on conflict (id) do nothing;
+${renderPluginMigrationRecord(migration)}
 commit;
 `).join("");
+}
+
+async function writeD1Migrations(
+  outDir: string,
+  coreMigrations: readonly CoreMigration[],
+  pluginMigrations: readonly ResolvedPluginMigration[]
+): Promise<number> {
+  await mkdir(outDir, { recursive: true });
+  const files = [
+    ...coreMigrations.map(({ file, sql }) => ({
+      name: file.replace(/^(\d+)_/, "$1_own_auth_"),
+      contents: sql
+    })),
+    ...pluginMigrations.map((migration) => ({
+      name: `900000_own_auth_plugin_${migration.id.replace(":", "__")}.sql`,
+      contents: renderD1PluginMigrationSql(migration)
+    }))
+  ];
+  let written = 0;
+  for (const file of files) {
+    const path = resolve(outDir, file.name);
+    const contents = withTrailingNewline(file.contents);
+    const existing = await readOptionalFile(path);
+    if (existing === contents) continue;
+    if (existing !== null) {
+      throw new Error(`Generated D1 migration was modified: ${path}`);
+    }
+    await writeFile(path, contents, "utf8");
+    written += 1;
+  }
+  return written;
+}
+
+function renderD1PluginMigrationSql(migration: ResolvedPluginMigration): string {
+  return `-- Own Auth plugin migration ${migration.id}
+${migration.sql.trim()}
+${renderPluginMigrationRecord(migration)}
+`;
+}
+
+function renderPluginMigrationRecord(migration: ResolvedPluginMigration): string {
+  return `insert into own_auth_plugin_migrations (id, plugin_id, plugin_version, checksum)
+values (${sqlLiteral(migration.id)}, ${sqlLiteral(migration.pluginId)}, ${sqlLiteral(migration.pluginVersion)}, ${sqlLiteral(migration.checksum)})
+on conflict (id) do nothing;`;
+}
+
+function withTrailingNewline(value: string): string {
+  return value.endsWith("\n") ? value : `${value}\n`;
+}
+
+async function readOptionalFile(path: string): Promise<string | null> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }
 
 function sqlLiteral(value: string): string {

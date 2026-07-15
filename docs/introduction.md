@@ -1,5 +1,7 @@
 # Introduction
 
+Own Auth stores authentication data in Postgres by default. Cloudflare Workers can use the explicit D1 adapter while keeping the same auth API.
+
 ## What you get
 
 **Auth methods** - Email/password, magic links, and phone/SMS login. Each method is independent: use one, use all, or add more later.

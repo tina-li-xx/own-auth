@@ -52,9 +52,9 @@ try {
 
 `AuthError` does not currently include a `retryAfterMs` value. Do not read or document that field unless the public error contract adds it.
 
-## Default Postgres store
+## Default durable store
 
-When `DATABASE_URL` is configured, Own Auth stores counters in `own_auth_rate_limits` in the same Postgres database as the auth data.
+With the default Postgres setup, Own Auth stores counters in `own_auth_rate_limits` in the same database as the auth data. The Cloudflare D1 adapter uses the same table in D1.
 
 The counters survive server restarts and are shared by every application instance connected to that database. No additional rate-limit configuration is needed for the default setup.
 

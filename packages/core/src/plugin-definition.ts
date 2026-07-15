@@ -131,7 +131,8 @@ function validateRateLimits(plugin: OwnAuthPluginDefinition): void {
 
 function validateMigrations(plugin: OwnAuthPluginDefinition): void {
   for (const migration of plugin.migrations ?? []) {
-    if (!migration.sql.trim()) {
+    const hasSql = Object.values(migration.sql).some((sql) => sql?.trim());
+    if (!hasSql) {
       throw new Error(`Plugin ${plugin.id} migration ${migration.id} has no SQL`);
     }
   }

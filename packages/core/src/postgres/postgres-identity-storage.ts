@@ -15,7 +15,7 @@ import {
   mapRecoveryCode,
   mapTotpFactor,
   mapWebAuthnChallenge
-} from "./postgres-identity-mappers.js";
+} from "../database-identity-mappers.js";
 import {
   mfaChallengeColumns,
   mfaChallengeReturning,
@@ -29,7 +29,7 @@ import {
   totpFactorReturning,
   webAuthnChallengeColumns,
   webAuthnChallengeReturning
-} from "./postgres-identity-schema.js";
+} from "../database-identity-schema.js";
 import { PostgresStorageBase } from "./postgres-storage-base.js";
 import { expectOne } from "./postgres-row.js";
 import type { Row } from "./postgres-types.js";

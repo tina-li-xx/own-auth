@@ -2,7 +2,7 @@
 
 Own your auth. Own your users.
 
-Framework-independent authentication for TypeScript. Backed by Postgres, controlled by you.
+Framework-independent authentication for TypeScript. Backed by Postgres or Cloudflare D1, controlled by you.
 
 ## Quickstart
 
@@ -635,7 +635,7 @@ await auth.close();
 
 Own Auth closes only the Postgres pool it creates. Applications that pass custom storage or rate-limit adapters remain responsible for those resources. See [Database connection and shutdown](./docs/configuration.md#database-connection-and-shutdown).
 
-## Database Setup
+## Postgres Database Setup
 
 Auto-migrate (recommended):
 
@@ -651,6 +651,28 @@ Or generate SQL and apply it yourself:
 npx own-auth generate --out own-auth.sql
 psql "$DATABASE_URL" -f own-auth.sql
 ```
+
+## Cloudflare D1
+
+Cloudflare Workers can use the explicit D1 adapter for both auth data and rate limits:
+
+```ts auth.ts
+import { createOwnAuth } from "own-auth";
+import { createD1Persistence } from "own-auth/d1";
+
+export const auth = createOwnAuth({
+  ...createD1Persistence(env.DB),
+  tokenPepper: env.OWN_AUTH_TOKEN_PEPPER,
+});
+```
+
+Generate versioned migrations for Wrangler:
+
+```bash
+npx own-auth generate --dialect d1 --out-dir migrations
+```
+
+See [Cloudflare D1](./docs/cloudflare-d1.md) for the complete Worker and migration setup.
 
 ## Method Reference
 
@@ -696,6 +718,7 @@ psql "$DATABASE_URL" -f own-auth.sql
 - [Multi-Factor Authentication](./docs/mfa.md)
 - [Passkeys](./docs/passkeys.md)
 - [Plugins](./docs/plugins.md)
+- [Cloudflare D1](./docs/cloudflare-d1.md)
 - [Next.js](./docs/frameworks/nextjs.md)
 - [Express](./docs/frameworks/express.md)
 - [Hono](./docs/frameworks/hono.md)

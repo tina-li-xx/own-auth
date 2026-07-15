@@ -37,7 +37,7 @@ describe("plugin migrations", () => {
       defineOwnAuthPlugin({
         id: "second",
         version: "1.0.0",
-        migrations: [{ id: "001_initial", sql: "select 2" }]
+        migrations: [{ id: "001_initial", sql: { postgres: "select 2" } }]
       })
     ]);
     database.applied.set("example:001_initial", "old-checksum");
@@ -48,13 +48,38 @@ describe("plugin migrations", () => {
       "example:001_initial"
     ]);
   });
+
+  it("selects SQL for the requested database dialect", () => {
+    const plugin = defineOwnAuthPlugin({
+      id: "example",
+      version: "1.0.0",
+      migrations: [{
+        id: "001_initial",
+        sql: {
+          postgres: "select 'postgres'",
+          d1: "select 'd1'"
+        }
+      }]
+    });
+
+    expect(resolvePluginMigrations([plugin], "postgres")[0]?.sql).toBe("select 'postgres'");
+    expect(resolvePluginMigrations([plugin], "d1")[0]?.sql).toBe("select 'd1'");
+  });
+
+  it("fails before generation when a plugin does not support D1", () => {
+    const plugin = pluginWithSql("select 1");
+
+    expect(() => resolvePluginMigrations([plugin], "d1")).toThrow(
+      "Plugin example does not provide a D1 migration for example:001_initial"
+    );
+  });
 });
 
 function pluginWithSql(sql: string) {
   return defineOwnAuthPlugin({
     id: "example",
     version: "1.0.0",
-    migrations: [{ id: "001_initial", sql }]
+    migrations: [{ id: "001_initial", sql: { postgres: sql } }]
   });
 }
 

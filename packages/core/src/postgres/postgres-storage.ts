@@ -13,11 +13,6 @@ import type {
 } from "../types.js";
 import type { AuthStorage } from "../storage.js";
 import {
-  atomicConsumeSmsOtp,
-  atomicConsumeToken,
-  atomicIncrementSmsOtpAttempts
-} from "./postgres-atomic-operations.js";
-import {
   mapAccount,
   mapApiKey,
   mapAuditEvent,
@@ -28,8 +23,7 @@ import {
   mapSmsOtp,
   mapToken,
   mapUser
-} from "./postgres-mappers.js";
-import { PostgresIdentityStorage } from "./postgres-identity-storage.js";
+} from "../database-mappers.js";
 import {
   accountColumns,
   accountReturning,
@@ -51,7 +45,14 @@ import {
   tokenReturning,
   userColumns,
   userReturning
-} from "./postgres-schema.js";
+} from "../database-schema.js";
+import { databaseColumnEntries } from "../database-types.js";
+import {
+  atomicConsumeSmsOtp,
+  atomicConsumeToken,
+  atomicIncrementSmsOtpAttempts
+} from "./postgres-atomic-operations.js";
+import { PostgresIdentityStorage } from "./postgres-identity-storage.js";
 import type { PostgresQueryable } from "./postgres-types.js";
 
 export type { PostgresQueryable, PostgresQueryResult } from "./postgres-types.js";
@@ -89,15 +90,11 @@ export class PostgresAuthStorage extends PostgresIdentityStorage implements Auth
   }
 
   async createUserAndAccount(user: User, account: Account): Promise<Account> {
-    const userEntries = Object.entries(userColumns).filter(
-      ([key]) => user[key as keyof User] !== undefined
-    );
-    const accountEntries = Object.entries(accountColumns).filter(
-      ([key]) => account[key as keyof Account] !== undefined
-    );
+    const userEntries = databaseColumnEntries(userColumns, user);
+    const accountEntries = databaseColumnEntries(accountColumns, account);
     const values = [
-      ...userEntries.map(([key]) => user[key as keyof User]),
-      ...accountEntries.map(([key]) => account[key as keyof Account])
+      ...userEntries.map(([key]) => user[key]),
+      ...accountEntries.map(([key]) => account[key])
     ];
     const userPlaceholders = userEntries.map((_, index) => `$${index + 1}`);
     const accountOffset = userEntries.length;

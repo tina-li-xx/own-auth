@@ -3,10 +3,14 @@ import type {
   OAuthCredential,
   OAuthTransaction,
   PasskeyCredential,
+  RecoveryCode,
   TotpFactor,
   WebAuthnChallenge
-} from "../identity-types.js";
-import type { ColumnMap } from "./postgres-types.js";
+} from "./identity-types.js";
+import {
+  databaseColumnList,
+  type EntityColumnMap as ColumnMap
+} from "./database-types.js";
 
 export const oauthTransactionColumns: ColumnMap<OAuthTransaction> = {
   id: "id",
@@ -90,17 +94,18 @@ export const webAuthnChallengeColumns: ColumnMap<WebAuthnChallenge> = {
   createdAt: "created_at"
 };
 
-export const oauthTransactionReturning = Object.values(oauthTransactionColumns).join(", ");
-export const oauthCredentialReturning = Object.values(oauthCredentialColumns).join(", ");
-export const totpFactorReturning = Object.values(totpFactorColumns).join(", ");
-export const mfaChallengeReturning = Object.values(mfaChallengeColumns).join(", ");
-export const passkeyReturning = Object.values(passkeyColumns).join(", ");
-export const webAuthnChallengeReturning = Object.values(webAuthnChallengeColumns).join(", ");
+export const recoveryCodeColumns: ColumnMap<RecoveryCode> = {
+  id: "id",
+  userId: "user_id",
+  codeHash: "code_hash",
+  consumedAt: "consumed_at",
+  createdAt: "created_at"
+};
 
-export const recoveryCodeReturning = [
-  "id",
-  "user_id",
-  "code_hash",
-  "consumed_at",
-  "created_at"
-].join(", ");
+export const oauthTransactionReturning = databaseColumnList(oauthTransactionColumns);
+export const oauthCredentialReturning = databaseColumnList(oauthCredentialColumns);
+export const totpFactorReturning = databaseColumnList(totpFactorColumns);
+export const mfaChallengeReturning = databaseColumnList(mfaChallengeColumns);
+export const passkeyReturning = databaseColumnList(passkeyColumns);
+export const webAuthnChallengeReturning = databaseColumnList(webAuthnChallengeColumns);
+export const recoveryCodeReturning = databaseColumnList(recoveryCodeColumns);

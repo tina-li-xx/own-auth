@@ -300,7 +300,9 @@ See [Plugins](/docs/plugins) for the public extension and migration contract.
 
 ## Database connection and shutdown
 
-`createOwnAuth` validates that `DATABASE_URL` is a Postgres connection URL when the auth instance is created. The Postgres driver and database connection are loaded only when the first database operation runs.
+Postgres is the default persistence path. `createOwnAuth` validates `DATABASE_URL` when the auth instance is created, then loads the Postgres driver and opens the database connection only when the first database operation runs.
+
+Cloudflare Workers can instead pass the explicit persistence returned by `createD1Persistence(env.DB)`. See [Cloudflare D1](/docs/cloudflare-d1).
 
 For long-running servers, close the auth instance during graceful shutdown:
 
@@ -310,11 +312,11 @@ await auth.close();
 
 `close` waits for an in-progress first connection, closes the Postgres pool created by Own Auth, and is safe to call more than once. Auth methods called afterward reject with an `AuthError` whose code is `auth_closed`.
 
-Do not call `close` after every request. Serverless and edge runtimes should keep the auth instance reusable across requests. When `storage` or `rateLimitStore` is supplied by the application, the application owns and closes those adapter resources.
+Do not call `close` after every request. Serverless and edge runtimes should keep the auth instance reusable across requests. When `storage` or `rateLimitStore` is supplied by the application, Own Auth does not manage its lifecycle. Cloudflare owns D1 bindings, so the D1 adapter has nothing to close.
 
 ## Validation
 
-`createOwnAuth` checks required runtime configuration when the auth instance is created. Without `DATABASE_URL`, it throws:
+`createOwnAuth` checks required runtime configuration when the auth instance is created. Without `DATABASE_URL` or an explicit storage adapter, it throws:
 
 ```text
 DATABASE_URL is required. Set DATABASE_URL or pass storage to createOwnAuth().

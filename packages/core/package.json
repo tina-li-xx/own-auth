@@ -2,7 +2,7 @@
   "name": "own-auth",
   "version": "0.3.0",
   "type": "module",
-  "description": "Framework-independent TypeScript auth engine with Postgres storage.",
+  "description": "Framework-independent TypeScript auth engine with Postgres and Cloudflare D1 storage.",
   "license": "MIT",
   "author": "Tina Li",
   "repository": {
@@ -17,6 +17,8 @@
   "keywords": [
     "auth",
     "authentication",
+    "cloudflare",
+    "d1",
     "postgres",
     "sessions",
     "api-keys",
@@ -50,6 +52,10 @@
       "types": "./dist/postgres/index.d.ts",
       "default": "./dist/postgres/index.js"
     },
+    "./d1": {
+      "types": "./dist/d1/index.d.ts",
+      "default": "./dist/d1/index.js"
+    },
     "./client": {
       "types": "./dist/client.d.ts",
       "default": "./dist/client.js"
@@ -77,7 +83,9 @@
     "./migrations/005_oauth_credentials.sql": "./migrations/005_oauth_credentials.sql",
     "./migrations/006_passkeys.sql": "./migrations/006_passkeys.sql",
     "./migrations/007_plugin_migrations.sql": "./migrations/007_plugin_migrations.sql",
+    "./migrations/d1/*.sql": "./migrations/d1/*.sql",
     "./docs/installation.md": "./docs/installation.md",
+    "./docs/cloudflare-d1.md": "./docs/cloudflare-d1.md",
     "./docs/security-model.md": "./docs/security-model.md"
   },
   "scripts": {
