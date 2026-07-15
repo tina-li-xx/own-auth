@@ -7,7 +7,7 @@ import {
   MemoryEmailProvider,
   MemorySmsProvider
 } from "../src/index.js";
-import { expectOneWinner } from "./concurrency-helpers.js";
+import { assertSingleSettledWinner } from "./conformance/conformance-assertions.js";
 
 function createHarness(
   options: Parameters<typeof createOwnAuth>[0] = {}
@@ -395,7 +395,7 @@ describe("OwnAuth security regressions", () => {
     await auth.requestMagicLink({ email: "magic-race@example.com" });
     const token = emailProvider.messages.at(-1)?.token ?? "";
 
-    expectOneWinner(
+    assertSingleSettledWinner(
       await Promise.allSettled([
         auth.verifyMagicLink({ token }),
         auth.verifyMagicLink({ token })
@@ -413,7 +413,7 @@ describe("OwnAuth security regressions", () => {
     await auth.requestEmailVerification({ email: "verification-race@example.com" });
     const token = emailProvider.messages.at(-1)?.token ?? "";
 
-    expectOneWinner(
+    assertSingleSettledWinner(
       await Promise.allSettled([
         auth.verifyEmail({ token }),
         auth.verifyEmail({ token })
@@ -458,7 +458,7 @@ describe("OwnAuth security regressions", () => {
     await auth.requestPasswordReset({ email: "reset-race@example.com" });
     const token = emailProvider.messages.at(-1)?.token ?? "";
 
-    expectOneWinner(
+    assertSingleSettledWinner(
       await Promise.allSettled([
         auth.resetPassword({ token, newPassword: "new-password-one" }),
         auth.resetPassword({ token, newPassword: "new-password-two" })
@@ -502,7 +502,7 @@ describe("OwnAuth security regressions", () => {
     await auth.requestSmsOtp({ phone });
     const code = smsProvider.messages.at(-1)?.code ?? "";
 
-    expectOneWinner(
+    assertSingleSettledWinner(
       await Promise.allSettled([
         auth.verifySmsOtp({ phone, code }),
         auth.verifySmsOtp({ phone, code })
@@ -924,7 +924,7 @@ describe("OwnAuth security regressions", () => {
     });
     const input = { token: invite.token ?? "", userId: invitedUser.id };
 
-    expectOneWinner(
+    assertSingleSettledWinner(
       await Promise.allSettled([
         auth.acceptInvite(input),
         auth.acceptInvite(input)
