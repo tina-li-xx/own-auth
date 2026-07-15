@@ -49,7 +49,7 @@ export interface PublicOrganisationMember {
   id: string;
   organisationId: string;
   userId: string;
-  role: "owner" | "admin" | "member";
+  role: string;
   joinedAt: string | null;
 }
 
@@ -186,15 +186,15 @@ export interface OwnAuthErrorPayload {
 }
 
 export interface OwnAuthEndpointDefinition {
-  id: OwnAuthEndpointId;
-  method: OwnAuthHttpMethod;
-  path: string;
-  summary: string;
-  request?: JsonSchema;
-  requestTransport?: "json" | "query" | "form";
-  response: JsonSchema;
-  responseKind?: "json" | "oauth_callback";
-  errors: readonly OwnAuthHttpErrorCode[];
-  session: "none" | "optional" | "required" | "create" | "clear";
-  csrf?: "default" | "oauth_state";
+  readonly id: OwnAuthEndpointId;
+  readonly method: OwnAuthHttpMethod;
+  readonly path: string;
+  readonly summary: string;
+  readonly request?: JsonSchema;
+  readonly requestTransport?: "json" | "query" | "form";
+  readonly response: JsonSchema;
+  readonly responseKind?: "json" | "oauth_callback";
+  readonly errors: readonly OwnAuthHttpErrorCode[];
+  readonly session: "none" | "optional" | "required" | "create" | "clear";
+  readonly csrf?: "default" | "oauth_state";
 }

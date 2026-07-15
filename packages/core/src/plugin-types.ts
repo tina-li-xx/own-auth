@@ -7,7 +7,7 @@ import type { CurrentSession, JsonRecord, RequestContext } from "./types.js";
 export type PluginSessionRequirement = "none" | "optional" | "required";
 
 export interface OwnAuthPluginContext<Input = unknown> {
-  readonly auth: OwnAuth;
+  readonly auth: OwnAuth<string, string>;
   readonly input: Readonly<Input>;
   readonly request: Readonly<RequestContext>;
   readonly session: CurrentSession | null;

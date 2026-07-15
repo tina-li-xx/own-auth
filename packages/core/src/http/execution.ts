@@ -8,8 +8,10 @@ import type {
   SignInResult
 } from "../auth-engine-types.js";
 import type {
+  AuthSessionPayload,
   OwnAuthEndpointId,
   OwnAuthEndpointInputMap,
+  OwnAuthEndpointOutputMap,
   SignInPayload
 } from "./contract.js";
 import {
@@ -21,8 +23,8 @@ import {
   serializeUser
 } from "./serializers.js";
 
-export interface EndpointExecution {
-  body: unknown;
+export interface EndpointExecution<Body = unknown> {
+  body: Body;
   setSession?: { token: string; expiresAt: Date };
   setMfaChallenge?: { token: string; expiresAt: Date };
   clearSession?: boolean;
@@ -34,217 +36,267 @@ export interface EndpointExecution {
   };
 }
 
-export async function executeEndpoint(
-  auth: OwnAuth,
-  endpointId: OwnAuthEndpointId,
+interface EndpointExecutionContext {
+  auth: OwnAuth<string, string>;
+  sessionToken: string | null;
+  mfaChallengeToken: string | null;
+  request: RequestContext;
+}
+
+type EndpointExecutor<Id extends OwnAuthEndpointId> = (
+  context: EndpointExecutionContext,
+  input: OwnAuthEndpointInputMap[Id]
+) => Promise<EndpointExecution<OwnAuthEndpointOutputMap[Id]>>;
+
+type EndpointExecutorMap = {
+  [Id in OwnAuthEndpointId]: EndpointExecutor<Id>;
+};
+
+const endpointExecutors = {
+  signUpEmailPassword: async ({ auth, request }, input) =>
+    signInExecution(await auth.signUpEmailPassword({ ...input, request })),
+
+  signInEmailPassword: async ({ auth, request }, input) =>
+    signInExecution(await auth.signInEmailPassword({ ...input, request })),
+
+  getSession: async ({ auth, sessionToken }) => {
+    const current = sessionToken ? await auth.getCurrentSession(sessionToken) : null;
+    return { body: { session: current ? serializeAuthSession(current) : null } };
+  },
+
+  signOut: async ({ auth, sessionToken, request }) => {
+    if (sessionToken) await auth.signOut(sessionToken, request);
+    return {
+      body: { success: true },
+      clearSession: true,
+      clearMfaChallenge: true
+    };
+  },
+
+  changePassword: async ({ auth, sessionToken, request }, input) => {
+    const user = await auth.changePassword({
+      ...input,
+      sessionToken: requireToken(sessionToken, "session"),
+      request
+    });
+    return { body: { user: serializeUser(user) } };
+  },
+
+  requestMagicLink: async ({ auth, request }, input) => ({
+    body: serializeDelivery(await auth.requestMagicLink({ ...input, request }))
+  }),
+
+  verifyMagicLink: async ({ auth, request }, input) =>
+    signInExecution(await auth.verifyMagicLink({ ...input, request })),
+
+  requestEmailVerification: async ({ auth, request }, input) => ({
+    body: serializeDelivery(await auth.requestEmailVerification({ ...input, request }))
+  }),
+
+  verifyEmail: async ({ auth, request }, input) => ({
+    body: { user: serializeUser(await auth.verifyEmail({ ...input, request })) }
+  }),
+
+  requestPasswordReset: async ({ auth, request }, input) => ({
+    body: serializeDelivery(await auth.requestPasswordReset({ ...input, request }))
+  }),
+
+  resetPassword: async ({ auth, request }, input) => ({
+    body: { user: serializeUser(await auth.resetPassword({ ...input, request })) },
+    clearSession: true,
+    clearMfaChallenge: true
+  }),
+
+  requestSmsOtp: async ({ auth, sessionToken, request }, input) => {
+    const userId = input.purpose === "phone_verification"
+      ? (await auth.requireCurrentSession(requireToken(sessionToken, "session"))).user.id
+      : undefined;
+    return {
+      body: serializeDelivery(await auth.requestSmsOtp({ ...input, userId, request }))
+    };
+  },
+
+  verifySmsOtp: async ({ auth, request }, input) => {
+    const result = await auth.verifySmsOtp({ ...input, request });
+    return result.status === "verified"
+      ? { body: { status: "verified", user: serializeUser(result.user) } }
+      : signInExecution(result);
+  },
+
+  acceptInvite: async ({ auth, sessionToken, request }, input) => {
+    const current = await auth.requireCurrentSession(requireToken(sessionToken, "session"));
+    const result = await auth.acceptInvite({ ...input, userId: current.user.id, request });
+    return {
+      body: {
+        organisation: serializeOrganisation(result.organisation),
+        member: serializeMember(result.member)
+      }
+    };
+  },
+
+  oauthStart: async ({ auth, sessionToken, request }, input) => {
+    const actorUserId = input.intent === "link"
+      ? (await auth.requireCurrentSession(requireToken(sessionToken, "session"))).user.id
+      : undefined;
+    const result = await auth.createOAuthAuthorizationUrl({ ...input, actorUserId, request });
+    return { body: { url: result.url, expiresAt: result.expiresAt.toISOString() } };
+  },
+
+  oauthGoogleCallback: async ({ auth, request }, input) =>
+    oauthExecution(await completeOAuth(auth, "google", input, request)),
+
+  oauthGitHubCallback: async ({ auth, request }, input) =>
+    oauthExecution(await completeOAuth(auth, "github", input, request)),
+
+  oauthAppleCallback: async ({ auth, request }, input) =>
+    oauthExecution(await completeOAuth(auth, "apple", input, request)),
+
+  oauthAppleCallbackPost: async ({ auth, request }, input) =>
+    oauthExecution(await completeOAuth(auth, "apple", input, request)),
+
+  prepareGoogleOneTap: async ({ auth, request }) => {
+    const result = await auth.prepareGoogleOneTap({ request });
+    return { body: { nonce: result.nonce, expiresAt: result.expiresAt.toISOString() } };
+  },
+
+  signInGoogleOneTap: async ({ auth, request }, input) => {
+    const result = await auth.signInWithGoogleOneTap({ ...input, request });
+    if (result.status === "linked") {
+      throw new AuthError("oauth_provider_error", "Google One Tap sign-in failed", 500);
+    }
+    return signInExecution(result);
+  },
+
+  unlinkOAuthProvider: async ({ auth, sessionToken, request }, input) => {
+    const current = await auth.requireCurrentSession(requireToken(sessionToken, "session"));
+    await auth.unlinkOAuthProvider({ ...input, actorUserId: current.user.id, request });
+    return { body: { success: true } };
+  },
+
+  completeMfaTotp: async ({ auth, mfaChallengeToken, request }, input) =>
+    completedMfaExecution(await auth.completeMfaWithTotp({
+      ...input,
+      challengeToken: requireToken(mfaChallengeToken, "MFA challenge"),
+      request
+    })),
+
+  completeMfaRecovery: async ({ auth, mfaChallengeToken, request }, input) =>
+    completedMfaExecution(await auth.completeMfaWithRecoveryCode({
+      ...input,
+      challengeToken: requireToken(mfaChallengeToken, "MFA challenge"),
+      request
+    })),
+
+  beginTotpEnrollment: async ({ auth, sessionToken, request }) => ({
+    body: await auth.beginTotpEnrollment({
+      sessionToken: requireToken(sessionToken, "session"),
+      request
+    })
+  }),
+
+  confirmTotpEnrollment: async ({ auth, sessionToken, request }, input) => ({
+    body: await auth.confirmTotpEnrollment({
+      ...input,
+      sessionToken: requireToken(sessionToken, "session"),
+      request
+    })
+  }),
+
+  disableTotp: async ({ auth, sessionToken, request }, input) => {
+    await auth.disableTotp({
+      ...input,
+      sessionToken: requireToken(sessionToken, "session"),
+      request
+    });
+    return { body: { success: true } };
+  },
+
+  regenerateRecoveryCodes: async ({ auth, sessionToken, request }, input) => ({
+    body: {
+      recoveryCodes: await auth.regenerateRecoveryCodes({
+        ...input,
+        sessionToken: requireToken(sessionToken, "session"),
+        request
+      })
+    }
+  }),
+
+  beginPasskeyRegistration: async ({ auth, sessionToken, request }) => ({
+    body: await auth.beginPasskeyRegistration({
+      sessionToken: requireToken(sessionToken, "session"),
+      request
+    })
+  }),
+
+  completePasskeyRegistration: async ({ auth, sessionToken, request }, input) => ({
+    body: {
+      passkey: serializePasskey(await auth.completePasskeyRegistration({
+        ...input,
+        sessionToken: requireToken(sessionToken, "session"),
+        request
+      }))
+    }
+  }),
+
+  beginPasskeyAuthentication: async ({ auth, mfaChallengeToken, request }, input) => ({
+    body: await auth.beginPasskeyAuthentication({
+      userId: input.userId,
+      mfaChallengeToken: input.mfa
+        ? requireToken(mfaChallengeToken, "MFA challenge")
+        : undefined,
+      request
+    })
+  }),
+
+  completePasskeyAuthentication: async ({ auth, request }, input) =>
+    completedMfaExecution(await auth.completePasskeyAuthentication({ ...input, request })),
+
+  listPasskeys: async ({ auth, sessionToken }) => ({
+    body: {
+      passkeys: (await auth.listPasskeys({
+        sessionToken: requireToken(sessionToken, "session")
+      })).map(serializePasskey)
+    }
+  }),
+
+  renamePasskey: async ({ auth, sessionToken, request }, input) => ({
+    body: {
+      passkey: serializePasskey(await auth.renamePasskey({
+        ...input,
+        sessionToken: requireToken(sessionToken, "session"),
+        request
+      }))
+    }
+  }),
+
+  revokePasskey: async ({ auth, sessionToken, request }, input) => {
+    await auth.revokePasskey({
+      ...input,
+      sessionToken: requireToken(sessionToken, "session"),
+      request
+    });
+    return { body: { success: true } };
+  }
+} satisfies EndpointExecutorMap;
+
+export function executeEndpoint<Id extends OwnAuthEndpointId>(
+  auth: OwnAuth<string, string>,
+  endpointId: Id,
   rawInput: Record<string, unknown> | undefined,
   sessionToken: string | null,
   mfaChallengeToken: string | null,
   request: RequestContext
-): Promise<EndpointExecution> {
-  switch (endpointId) {
-    case "signUpEmailPassword":
-      return signInExecution(await auth.signUpEmailPassword({
-        ...inputAs(rawInput, endpointId), request
-      }));
-    case "signInEmailPassword":
-      return signInExecution(await auth.signInEmailPassword({
-        ...inputAs(rawInput, endpointId), request
-      }));
-    case "getSession": {
-      const current = sessionToken ? await auth.getCurrentSession(sessionToken) : null;
-      return { body: { session: current ? serializeAuthSession(current) : null } };
-    }
-    case "signOut":
-      if (sessionToken) await auth.signOut(sessionToken, request);
-      return {
-        body: { success: true },
-        clearSession: true,
-        clearMfaChallenge: true
-      };
-    case "changePassword": {
-      const user = await auth.changePassword({
-        ...inputAs(rawInput, endpointId),
-        sessionToken: requireToken(sessionToken, "session"),
-        request
-      });
-      return { body: { user: serializeUser(user) } };
-    }
-    case "requestMagicLink":
-      return { body: serializeDelivery(await auth.requestMagicLink({
-        ...inputAs(rawInput, endpointId), request
-      })) };
-    case "verifyMagicLink":
-      return signInExecution(await auth.verifyMagicLink({
-        ...inputAs(rawInput, endpointId), request
-      }));
-    case "requestEmailVerification":
-      return { body: serializeDelivery(await auth.requestEmailVerification({
-        ...inputAs(rawInput, endpointId), request
-      })) };
-    case "verifyEmail":
-      return { body: { user: serializeUser(await auth.verifyEmail({
-        ...inputAs(rawInput, endpointId), request
-      })) } };
-    case "requestPasswordReset":
-      return { body: serializeDelivery(await auth.requestPasswordReset({
-        ...inputAs(rawInput, endpointId), request
-      })) };
-    case "resetPassword":
-      return {
-        body: { user: serializeUser(await auth.resetPassword({
-          ...inputAs(rawInput, endpointId), request
-        })) },
-        clearSession: true,
-        clearMfaChallenge: true
-      };
-    case "requestSmsOtp": {
-      const input = inputAs(rawInput, endpointId);
-      const userId = input.purpose === "phone_verification"
-        ? (await auth.requireCurrentSession(requireToken(sessionToken, "session"))).user.id
-        : undefined;
-      return { body: serializeDelivery(await auth.requestSmsOtp({
-        ...input, userId, request
-      })) };
-    }
-    case "verifySmsOtp": {
-      const result = await auth.verifySmsOtp({ ...inputAs(rawInput, endpointId), request });
-      if (result.status === "verified") {
-        return { body: { status: "verified", user: serializeUser(result.user) } };
-      }
-      return signInExecution(result);
-    }
-    case "acceptInvite": {
-      const current = await auth.requireCurrentSession(requireToken(sessionToken, "session"));
-      const result = await auth.acceptInvite({
-        ...inputAs(rawInput, endpointId), userId: current.user.id, request
-      });
-      return { body: {
-        organisation: serializeOrganisation(result.organisation),
-        member: serializeMember(result.member)
-      } };
-    }
-    case "oauthStart": {
-      const input = inputAs(rawInput, endpointId);
-      const actorUserId = input.intent === "link"
-        ? (await auth.requireCurrentSession(requireToken(sessionToken, "session"))).user.id
-        : undefined;
-      const result = await auth.createOAuthAuthorizationUrl({
-        ...input, actorUserId, request
-      });
-      return { body: { url: result.url, expiresAt: result.expiresAt.toISOString() } };
-    }
-    case "oauthGoogleCallback":
-      return oauthExecution(await completeOAuth(auth, "google", rawInput, request));
-    case "oauthGitHubCallback":
-      return oauthExecution(await completeOAuth(auth, "github", rawInput, request));
-    case "oauthAppleCallback":
-    case "oauthAppleCallbackPost":
-      return oauthExecution(await completeOAuth(auth, "apple", rawInput, request));
-    case "prepareGoogleOneTap": {
-      const result = await auth.prepareGoogleOneTap({ request });
-      return { body: { nonce: result.nonce, expiresAt: result.expiresAt.toISOString() } };
-    }
-    case "signInGoogleOneTap": {
-      const result = await auth.signInWithGoogleOneTap({
-        ...inputAs(rawInput, endpointId), request
-      });
-      if (result.status === "linked") {
-        throw new AuthError("oauth_provider_error", "Google One Tap sign-in failed", 500);
-      }
-      return signInExecution(result);
-    }
-    case "unlinkOAuthProvider": {
-      const current = await auth.requireCurrentSession(requireToken(sessionToken, "session"));
-      await auth.unlinkOAuthProvider({
-        ...inputAs(rawInput, endpointId), actorUserId: current.user.id, request
-      });
-      return { body: { success: true } };
-    }
-    case "completeMfaTotp":
-      return completedMfaExecution(await auth.completeMfaWithTotp({
-        ...inputAs(rawInput, endpointId),
-        challengeToken: requireToken(mfaChallengeToken, "MFA challenge"),
-        request
-      }));
-    case "completeMfaRecovery":
-      return completedMfaExecution(await auth.completeMfaWithRecoveryCode({
-        ...inputAs(rawInput, endpointId),
-        challengeToken: requireToken(mfaChallengeToken, "MFA challenge"),
-        request
-      }));
-    case "beginTotpEnrollment":
-      return { body: await auth.beginTotpEnrollment({
-        sessionToken: requireToken(sessionToken, "session"), request
-      }) };
-    case "confirmTotpEnrollment":
-      return { body: await auth.confirmTotpEnrollment({
-        ...inputAs(rawInput, endpointId),
-        sessionToken: requireToken(sessionToken, "session"),
-        request
-      }) };
-    case "disableTotp":
-      await auth.disableTotp({
-        ...inputAs(rawInput, endpointId),
-        sessionToken: requireToken(sessionToken, "session"),
-        request
-      });
-      return { body: { success: true } };
-    case "regenerateRecoveryCodes":
-      return { body: { recoveryCodes: await auth.regenerateRecoveryCodes({
-        ...inputAs(rawInput, endpointId),
-        sessionToken: requireToken(sessionToken, "session"),
-        request
-      }) } };
-    case "beginPasskeyRegistration":
-      return { body: await auth.beginPasskeyRegistration({
-        sessionToken: requireToken(sessionToken, "session"), request
-      }) };
-    case "completePasskeyRegistration": {
-      const passkey = await auth.completePasskeyRegistration({
-        ...inputAs(rawInput, endpointId),
-        sessionToken: requireToken(sessionToken, "session"),
-        request
-      });
-      return { body: { passkey: serializePasskey(passkey) } };
-    }
-    case "beginPasskeyAuthentication": {
-      const input = inputAs(rawInput, endpointId);
-      return { body: await auth.beginPasskeyAuthentication({
-        userId: input.userId,
-        mfaChallengeToken: input.mfa
-          ? requireToken(mfaChallengeToken, "MFA challenge")
-          : undefined,
-        request
-      }) };
-    }
-    case "completePasskeyAuthentication":
-      return completedMfaExecution(await auth.completePasskeyAuthentication({
-        ...inputAs(rawInput, endpointId), request
-      }));
-    case "listPasskeys":
-      return { body: { passkeys: (await auth.listPasskeys({
-        sessionToken: requireToken(sessionToken, "session")
-      })).map(serializePasskey) } };
-    case "renamePasskey": {
-      const passkey = await auth.renamePasskey({
-        ...inputAs(rawInput, endpointId),
-        sessionToken: requireToken(sessionToken, "session"),
-        request
-      });
-      return { body: { passkey: serializePasskey(passkey) } };
-    }
-    case "revokePasskey":
-      await auth.revokePasskey({
-        ...inputAs(rawInput, endpointId),
-        sessionToken: requireToken(sessionToken, "session"),
-        request
-      });
-      return { body: { success: true } };
-  }
+): Promise<EndpointExecution<OwnAuthEndpointOutputMap[Id]>> {
+  const executor = endpointExecutors[endpointId] as unknown as EndpointExecutor<Id>;
+  return executor(
+    { auth, sessionToken, mfaChallengeToken, request },
+    rawInput as unknown as OwnAuthEndpointInputMap[Id]
+  );
 }
 
-function signInExecution(result: SignInResult): EndpointExecution {
+function signInExecution(result: SessionResult): EndpointExecution<AuthSessionPayload>;
+function signInExecution(result: SignInResult): EndpointExecution<SignInPayload>;
+function signInExecution(result: SignInResult): EndpointExecution<SignInPayload> {
   if (result.status === "complete") return completedSessionExecution(result);
   return {
     body: serializeMfaRequired(result),
@@ -252,18 +304,20 @@ function signInExecution(result: SignInResult): EndpointExecution {
   };
 }
 
-function completedMfaExecution(result: SessionResult): EndpointExecution {
+function completedMfaExecution(result: SessionResult): EndpointExecution<AuthSessionPayload> {
   return { ...completedSessionExecution(result), clearMfaChallenge: true };
 }
 
-function completedSessionExecution(result: SessionResult): EndpointExecution {
+function completedSessionExecution(result: SessionResult): EndpointExecution<AuthSessionPayload> {
   return {
     body: serializeAuthSession(result),
     setSession: { token: result.sessionToken, expiresAt: result.session.expiresAt }
   };
 }
 
-function oauthExecution(result: OAuthCompletionResult): EndpointExecution {
+function oauthExecution(
+  result: OAuthCompletionResult
+): EndpointExecution<OwnAuthEndpointOutputMap["oauthGoogleCallback"]> {
   const callback = {
     destination: result.destination,
     interactionMode: result.interactionMode,
@@ -276,7 +330,7 @@ function oauthExecution(result: OAuthCompletionResult): EndpointExecution {
 }
 
 async function completeOAuth(
-  auth: OwnAuth,
+  auth: OwnAuth<string, string>,
   provider: "google" | "github" | "apple",
   rawInput: Record<string, unknown> | undefined,
   request: RequestContext
@@ -294,13 +348,6 @@ function serializeMfaRequired(result: MfaRequiredResult): SignInPayload {
     methods: [...result.methods],
     expiresAt: result.expiresAt.toISOString()
   };
-}
-
-function inputAs<Id extends OwnAuthEndpointId>(
-  input: Record<string, unknown> | undefined,
-  _endpointId: Id
-): OwnAuthEndpointInputMap[Id] {
-  return input as unknown as OwnAuthEndpointInputMap[Id];
 }
 
 function requireToken(token: string | null, kind: "session" | "MFA challenge"): string {

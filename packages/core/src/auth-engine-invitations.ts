@@ -23,15 +23,26 @@ import {
 } from "./auth-engine-internals.js";
 import {
   requireActiveOrganisation,
+  requireConfiguredRole,
   requirePermission
 } from "./auth-engine-organisation-access.js";
 import { sendEmail } from "./auth-engine-delivery.js";
 
 export async function inviteMember(
   ctx: AuthEngineContext,
-  input: InviteMemberInput
-): Promise<InvitationResult> {
-  await requirePermission(ctx, input.organisationId, input.invitedByUserId, "invite_members");
+  input: InviteMemberInput<string>
+): Promise<InvitationResult<string>> {
+  const inviter = await requirePermission(
+    ctx,
+    input.organisationId,
+    input.invitedByUserId,
+    "invite_members"
+  );
+  const role = input.role ?? "member";
+  requireConfiguredRole(ctx, role);
+  if (role === "owner" && inviter.role !== "owner") {
+    throw new AuthError("permission_denied", "Only owners can invite another owner", 403);
+  }
 
   const email = normalizeEmail(input.email);
   const invitedUser = await ctx.storage.getUserByEmail(email);
@@ -71,7 +82,7 @@ export async function inviteMember(
     organisationId: input.organisationId,
     email,
     phone: null,
-    role: input.role ?? "member",
+    role,
     invitedByUserId: input.invitedByUserId,
     status: "pending",
     expiresAt: issued.token.expiresAt,
@@ -97,7 +108,7 @@ export async function inviteMember(
     metadata: { email, role: invitation.role, invitationId: invitation.id }
   });
 
-  const result: InvitationResult = { invitation };
+  const result: InvitationResult<string> = { invitation };
   if (ctx.exposeRawTokens) {
     result.token = issued.rawToken;
     result.url = url;
@@ -109,7 +120,7 @@ export async function inviteMember(
 export async function acceptInvite(
   ctx: AuthEngineContext,
   input: AcceptInviteInput
-): Promise<AcceptInviteResult> {
+): Promise<AcceptInviteResult<string>> {
   if (!input.userId) {
     throw new AuthError("invalid_session", "Sign in to accept the invitation", 401);
   }
@@ -145,6 +156,7 @@ export async function acceptInvite(
     throw new AuthError("expired_token", "Invitation has expired", 401);
   }
 
+  requireConfiguredRole(ctx, pendingInvitation.role);
   await consumeToken(ctx, input.token, "organisation_invite");
 
   const now = new Date();
@@ -191,7 +203,7 @@ export async function acceptInvite(
 export async function revokeInvitation(
   ctx: AuthEngineContext,
   input: RevokeInvitationInput
-): Promise<Invitation> {
+): Promise<Invitation<string>> {
   const invitation = await ctx.storage.getInvitationById(input.invitationId);
   if (!invitation) {
     throw new AuthError("invitation_not_found", "Invitation not found", 404);
@@ -226,7 +238,7 @@ export async function revokeInvitation(
 export async function listInvitations(
   ctx: AuthEngineContext,
   input: ListInvitationsInput
-): Promise<Invitation[]> {
+): Promise<Invitation<string>[]> {
   await requirePermission(
     ctx,
     input.organisationId,

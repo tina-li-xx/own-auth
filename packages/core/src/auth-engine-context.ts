@@ -26,6 +26,10 @@ import {
   isWebhookCapableStorage,
   type WebhookStorage
 } from "./webhook-storage.js";
+import {
+  createAuthorizationRegistry,
+  type AuthorizationRegistry
+} from "./authorization.js";
 
 export interface AuthEngineContext {
   storage: AuthStorage;
@@ -37,7 +41,7 @@ export interface AuthEngineContext {
   exposeRawTokens: boolean;
   allowMagicLinkSignup: boolean;
   allowPhoneSignup: boolean;
-  redirectAllowlist: string[];
+  redirectAllowlist: readonly string[];
   sessionTtlMs: number;
   sessionIdleTtlMs: number;
   tokenTtls: Required<TokenTtlConfig>;
@@ -55,6 +59,7 @@ export interface AuthEngineContext {
   passkeys: Required<PasskeyOptions> | null;
   webhooks: WebhookRuntimeConfig | null;
   webhookStorage: WebhookStorage | null;
+  authorization: AuthorizationRegistry;
   closePersistence(): Promise<void>;
 }
 
@@ -93,7 +98,7 @@ export function createAuthEngineContext(options: OwnAuthOptions = {}): AuthEngin
     exposeRawTokens: options.exposeRawTokens ?? false,
     allowMagicLinkSignup: options.allowMagicLinkSignup ?? true,
     allowPhoneSignup: options.allowPhoneSignup ?? true,
-    redirectAllowlist: options.redirectAllowlist ?? [baseUrl],
+    redirectAllowlist: [...(options.redirectAllowlist ?? [baseUrl])],
     sessionTtlMs: options.session?.ttlMs ?? 30 * day,
     sessionIdleTtlMs: options.session?.idleTtlMs ?? 7 * day,
     tokenTtls: { ...defaultTokenTtls, ...options.tokenTtlMs },
@@ -111,6 +116,7 @@ export function createAuthEngineContext(options: OwnAuthOptions = {}): AuthEngin
     passkeys: normalizePasskeyOptions(options.passkeys),
     webhooks,
     webhookStorage,
+    authorization: createAuthorizationRegistry(options.authorization),
     closePersistence: persistence.close
   };
 }
@@ -160,10 +166,7 @@ function normalizePasskeyOptions(options?: PasskeyOptions): Required<PasskeyOpti
   if (origins.length === 0 || origins.some((origin) => !origin)) {
     throw new Error("passkeys.origins must contain HTTPS or local development origins");
   }
-  const timeoutMs = options.timeoutMs ?? 60_000;
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1) {
-    throw new Error("passkeys.timeoutMs must be a positive integer");
-  }
+  const timeoutMs = positiveInteger(options.timeoutMs ?? 60_000, "passkeys.timeoutMs");
   return {
     rpId: options.rpId,
     rpName: options.rpName.trim(),

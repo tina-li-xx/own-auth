@@ -57,6 +57,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Typecheck public contracts
+        run: pnpm typecheck
+
       - name: Check lazy Postgres loading
         run: pnpm postgres-loading:check
 

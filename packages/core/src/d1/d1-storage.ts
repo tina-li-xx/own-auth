@@ -331,7 +331,9 @@ export class D1AuthStorage extends D1IdentityStorage implements AuthStorage {
     return rows.map(mapOrganisation);
   }
 
-  async createOrganisationMember(member: OrganisationMember): Promise<OrganisationMember> {
+  async createOrganisationMember(
+    member: OrganisationMember<string>
+  ): Promise<OrganisationMember<string>> {
     return mapOrganisationMember(await this.insertOne(
       "own_auth_organisation_members",
       organisationMemberColumns,
@@ -342,8 +344,8 @@ export class D1AuthStorage extends D1IdentityStorage implements AuthStorage {
 
   async updateOrganisationMember(
     id: string,
-    patch: Partial<OrganisationMember>
-  ): Promise<OrganisationMember | null> {
+    patch: Partial<OrganisationMember<string>>
+  ): Promise<OrganisationMember<string> | null> {
     const row = await this.updateOne(
       "own_auth_organisation_members",
       organisationMemberColumns,
@@ -357,7 +359,7 @@ export class D1AuthStorage extends D1IdentityStorage implements AuthStorage {
   async getOrganisationMember(
     organisationId: string,
     userId: string
-  ): Promise<OrganisationMember | null> {
+  ): Promise<OrganisationMember<string> | null> {
     const row = await this.selectOne(
       `${organisationMemberReturning} from own_auth_organisation_members ` +
       "where organisation_id = ?1 and user_id = ?2",
@@ -366,7 +368,7 @@ export class D1AuthStorage extends D1IdentityStorage implements AuthStorage {
     return row ? mapOrganisationMember(row) : null;
   }
 
-  async getOrganisationMemberById(id: string): Promise<OrganisationMember | null> {
+  async getOrganisationMemberById(id: string): Promise<OrganisationMember<string> | null> {
     const row = await this.selectOne(
       `${organisationMemberReturning} from own_auth_organisation_members where id = ?1`,
       [id]
@@ -374,7 +376,9 @@ export class D1AuthStorage extends D1IdentityStorage implements AuthStorage {
     return row ? mapOrganisationMember(row) : null;
   }
 
-  async listOrganisationMembers(organisationId: string): Promise<OrganisationMember[]> {
+  async listOrganisationMembers(
+    organisationId: string
+  ): Promise<OrganisationMember<string>[]> {
     const rows = await this.selectMany(
       `${organisationMemberReturning} from own_auth_organisation_members ` +
       "where organisation_id = ?1 order by created_at asc",
@@ -383,7 +387,7 @@ export class D1AuthStorage extends D1IdentityStorage implements AuthStorage {
     return rows.map(mapOrganisationMember);
   }
 
-  async createInvitation(invitation: Invitation): Promise<Invitation> {
+  async createInvitation(invitation: Invitation<string>): Promise<Invitation<string>> {
     return mapInvitation(await this.insertOne(
       "own_auth_invitations",
       invitationColumns,
@@ -392,7 +396,10 @@ export class D1AuthStorage extends D1IdentityStorage implements AuthStorage {
     ));
   }
 
-  async updateInvitation(id: string, patch: Partial<Invitation>): Promise<Invitation | null> {
+  async updateInvitation(
+    id: string,
+    patch: Partial<Invitation<string>>
+  ): Promise<Invitation<string> | null> {
     const row = await this.updateOne(
       "own_auth_invitations",
       invitationColumns,
@@ -403,7 +410,7 @@ export class D1AuthStorage extends D1IdentityStorage implements AuthStorage {
     return row ? mapInvitation(row) : null;
   }
 
-  async getInvitationById(id: string): Promise<Invitation | null> {
+  async getInvitationById(id: string): Promise<Invitation<string> | null> {
     const row = await this.selectOne(
       `${invitationReturning} from own_auth_invitations where id = ?1`,
       [id]
@@ -411,7 +418,7 @@ export class D1AuthStorage extends D1IdentityStorage implements AuthStorage {
     return row ? mapInvitation(row) : null;
   }
 
-  async getInvitationByTokenId(tokenId: string): Promise<Invitation | null> {
+  async getInvitationByTokenId(tokenId: string): Promise<Invitation<string> | null> {
     const row = await this.selectOne(
       `${invitationReturning} from own_auth_invitations where token_id = ?1`,
       [tokenId]
@@ -419,7 +426,9 @@ export class D1AuthStorage extends D1IdentityStorage implements AuthStorage {
     return row ? mapInvitation(row) : null;
   }
 
-  async listInvitationsByOrganisationId(organisationId: string): Promise<Invitation[]> {
+  async listInvitationsByOrganisationId(
+    organisationId: string
+  ): Promise<Invitation<string>[]> {
     const rows = await this.selectMany(
       `${invitationReturning} from own_auth_invitations ` +
       "where organisation_id = ?1 order by created_at desc",
@@ -431,7 +440,7 @@ export class D1AuthStorage extends D1IdentityStorage implements AuthStorage {
   async getPendingInvitationByOrganisationAndEmail(
     organisationId: string,
     email: string
-  ): Promise<Invitation | null> {
+  ): Promise<Invitation<string> | null> {
     const row = await this.selectOne(
       `${invitationReturning} from own_auth_invitations ` +
       "where organisation_id = ?1 and lower(email) = lower(?2) and status = 'pending' " +

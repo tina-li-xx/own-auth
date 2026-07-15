@@ -25,7 +25,7 @@ export async function createOrganisation(
   input: CreateOrganisationInput
 ): Promise<{
   organisation: Organisation;
-  ownerMembership: OrganisationMember;
+  ownerMembership: OrganisationMember<string>;
 }> {
   await requireActiveUser(ctx, input.ownerUserId);
 

@@ -537,7 +537,23 @@ await auth.deleteOrganisation({
 
 ### Roles and Permissions
 
-Built-in roles: `owner`, `admin`, `member`.
+Built-in roles are `owner`, `admin`, and `member`. Applications can add typed roles and permissions:
+
+```ts
+import { createOwnAuth, defineOwnAuthAuthorization } from "own-auth";
+
+const authorization = defineOwnAuthAuthorization({
+  permissions: ["documents:read", "documents:write"],
+  roles: {
+    reviewer: ["view_members", "documents:read"],
+  },
+});
+
+const auth = createOwnAuth({
+  tokenPepper: process.env.OWN_AUTH_TOKEN_PEPPER,
+  authorization,
+});
+```
 
 ```ts
 const allowed = await auth.checkPermission(orgId, userId, "invite_members");
@@ -545,6 +561,8 @@ const allowed = await auth.checkPermission(orgId, userId, "invite_members");
 // Or throw if denied
 await auth.requirePermission(orgId, userId, "manage_api_keys");
 ```
+
+See [Roles and permissions](https://github.com/own-auth/own-auth/blob/main/docs/organisations/roles.md) for owner protections, role-removal behavior, and migration guidance.
 
 ### Manage Members
 

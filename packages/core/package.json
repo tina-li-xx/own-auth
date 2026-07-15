@@ -88,6 +88,7 @@
     "./migrations/006_passkeys.sql": "./migrations/006_passkeys.sql",
     "./migrations/007_plugin_migrations.sql": "./migrations/007_plugin_migrations.sql",
     "./migrations/008_webhooks.sql": "./migrations/008_webhooks.sql",
+    "./migrations/009_custom_authorization.sql": "./migrations/009_custom_authorization.sql",
     "./migrations/d1/*.sql": "./migrations/d1/*.sql",
     "./docs/installation.md": "./docs/installation.md",
     "./docs/cloudflare-d1.md": "./docs/cloudflare-d1.md",
@@ -99,7 +100,7 @@
     "test": "vitest run",
     "test:integration": "vitest run test/postgres/postgres-storage.integration.test.ts test/postgres/postgres-concurrency.integration.test.ts test/postgres/postgres-migrations.integration.test.ts",
     "test:integration:required": "OWN_AUTH_REQUIRE_POSTGRES=true vitest run test/postgres/postgres-storage.integration.test.ts test/postgres/postgres-concurrency.integration.test.ts test/postgres/postgres-migrations.integration.test.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test/types/tsconfig.json"
   },
   "dependencies": {
     "@noble/hashes": "^1.8.0",

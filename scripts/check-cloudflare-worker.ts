@@ -18,6 +18,7 @@ import {
   type PersistenceConformanceArtifacts
 } from "../packages/core/test/conformance/persistence-conformance-contract.js";
 import { runPersistenceConformance } from "../packages/core/test/conformance/persistence-conformance.js";
+import { assertCustomAuthorizationD1Migration } from "./d1-custom-authorization-migration-check.js";
 import {
   decodeConformanceValue,
   encodeConformanceValue,
@@ -35,6 +36,11 @@ let worker: ChildProcess | undefined;
 const workerOutput: string[] = [];
 
 try {
+  await assertCustomAuthorizationD1Migration({
+    persistenceDirectory,
+    runWrangler,
+    runWranglerCapture
+  });
   await applyMigrations();
   await applyMigrations();
   worker = await startWorker();
@@ -254,6 +260,26 @@ async function runWrangler(args: string[]): Promise<void> {
   if (exitCode !== 0) {
     throw new Error(`Wrangler exited with code ${exitCode}.\n${output.join("")}`);
   }
+}
+
+async function runWranglerCapture(args: string[]): Promise<string> {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const child = spawn("pnpm", ["dlx", "wrangler@4.110.0", ...args], {
+    cwd: root,
+    env: process.env,
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  child.stdout?.on("data", (chunk) => stdout.push(chunk.toString()));
+  child.stderr?.on("data", (chunk) => stderr.push(chunk.toString()));
+  const exitCode = await new Promise<number | null>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", resolve);
+  });
+  if (exitCode !== 0) {
+    throw new Error(`Wrangler exited with code ${exitCode}.\n${stderr.join("")}`);
+  }
+  return stdout.join("");
 }
 
 async function stopWorker(child?: ChildProcess): Promise<void> {

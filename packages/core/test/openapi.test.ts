@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createConfiguredOwnAuthOpenApiDocument,
+  getOwnAuthEndpoint,
   createOwnAuthOpenApiDocument,
   defineOwnAuthPlugin,
   ownAuthEndpointContract
@@ -88,5 +89,43 @@ describe("Own Auth OpenAPI", () => {
     expect(operation.responses?.["200"].content["application/json"].schema).toBe(
       endpoint?.response
     );
+  });
+
+  it("exposes configured invitation roles as validated strings", () => {
+    const endpoint = getOwnAuthEndpoint("acceptInvite");
+    const response = endpoint.response as {
+      properties: {
+        member: { properties: { role: Record<string, unknown> } };
+      };
+    };
+    const document = createOwnAuthOpenApiDocument();
+    const operation = document.paths["/api/auth/invitations/accept"]?.post as {
+      responses?: Record<string, unknown>;
+    };
+
+    expect(response.properties.member.properties.role).toEqual({
+      type: "string",
+      pattern: "^[a-z][a-z0-9_-]{0,63}$"
+    });
+    expect(endpoint.errors).toContain("role_not_configured");
+    expect(operation.responses).toHaveProperty("409");
+  });
+
+  it("owns and deeply freezes the endpoint contract", () => {
+    const endpoint = getOwnAuthEndpoint("signInEmailPassword");
+    const request = endpoint.request as {
+      properties: { email: { type: string } };
+    };
+
+    expect(new Set(ownAuthEndpointContract.map(({ id }) => id)).size).toBe(
+      ownAuthEndpointContract.length
+    );
+    expect(Object.isFrozen(ownAuthEndpointContract)).toBe(true);
+    expect(Object.isFrozen(endpoint)).toBe(true);
+    expect(Object.isFrozen(request.properties)).toBe(true);
+    expect(Object.isFrozen(request.properties.email)).toBe(true);
+    expect(Reflect.set(endpoint, "path", "/changed")).toBe(false);
+    expect(Reflect.set(request.properties.email, "type", "number")).toBe(false);
+    expect(getOwnAuthEndpoint("signInEmailPassword").path).toBe("/sign-in/email");
   });
 });

@@ -328,10 +328,10 @@ export interface DeleteOrganisationInput {
   request?: RequestContext;
 }
 
-export interface InviteMemberInput {
+export interface InviteMemberInput<CustomRole extends string = never> {
   organisationId: string;
   email: string;
-  role?: OrganisationRole;
+  role?: OrganisationRole<CustomRole>;
   invitedByUserId: string;
   request?: RequestContext;
 }
@@ -347,8 +347,8 @@ export interface GetMemberInput {
   actorUserId: string;
 }
 
-export interface InvitationResult {
-  invitation: Invitation;
+export interface InvitationResult<CustomRole extends string = never> {
+  invitation: Invitation<CustomRole>;
   token?: string;
   url?: string;
 }
@@ -367,15 +367,15 @@ export interface AcceptInviteInput {
   request?: RequestContext;
 }
 
-export interface AcceptInviteResult {
+export interface AcceptInviteResult<CustomRole extends string = never> {
   organisation: Organisation;
-  member: OrganisationMember;
+  member: OrganisationMember<CustomRole>;
 }
 
-export interface ChangeMemberRoleInput {
+export interface ChangeMemberRoleInput<CustomRole extends string = never> {
   organisationId: string;
   userId: string;
-  role: OrganisationRole;
+  role: OrganisationRole<CustomRole>;
   actorUserId: string;
   request?: RequestContext;
 }

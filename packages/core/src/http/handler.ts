@@ -4,7 +4,7 @@ import type { RequestContext } from "../types.js";
 import { OAuthCallbackError } from "../oauth-types.js";
 import { OwnAuthPluginError } from "../plugin-definition.js";
 import {
-  ownAuthEndpointContract,
+  getOwnAuthEndpointsForPath,
   type OwnAuthErrorPayload,
   type OwnAuthHttpErrorCode
 } from "./contract.js";
@@ -39,7 +39,7 @@ export interface OwnAuthHandlerOptions {
 export type OwnAuthHandler = (request: Request) => Promise<Response>;
 
 export function createOwnAuthHandler(
-  auth: OwnAuth,
+  auth: OwnAuth<string, string>,
   options: OwnAuthHandlerOptions = {}
 ): OwnAuthHandler {
   const basePath = normalizeOwnAuthBasePath(options.basePath ?? "/api/auth");
@@ -53,7 +53,7 @@ export function createOwnAuthHandler(
     const routePath = getOwnAuthRoutePath(requestUrl.pathname, basePath);
     if (!routePath) return errorResponse("not_found", "Auth endpoint not found", 404);
 
-    const candidates = ownAuthEndpointContract.filter((endpoint) => endpoint.path === routePath);
+    const candidates = getOwnAuthEndpointsForPath(routePath);
     const endpoint = candidates.find((candidate) => candidate.method === request.method);
     const pluginEndpoint = endpoint ? null : auth.findPluginEndpoint(routePath, request.method);
     if (!endpoint) {
@@ -132,8 +132,8 @@ export function createOwnAuthHandler(
 }
 
 async function handlePluginEndpoint(
-  auth: OwnAuth,
-  registered: NonNullable<ReturnType<OwnAuth["findPluginEndpoint"]>>,
+  auth: OwnAuth<string, string>,
+  registered: NonNullable<ReturnType<OwnAuth<string, string>["findPluginEndpoint"]>>,
   request: Request,
   requestUrl: URL,
   options: OwnAuthHandlerOptions
@@ -218,7 +218,7 @@ function knownHttpError(error: unknown): {
 }
 
 function pluginTrustedOrigins(
-  registered: NonNullable<ReturnType<OwnAuth["findPluginEndpoint"]>>,
+  registered: NonNullable<ReturnType<OwnAuth<string, string>["findPluginEndpoint"]>>,
   options: OwnAuthHandlerOptions
 ): string[] {
   return [...new Set([

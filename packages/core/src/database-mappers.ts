@@ -11,7 +11,6 @@ import type {
   MemberStatus,
   Organisation,
   OrganisationMember,
-  OrganisationRole,
   Session,
   SmsOtp,
   SmsOtpPurpose,
@@ -142,12 +141,12 @@ export function mapOrganisation(row: Row): Organisation {
   };
 }
 
-export function mapOrganisationMember(row: Row): OrganisationMember {
+export function mapOrganisationMember(row: Row): OrganisationMember<string> {
   return {
     id: stringValue(row.id),
     organisationId: stringValue(row.organisation_id),
     userId: stringValue(row.user_id),
-    role: stringValue(row.role) as OrganisationRole,
+    role: stringValue(row.role),
     status: stringValue(row.status) as MemberStatus,
     joinedAt: nullableDate(row.joined_at),
     removedAt: nullableDate(row.removed_at),
@@ -156,14 +155,14 @@ export function mapOrganisationMember(row: Row): OrganisationMember {
   };
 }
 
-export function mapInvitation(row: Row): Invitation {
+export function mapInvitation(row: Row): Invitation<string> {
   return {
     id: stringValue(row.id),
     tokenId: nullableString(row.token_id),
     organisationId: stringValue(row.organisation_id),
     email: nullableString(row.email),
     phone: nullableString(row.phone),
-    role: stringValue(row.role) as OrganisationRole,
+    role: stringValue(row.role),
     invitedByUserId: stringValue(row.invited_by_user_id),
     status: stringValue(row.status) as InvitationStatus,
     expiresAt: dateValue(row.expires_at),

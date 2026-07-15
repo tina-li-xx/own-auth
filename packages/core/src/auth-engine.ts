@@ -1,4 +1,4 @@
-import type { Permission } from "./permissions.js";
+import type { OwnAuthAuthorizationDefinition, Permission } from "./authorization.js";
 import type { AuthStorage } from "./storage.js";
 import type {
   ApiKeyDetails,
@@ -14,10 +14,7 @@ import type {
   VerifiedApiKey
 } from "./types.js";
 import type { RateLimitStore } from "./rate-limit.js";
-import {
-  createAuthEngineContext,
-  type AuthEngineContext
-} from "./auth-engine-internals.js";
+import { createAuthEngineContext, type AuthEngineContext } from "./auth-engine-internals.js";
 import * as apiKeys from "./auth-engine-api-keys.js";
 import * as auditEvents from "./auth-engine-audit.js";
 import * as email from "./auth-engine-email.js";
@@ -35,10 +32,7 @@ import * as sms from "./auth-engine-sms.js";
 import * as users from "./auth-engine-users.js";
 import * as webhookOperations from "./auth-engine-webhooks.js";
 import { OwnAuthPluginRuntime, type RegisteredPluginEndpoint } from "./plugin-runtime.js";
-import type {
-  CallOwnAuthPluginMethodOptions,
-  OwnAuthPluginDefinition
-} from "./plugin-types.js";
+import type { CallOwnAuthPluginMethodOptions, OwnAuthPluginDefinition } from "./plugin-types.js";
 import type {
   AcceptInviteInput,
   AcceptInviteResult,
@@ -124,7 +118,7 @@ import type {
 
 export type { OwnAuthOptions } from "./auth-engine-types.js";
 
-export class OwnAuth {
+export class OwnAuth<CustomRole extends string = never, CustomPermission extends string = never> {
   readonly storage: AuthStorage;
   readonly rateLimitStore: RateLimitStore;
   private readonly ctx: AuthEngineContext;
@@ -132,7 +126,7 @@ export class OwnAuth {
   private closed = false;
   private closePromise: Promise<void> | null = null;
 
-  constructor(options: OwnAuthOptions = {}) {
+  constructor(options: OwnAuthOptions<OwnAuthAuthorizationDefinition<CustomPermission, CustomRole>> = {}) {
     this.ctx = createAuthEngineContext(options);
     this.storage = this.ctx.storage;
     this.rateLimitStore = this.ctx.rateLimitStore;
@@ -140,7 +134,7 @@ export class OwnAuth {
       options.plugins ?? [],
       this.storage,
       this.rateLimitStore,
-      () => this,
+      () => this as unknown as OwnAuth<string, string>,
       options.pluginRuntime
     );
   }
@@ -374,10 +368,13 @@ export class OwnAuth {
   }
   createOrganisation(input: CreateOrganisationInput): Promise<{
     organisation: Organisation;
-    ownerMembership: OrganisationMember;
+    ownerMembership: OrganisationMember<CustomRole>;
   }> {
     return this.executeCore("createOrganisation", input, () =>
-      organisations.createOrganisation(this.ctx, input));
+      organisations.createOrganisation(this.ctx, input)) as Promise<{
+        organisation: Organisation;
+        ownerMembership: OrganisationMember<CustomRole>;
+      }>;
   }
   getOrganisation(input: GetOrganisationInput): Promise<Organisation> {
     return this.executeCore("getOrganisation", input, () =>
@@ -392,28 +389,34 @@ export class OwnAuth {
     return this.executeCore("updateOrganisation", operationInput, () =>
       organisations.updateOrganisation(this.ctx, organisationId, input));
   }
-  inviteMember(input: InviteMemberInput): Promise<InvitationResult> {
-    return this.executeCore("inviteMember", input, () => invitations.inviteMember(this.ctx, input));
+  inviteMember(input: InviteMemberInput<CustomRole>): Promise<InvitationResult<CustomRole>> {
+    return this.executeCore("inviteMember", input, () =>
+      invitations.inviteMember(this.ctx, input)) as Promise<InvitationResult<CustomRole>>;
   }
-  acceptInvite(input: AcceptInviteInput): Promise<AcceptInviteResult> {
-    return this.executeCore("acceptInvite", input, () => invitations.acceptInvite(this.ctx, input));
+  acceptInvite(input: AcceptInviteInput): Promise<AcceptInviteResult<CustomRole>> {
+    return this.executeCore("acceptInvite", input, () =>
+      invitations.acceptInvite(this.ctx, input)) as Promise<AcceptInviteResult<CustomRole>>;
   }
-  changeMemberRole(input: ChangeMemberRoleInput): Promise<OrganisationMember> {
-    return this.executeCore("changeMemberRole", input, () => members.changeMemberRole(this.ctx, input));
+  changeMemberRole(input: ChangeMemberRoleInput<CustomRole>): Promise<OrganisationMember<CustomRole>> {
+    return this.executeCore("changeMemberRole", input, () =>
+      members.changeMemberRole(this.ctx, input)) as Promise<OrganisationMember<CustomRole>>;
   }
-  removeMember(input: RemoveMemberInput): Promise<OrganisationMember> {
-    return this.executeCore("removeMember", input, () => members.removeMember(this.ctx, input));
+  removeMember(input: RemoveMemberInput): Promise<OrganisationMember<CustomRole>> {
+    return this.executeCore("removeMember", input, () =>
+      members.removeMember(this.ctx, input)) as Promise<OrganisationMember<CustomRole>>;
   }
-  getMember(input: GetMemberInput): Promise<OrganisationMemberDetails> {
-    return this.executeCore("getMember", input, () => members.getMember(this.ctx, input));
+  getMember(input: GetMemberInput): Promise<OrganisationMemberDetails<CustomRole>> {
+    return this.executeCore("getMember", input, () =>
+      members.getMember(this.ctx, input)) as Promise<OrganisationMemberDetails<CustomRole>>;
   }
-  listMembers(input: ListMembersInput): Promise<OrganisationMemberDetails[]> {
-    return this.executeCore("listMembers", input, () => members.listMembers(this.ctx, input));
+  listMembers(input: ListMembersInput): Promise<OrganisationMemberDetails<CustomRole>[]> {
+    return this.executeCore("listMembers", input, () =>
+      members.listMembers(this.ctx, input)) as Promise<OrganisationMemberDetails<CustomRole>[]>;
   }
   checkPermission(
     organisationId: string,
     userId: string,
-    permission: Permission
+    permission: Permission<CustomPermission>
   ): Promise<boolean> {
     const input = { organisationId, userId, permission };
     return this.executeCore("checkPermission", input, () =>
@@ -422,11 +425,12 @@ export class OwnAuth {
   requirePermission(
     organisationId: string,
     userId: string,
-    permission: Permission
-  ): Promise<OrganisationMember> {
+    permission: Permission<CustomPermission>
+  ): Promise<OrganisationMember<CustomRole>> {
     const input = { organisationId, userId, permission };
     return this.executeCore("requirePermission", input, () =>
-      organisationAccess.requirePermission(this.ctx, organisationId, userId, permission));
+      organisationAccess.requirePermission(this.ctx, organisationId, userId, permission)
+    ) as Promise<OrganisationMember<CustomRole>>;
   }
   disableUser(input: UserStatusInput): Promise<User> {
     return this.executeCore("disableUser", input, () => users.disableUser(this.ctx, input));
@@ -434,9 +438,9 @@ export class OwnAuth {
   enableUser(input: UserStatusInput): Promise<User> {
     return this.executeCore("enableUser", input, () => users.enableUser(this.ctx, input));
   }
-  revokeInvitation(input: RevokeInvitationInput): Promise<Invitation> {
+  revokeInvitation(input: RevokeInvitationInput): Promise<Invitation<CustomRole>> {
     return this.executeCore("revokeInvitation", input, () =>
-      invitations.revokeInvitation(this.ctx, input));
+      invitations.revokeInvitation(this.ctx, input)) as Promise<Invitation<CustomRole>>;
   }
   listSessions(input: ListSessionsInput): Promise<Session[]> {
     return this.executeCore("listSessions", input, () => sessions.listSessions(this.ctx, input));
@@ -448,9 +452,9 @@ export class OwnAuth {
     return this.executeCore("listOrganisations", input, () =>
       organisations.listOrganisations(this.ctx, input.actorUserId));
   }
-  listInvitations(input: ListInvitationsInput): Promise<Invitation[]> {
+  listInvitations(input: ListInvitationsInput): Promise<Invitation<CustomRole>[]> {
     return this.executeCore("listInvitations", input, () =>
-      invitations.listInvitations(this.ctx, input));
+      invitations.listInvitations(this.ctx, input)) as Promise<Invitation<CustomRole>[]>;
   }
   listAuditEvents(input: ListAuditEventsInput): Promise<AuditEvent[]> {
     return this.executeCore("listAuditEvents", input, () =>
@@ -492,8 +496,4 @@ function requestContextFrom(input: unknown): RequestContext {
   return isRecord(input) && isRecord(input.request)
     ? input.request as RequestContext
     : {};
-}
-
-export function createOwnAuth(options?: OwnAuthOptions): OwnAuth {
-  return new OwnAuth(options);
 }

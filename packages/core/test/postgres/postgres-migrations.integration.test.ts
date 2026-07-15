@@ -126,4 +126,79 @@ describeWithDatabase("core Postgres migrations", () => {
       await database.close();
     }
   });
+
+  it("preserves existing roles and accepts configured role identifiers", async () => {
+    const now = new Date("2026-07-15T12:00:00.000Z");
+    const database = await createPostgresTestDatabase({
+      async afterMigration(file, client) {
+        if (file !== "008_webhooks.sql") return;
+
+        await client.query(
+          `insert into own_auth_users (id, email, created_at, updated_at)
+           values ($1, $2, $3, $3), ($4, $5, $3, $3)`,
+          [
+            "usr_role_owner",
+            "role-owner@example.com",
+            now,
+            "usr_role_member",
+            "role-member@example.com"
+          ]
+        );
+        await client.query(
+          `insert into own_auth_organisations (
+             id, name, slug, owner_user_id, created_at, updated_at
+           ) values ($1, $2, $3, $4, $5, $5)`,
+          ["org_roles", "Role migration", "role-migration", "usr_role_owner", now]
+        );
+        await client.query(
+          `insert into own_auth_organisation_members (
+             id, organisation_id, user_id, role, status, joined_at, created_at, updated_at
+           ) values ($1, $2, $3, 'admin', 'active', $4, $4, $4)`,
+          ["mem_roles", "org_roles", "usr_role_member", now]
+        );
+        await client.query(
+          `insert into own_auth_invitations (
+             id, organisation_id, email, role, invited_by_user_id, status, expires_at, created_at
+           ) values ($1, $2, $3, 'member', $4, 'pending', $5, $6)`,
+          [
+            "inv_roles",
+            "org_roles",
+            "future-member@example.com",
+            "usr_role_owner",
+            new Date("2026-08-01T12:00:00.000Z"),
+            now
+          ]
+        );
+      }
+    });
+
+    try {
+      await expect(database.client.query(
+        "select role from own_auth_organisation_members where id = $1",
+        ["mem_roles"]
+      )).resolves.toMatchObject({ rows: [{ role: "admin" }] });
+      await database.client.query(
+        "update own_auth_organisation_members set role = 'reviewer' where id = $1",
+        ["mem_roles"]
+      );
+      await database.client.query(
+        "update own_auth_invitations set role = 'content_editor' where id = $1",
+        ["inv_roles"]
+      );
+      await expect(database.client.query(
+        `select
+           (select role from own_auth_organisation_members where id = $1) as member_role,
+           (select role from own_auth_invitations where id = $2) as invitation_role`,
+        ["mem_roles", "inv_roles"]
+      )).resolves.toMatchObject({
+        rows: [{ member_role: "reviewer", invitation_role: "content_editor" }]
+      });
+      await expect(database.client.query(
+        "update own_auth_organisation_members set role = 'Invalid Role' where id = $1",
+        ["mem_roles"]
+      )).rejects.toThrow();
+    } finally {
+      await database.close();
+    }
+  });
 });

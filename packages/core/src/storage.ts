@@ -66,27 +66,32 @@ export interface AuthStorage {
   getOrganisationBySlug(slug: string): Promise<Organisation | null>;
   listOrganisationsByUserId(userId: string): Promise<Organisation[]>;
 
-  createOrganisationMember(member: OrganisationMember): Promise<OrganisationMember>;
+  createOrganisationMember(
+    member: OrganisationMember<string>
+  ): Promise<OrganisationMember<string>>;
   updateOrganisationMember(
     id: string,
-    patch: Partial<OrganisationMember>
-  ): Promise<OrganisationMember | null>;
+    patch: Partial<OrganisationMember<string>>
+  ): Promise<OrganisationMember<string> | null>;
   getOrganisationMember(
     organisationId: string,
     userId: string
-  ): Promise<OrganisationMember | null>;
-  getOrganisationMemberById(id: string): Promise<OrganisationMember | null>;
-  listOrganisationMembers(organisationId: string): Promise<OrganisationMember[]>;
+  ): Promise<OrganisationMember<string> | null>;
+  getOrganisationMemberById(id: string): Promise<OrganisationMember<string> | null>;
+  listOrganisationMembers(organisationId: string): Promise<OrganisationMember<string>[]>;
 
-  createInvitation(invitation: Invitation): Promise<Invitation>;
-  updateInvitation(id: string, patch: Partial<Invitation>): Promise<Invitation | null>;
-  getInvitationById(id: string): Promise<Invitation | null>;
-  getInvitationByTokenId(tokenId: string): Promise<Invitation | null>;
-  listInvitationsByOrganisationId(organisationId: string): Promise<Invitation[]>;
+  createInvitation(invitation: Invitation<string>): Promise<Invitation<string>>;
+  updateInvitation(
+    id: string,
+    patch: Partial<Invitation<string>>
+  ): Promise<Invitation<string> | null>;
+  getInvitationById(id: string): Promise<Invitation<string> | null>;
+  getInvitationByTokenId(tokenId: string): Promise<Invitation<string> | null>;
+  listInvitationsByOrganisationId(organisationId: string): Promise<Invitation<string>[]>;
   getPendingInvitationByOrganisationAndEmail(
     organisationId: string,
     email: string
-  ): Promise<Invitation | null>;
+  ): Promise<Invitation<string> | null>;
 
   createAuditEvent(event: AuditEvent): Promise<AuditEvent>;
   listAuditEvents(filter?: {

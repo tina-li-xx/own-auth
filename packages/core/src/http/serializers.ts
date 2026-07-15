@@ -88,7 +88,9 @@ export function serializeOrganisation(organisation: Organisation): PublicOrganis
   };
 }
 
-export function serializeMember(member: OrganisationMember): PublicOrganisationMember {
+export function serializeMember(
+  member: OrganisationMember<string>
+): PublicOrganisationMember {
   return {
     id: member.id,
     organisationId: member.organisationId,

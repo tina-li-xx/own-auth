@@ -69,7 +69,7 @@ await auth.changeMemberRole({
 });
 ```
 
-Only owners can change roles. Role changes take effect immediately.
+The actor must have `change_member_roles`. The built-in owner role has this permission, and an application may grant it to a custom role. Role changes take effect immediately.
 
 ### What each role can do
 
@@ -82,10 +82,10 @@ Only owners can change roles. Role changes take effect immediately.
 
 ### Role rules
 
-- An owner can promote a member to admin or owner.
-- An owner can demote an admin to member.
-- An admin cannot change another admin's or owner's role.
-- A member cannot change any roles.
+- An owner can assign or remove any configured role.
+- A custom role with `change_member_roles` can change non-owner members.
+- Only an owner can promote someone to owner or change an owner's role.
+- Admin and member cannot change roles through their built-in permissions.
 - The last owner cannot be demoted. Promote another member to owner first.
 
 ### Errors
@@ -95,6 +95,7 @@ Only owners can change roles. Role changes take effect immediately.
 | `last_owner` | Trying to demote the only owner. |
 | `permission_denied` | The acting user does not have permission to change roles. |
 | `member_not_found` | The target user is not an active member of this organisation. |
+| `role_not_configured` | The requested role is not present in the current authorization configuration. |
 
 ## Remove a member
 

@@ -14,6 +14,8 @@ import type {
   OwnAuthEndpointId
 } from "./contract-types.js";
 import { externalAccountProviders } from "../oauth-types.js";
+import { cloneAndDeepFreeze } from "../immutable-config.js";
+import { organisationRolePattern } from "../authorization.js";
 
 export * from "./contract-schemas.js";
 export type * from "./contract-types.js";
@@ -44,7 +46,7 @@ const publicOrganisationMemberSchema = objectSchema(
     id: stringSchema(),
     organisationId: stringSchema(),
     userId: stringSchema(),
-    role: { type: "string", enum: ["owner", "admin", "member"] },
+    role: { type: "string", pattern: organisationRolePattern },
     joinedAt: nullableStringSchema
   },
   ["id", "organisationId", "userId", "role", "joinedAt"]
@@ -83,8 +85,14 @@ const mfaErrors = [
   "rate_limited"
 ] as const;
 
-export const ownAuthEndpointContract: readonly OwnAuthEndpointDefinition[] = [
-  endpoint("signUpEmailPassword", "POST", "/sign-up/email", "Create a user with an email and password", {
+type OwnAuthEndpointSpec = Omit<OwnAuthEndpointDefinition, "id">;
+type OwnAuthEndpointSpecMap = { readonly [Id in OwnAuthEndpointId]: OwnAuthEndpointSpec };
+type OwnAuthEndpointMap = {
+  readonly [Id in OwnAuthEndpointId]: Readonly<OwnAuthEndpointDefinition & { id: Id }>;
+};
+
+const ownAuthEndpointSpecs = {
+  signUpEmailPassword: endpoint("POST", "/sign-up/email", "Create a user with an email and password", {
     request: objectSchema(
       { email: emailSchema, password: stringSchema(), name: stringSchema() },
       ["email", "password"]
@@ -93,20 +101,20 @@ export const ownAuthEndpointContract: readonly OwnAuthEndpointDefinition[] = [
     errors: ["email_already_exists", "weak_password", "rate_limited", "validation_error"],
     session: "create"
   }),
-  endpoint("signInEmailPassword", "POST", "/sign-in/email", "Sign in with an email and password", {
+  signInEmailPassword: endpoint("POST", "/sign-in/email", "Sign in with an email and password", {
     request: objectSchema({ email: emailSchema, password: stringSchema() }, ["email", "password"]),
     response: signInSchema,
     errors: ["invalid_credentials", "disabled_user", "rate_limited", "validation_error"],
     session: "create"
   }),
-  endpoint("getSession", "GET", "/session", "Get the current session", {
+  getSession: endpoint("GET", "/session", "Get the current session", {
     response: objectSchema({ session: { anyOf: [authSessionSchema, { type: "null" }] } }, ["session"]),
     errors: [], session: "optional"
   }),
-  endpoint("signOut", "POST", "/sign-out", "Revoke the current session", {
+  signOut: endpoint("POST", "/sign-out", "Revoke the current session", {
     response: successSchema, errors: [], session: "clear"
   }),
-  endpoint("changePassword", "POST", "/password/change", "Change the current user's password", {
+  changePassword: endpoint("POST", "/password/change", "Change the current user's password", {
     request: objectSchema(
       { currentPassword: stringSchema(), newPassword: stringSchema() },
       ["currentPassword", "newPassword"]
@@ -115,31 +123,31 @@ export const ownAuthEndpointContract: readonly OwnAuthEndpointDefinition[] = [
     errors: ["invalid_session", "invalid_credentials", "weak_password", "rate_limited"],
     session: "required"
   }),
-  endpoint("requestMagicLink", "POST", "/magic-link/request", "Send a magic link", {
+  requestMagicLink: endpoint("POST", "/magic-link/request", "Send a magic link", {
     request: objectSchema({ email: emailSchema, redirectUrl: stringSchema("uri-reference") }, ["email"]),
     response: deliverySchema, errors: [...deliveryErrors, "redirect_not_allowed"], session: "none"
   }),
-  endpoint("verifyMagicLink", "POST", "/magic-link/verify", "Verify a magic link", {
+  verifyMagicLink: endpoint("POST", "/magic-link/verify", "Verify a magic link", {
     request: tokenSchema, response: signInSchema, errors: tokenErrors, session: "create"
   }),
-  endpoint("requestEmailVerification", "POST", "/email-verification/request", "Send an email verification link", {
+  requestEmailVerification: endpoint("POST", "/email-verification/request", "Send an email verification link", {
     request: emailRequestSchema, response: deliverySchema, errors: deliveryErrors, session: "none"
   }),
-  endpoint("verifyEmail", "POST", "/email-verification/verify", "Verify an email address", {
+  verifyEmail: endpoint("POST", "/email-verification/verify", "Verify an email address", {
     request: tokenSchema, response: userResponseSchema, errors: tokenErrors, session: "none"
   }),
-  endpoint("requestPasswordReset", "POST", "/password-reset/request", "Send a password reset link", {
+  requestPasswordReset: endpoint("POST", "/password-reset/request", "Send a password reset link", {
     request: emailRequestSchema, response: deliverySchema, errors: deliveryErrors, session: "none"
   }),
-  endpoint("resetPassword", "POST", "/password-reset/confirm", "Reset a password", {
+  resetPassword: endpoint("POST", "/password-reset/confirm", "Reset a password", {
     request: objectSchema({ token: stringSchema(), newPassword: stringSchema() }, ["token", "newPassword"]),
     response: userResponseSchema, errors: [...tokenErrors, "weak_password"], session: "clear"
   }),
-  endpoint("requestSmsOtp", "POST", "/sms/request", "Send an SMS one-time code", {
+  requestSmsOtp: endpoint("POST", "/sms/request", "Send an SMS one-time code", {
     request: objectSchema({ phone: stringSchema(), purpose: smsPurposeSchema }, ["phone"]),
     response: deliverySchema, errors: deliveryErrors, session: "optional"
   }),
-  endpoint("verifySmsOtp", "POST", "/sms/verify", "Verify an SMS one-time code", {
+  verifySmsOtp: endpoint("POST", "/sms/verify", "Verify an SMS one-time code", {
     request: objectSchema(
       { phone: stringSchema(), code: stringSchema(), purpose: smsPurposeSchema },
       ["phone", "code"]
@@ -148,15 +156,21 @@ export const ownAuthEndpointContract: readonly OwnAuthEndpointDefinition[] = [
     errors: ["invalid_otp", "otp_attempts_exceeded", "user_not_found", "rate_limited"],
     session: "optional"
   }),
-  endpoint("acceptInvite", "POST", "/invitations/accept", "Accept an organisation invitation", {
+  acceptInvite: endpoint("POST", "/invitations/accept", "Accept an organisation invitation", {
     request: tokenSchema,
     response: objectSchema(
       { organisation: publicOrganisationSchema, member: publicOrganisationMemberSchema },
       ["organisation", "member"]
     ),
-    errors: [...tokenErrors, "invalid_session", "permission_denied"], session: "required"
+    errors: [
+      ...tokenErrors,
+      "invalid_session",
+      "permission_denied",
+      "role_not_configured"
+    ],
+    session: "required"
   }),
-  endpoint("oauthStart", "POST", "/oauth/start", "Start OAuth authorization", {
+  oauthStart: endpoint("POST", "/oauth/start", "Start OAuth authorization", {
     request: objectSchema({
       provider: oauthProviderSchema,
       intent: { type: "string", enum: ["sign_in", "link"] },
@@ -167,108 +181,120 @@ export const ownAuthEndpointContract: readonly OwnAuthEndpointDefinition[] = [
     response: objectSchema({ url: stringSchema("uri"), expiresAt: stringSchema("date-time") }, ["url", "expiresAt"]),
     errors: ["redirect_not_allowed", "rate_limited", "validation_error"], session: "optional"
   }),
-  oauthCallback("oauthGoogleCallback", "GET", "/oauth/google/callback", "Complete Google OAuth"),
-  oauthCallback("oauthGitHubCallback", "GET", "/oauth/github/callback", "Complete GitHub OAuth"),
-  oauthCallback("oauthAppleCallback", "GET", "/oauth/apple/callback", "Complete Apple OAuth"),
-  oauthCallback("oauthAppleCallbackPost", "POST", "/oauth/apple/callback", "Complete Apple form-post OAuth", "form"),
-  endpoint("prepareGoogleOneTap", "POST", "/oauth/google/one-tap/prepare", "Prepare Google One Tap", {
+  oauthGoogleCallback: oauthCallback("GET", "/oauth/google/callback", "Complete Google OAuth"),
+  oauthGitHubCallback: oauthCallback("GET", "/oauth/github/callback", "Complete GitHub OAuth"),
+  oauthAppleCallback: oauthCallback("GET", "/oauth/apple/callback", "Complete Apple OAuth"),
+  oauthAppleCallbackPost: oauthCallback("POST", "/oauth/apple/callback", "Complete Apple form-post OAuth", "form"),
+  prepareGoogleOneTap: endpoint("POST", "/oauth/google/one-tap/prepare", "Prepare Google One Tap", {
     response: objectSchema({ nonce: stringSchema(), expiresAt: stringSchema("date-time") }, ["nonce", "expiresAt"]),
     errors: ["rate_limited", "validation_error"], session: "none"
   }),
-  endpoint("signInGoogleOneTap", "POST", "/oauth/google/one-tap/verify", "Verify Google One Tap", {
+  signInGoogleOneTap: endpoint("POST", "/oauth/google/one-tap/verify", "Verify Google One Tap", {
     request: objectSchema({ credential: stringSchema(), nonce: stringSchema() }, ["credential", "nonce"]),
     response: signInSchema, errors: oauthErrors, session: "create"
   }),
-  endpoint("unlinkOAuthProvider", "POST", "/oauth/unlink", "Unlink an OAuth provider", {
+  unlinkOAuthProvider: endpoint("POST", "/oauth/unlink", "Unlink an OAuth provider", {
     request: objectSchema({ provider: oauthProviderSchema, providerAccountId: stringSchema() }, ["provider", "providerAccountId"]),
     response: successSchema,
     errors: ["invalid_session", "authentication_method_required", "invalid_credentials"],
     session: "required"
   }),
-  endpoint("completeMfaTotp", "POST", "/mfa/totp/complete", "Complete MFA with TOTP", {
+  completeMfaTotp: endpoint("POST", "/mfa/totp/complete", "Complete MFA with TOTP", {
     request: objectSchema({ code: stringSchema() }, ["code"]), response: authSessionSchema,
     errors: mfaErrors, session: "create"
   }),
-  endpoint("completeMfaRecovery", "POST", "/mfa/recovery/complete", "Complete MFA with a recovery code", {
+  completeMfaRecovery: endpoint("POST", "/mfa/recovery/complete", "Complete MFA with a recovery code", {
     request: objectSchema({ code: stringSchema() }, ["code"]), response: authSessionSchema,
     errors: mfaErrors, session: "create"
   }),
-  endpoint("beginTotpEnrollment", "POST", "/mfa/totp/enroll", "Begin TOTP enrollment", {
+  beginTotpEnrollment: endpoint("POST", "/mfa/totp/enroll", "Begin TOTP enrollment", {
     response: objectSchema({ factorId: stringSchema(), secret: stringSchema(), uri: stringSchema("uri") }, ["factorId", "secret", "uri"]),
     errors: ["invalid_session", "encryption_not_configured"], session: "required"
   }),
-  endpoint("confirmTotpEnrollment", "POST", "/mfa/totp/confirm", "Confirm TOTP enrollment", {
+  confirmTotpEnrollment: endpoint("POST", "/mfa/totp/confirm", "Confirm TOTP enrollment", {
     request: objectSchema({ factorId: stringSchema(), code: stringSchema() }, ["factorId", "code"]),
     response: objectSchema({ recoveryCodes: { type: "array", items: stringSchema() } }, ["recoveryCodes"]),
     errors: ["invalid_session", "mfa_code_invalid"], session: "required"
   }),
-  endpoint("disableTotp", "POST", "/mfa/totp/disable", "Disable TOTP", {
+  disableTotp: endpoint("POST", "/mfa/totp/disable", "Disable TOTP", {
     request: objectSchema({ code: stringSchema() }, ["code"]), response: successSchema,
     errors: ["invalid_session", "mfa_code_invalid", "mfa_timestep_reused"], session: "required"
   }),
-  endpoint("regenerateRecoveryCodes", "POST", "/mfa/recovery/regenerate", "Regenerate recovery codes", {
+  regenerateRecoveryCodes: endpoint("POST", "/mfa/recovery/regenerate", "Regenerate recovery codes", {
     request: objectSchema({ code: stringSchema() }, ["code"]),
     response: objectSchema({ recoveryCodes: { type: "array", items: stringSchema() } }, ["recoveryCodes"]),
     errors: ["invalid_session", "mfa_code_invalid", "mfa_timestep_reused"], session: "required"
   }),
-  endpoint("beginPasskeyRegistration", "POST", "/passkeys/register/options", "Create passkey registration options", {
+  beginPasskeyRegistration: endpoint("POST", "/passkeys/register/options", "Create passkey registration options", {
     response: objectSchema({ options: openObjectSchema }, ["options"]), errors: ["invalid_session", "validation_error"], session: "required"
   }),
-  endpoint("completePasskeyRegistration", "POST", "/passkeys/register/verify", "Verify passkey registration", {
+  completePasskeyRegistration: endpoint("POST", "/passkeys/register/verify", "Verify passkey registration", {
     request: passkeyResponseSchema,
     response: objectSchema({ passkey: publicPasskeySchema }, ["passkey"]),
     errors: ["invalid_session", "passkey_invalid"], session: "required"
   }),
-  endpoint("beginPasskeyAuthentication", "POST", "/passkeys/authenticate/options", "Create passkey authentication options", {
+  beginPasskeyAuthentication: endpoint("POST", "/passkeys/authenticate/options", "Create passkey authentication options", {
     request: objectSchema({ userId: stringSchema(), mfa: { type: "boolean" } }),
     response: objectSchema({ options: openObjectSchema }, ["options"]),
     errors: ["passkey_not_found", "mfa_challenge_invalid", "validation_error"], session: "optional"
   }),
-  endpoint("completePasskeyAuthentication", "POST", "/passkeys/authenticate/verify", "Verify passkey authentication", {
+  completePasskeyAuthentication: endpoint("POST", "/passkeys/authenticate/verify", "Verify passkey authentication", {
     request: objectSchema({ response: openObjectSchema }, ["response"]), response: authSessionSchema,
     errors: ["passkey_invalid", "mfa_challenge_invalid"], session: "create"
   }),
-  endpoint("listPasskeys", "GET", "/passkeys", "List passkeys", {
+  listPasskeys: endpoint("GET", "/passkeys", "List passkeys", {
     response: objectSchema({ passkeys: { type: "array", items: publicPasskeySchema } }, ["passkeys"]),
     errors: ["invalid_session"], session: "required"
   }),
-  endpoint("renamePasskey", "POST", "/passkeys/rename", "Rename a passkey", {
+  renamePasskey: endpoint("POST", "/passkeys/rename", "Rename a passkey", {
     request: objectSchema({ passkeyId: stringSchema(), name: stringSchema() }, ["passkeyId", "name"]),
     response: objectSchema({ passkey: publicPasskeySchema }, ["passkey"]),
     errors: ["invalid_session", "passkey_not_found", "validation_error"], session: "required"
   }),
-  endpoint("revokePasskey", "POST", "/passkeys/revoke", "Revoke a passkey", {
+  revokePasskey: endpoint("POST", "/passkeys/revoke", "Revoke a passkey", {
     request: objectSchema({ passkeyId: stringSchema() }, ["passkeyId"]), response: successSchema,
     errors: ["invalid_session", "passkey_not_found", "authentication_method_required"], session: "required"
   })
-];
+} satisfies OwnAuthEndpointSpecMap;
+
+const ownAuthEndpointMap = cloneAndDeepFreeze(Object.fromEntries(
+  (Object.entries(ownAuthEndpointSpecs) as Array<[OwnAuthEndpointId, OwnAuthEndpointSpec]>)
+    .map(([id, definition]) => [id, { id, ...definition }] as const)
+)) as OwnAuthEndpointMap;
+
+export const ownAuthEndpointContract: readonly OwnAuthEndpointDefinition[] = Object.freeze(
+  Object.values(ownAuthEndpointMap)
+);
+
+const ownAuthEndpointsByPath = createEndpointPathLookup(ownAuthEndpointContract);
+const noOwnAuthEndpoints = Object.freeze([]) as readonly OwnAuthEndpointDefinition[];
 
 export function getOwnAuthEndpoint<Id extends OwnAuthEndpointId>(
   id: Id
 ): OwnAuthEndpointDefinition & { id: Id } {
-  const endpointDefinition = ownAuthEndpointContract.find((candidate) => candidate.id === id);
-  if (!endpointDefinition) throw new Error(`Unknown Own Auth endpoint: ${id}`);
-  return endpointDefinition as OwnAuthEndpointDefinition & { id: Id };
+  return ownAuthEndpointMap[id];
 }
 
-function endpoint<Id extends OwnAuthEndpointId>(
-  id: Id,
+export function getOwnAuthEndpointsForPath(path: string): readonly OwnAuthEndpointDefinition[] {
+  return ownAuthEndpointsByPath[path] ?? noOwnAuthEndpoints;
+}
+
+function endpoint(
   method: "GET" | "POST",
   path: string,
   summary: string,
   rest: Omit<OwnAuthEndpointDefinition, "id" | "method" | "path" | "summary">
-): OwnAuthEndpointDefinition {
-  return { id, method, path, summary, ...rest };
+): OwnAuthEndpointSpec {
+  return { method, path, summary, ...rest };
 }
 
 function oauthCallback(
-  id: "oauthGoogleCallback" | "oauthGitHubCallback" | "oauthAppleCallback" | "oauthAppleCallbackPost",
   method: "GET" | "POST",
   path: string,
   summary: string,
   requestTransport: "query" | "form" = "query"
-): OwnAuthEndpointDefinition {
-  return endpoint(id, method, path, summary, {
+): OwnAuthEndpointSpec {
+  return endpoint(method, path, summary, {
     request: oauthCallbackRequestSchema,
     requestTransport,
     response: oauthCallbackSchema,
@@ -277,4 +303,19 @@ function oauthCallback(
     session: "create",
     csrf: "oauth_state"
   });
+}
+
+function createEndpointPathLookup(
+  endpoints: readonly OwnAuthEndpointDefinition[]
+): Readonly<Record<string, readonly OwnAuthEndpointDefinition[]>> {
+  const entries: Record<string, OwnAuthEndpointDefinition[]> = Object.create(null) as Record<
+    string,
+    OwnAuthEndpointDefinition[]
+  >;
+  for (const endpointDefinition of endpoints) {
+    (entries[endpointDefinition.path] ??= []).push(endpointDefinition);
+  }
+  return Object.freeze(Object.fromEntries(
+    Object.entries(entries).map(([path, definitions]) => [path, Object.freeze(definitions)])
+  ));
 }

@@ -11,23 +11,33 @@ import type {
   RemoveMemberInput
 } from "./auth-engine-types.js";
 import { audit, type AuthEngineContext } from "./auth-engine-internals.js";
-import { requirePermission } from "./auth-engine-organisation-access.js";
+import {
+  requireConfiguredRole,
+  requirePermission
+} from "./auth-engine-organisation-access.js";
 
 export async function changeMemberRole(
   ctx: AuthEngineContext,
-  input: ChangeMemberRoleInput
-): Promise<OrganisationMember> {
-  await requirePermission(
+  input: ChangeMemberRoleInput<string>
+): Promise<OrganisationMember<string>> {
+  const actor = await requirePermission(
     ctx,
     input.organisationId,
     input.actorUserId,
     "change_member_roles"
   );
+  requireConfiguredRole(ctx, input.role);
   const { organisation, member } = await requireTargetMember(
     ctx,
     input.organisationId,
     input.userId
   );
+  if (
+    actor.role !== "owner" &&
+    (member.role === "owner" || input.role === "owner")
+  ) {
+    throw new AuthError("permission_denied", "Only owners can change owner roles", 403);
+  }
   const ownershipTransferredTo = member.role === "owner" && input.role !== "owner"
     ? await transferOwnership(ctx, organisation, member)
     : null;
@@ -55,7 +65,7 @@ export async function changeMemberRole(
 export async function removeMember(
   ctx: AuthEngineContext,
   input: RemoveMemberInput
-): Promise<OrganisationMember> {
+): Promise<OrganisationMember<string>> {
   const actor = await requirePermission(
     ctx,
     input.organisationId,
@@ -101,10 +111,10 @@ export async function removeMember(
 export async function listMembers(
   ctx: AuthEngineContext,
   input: ListMembersInput
-): Promise<OrganisationMemberDetails[]> {
+): Promise<OrganisationMemberDetails<string>[]> {
   await requirePermission(ctx, input.organisationId, input.actorUserId, "view_members");
   const members = await ctx.storage.listOrganisationMembers(input.organisationId);
-  const details: OrganisationMemberDetails[] = [];
+  const details: OrganisationMemberDetails<string>[] = [];
   for (const member of members) {
     if (member.status === "active") {
       details.push(await memberDetails(ctx, member));
@@ -116,7 +126,7 @@ export async function listMembers(
 export async function getMember(
   ctx: AuthEngineContext,
   input: GetMemberInput
-): Promise<OrganisationMemberDetails> {
+): Promise<OrganisationMemberDetails<string>> {
   await requirePermission(ctx, input.organisationId, input.actorUserId, "view_members");
   const { member } = await requireTargetMember(ctx, input.organisationId, input.userId);
   return memberDetails(ctx, member);
@@ -126,7 +136,7 @@ async function requireTargetMember(
   ctx: AuthEngineContext,
   organisationId: string,
   userId: string
-): Promise<{ organisation: Organisation; member: OrganisationMember }> {
+): Promise<{ organisation: Organisation; member: OrganisationMember<string> }> {
   const organisation = await ctx.storage.getOrganisationById(organisationId);
   const member = await ctx.storage.getOrganisationMember(organisationId, userId);
   if (!organisation || !member || member.status !== "active") {
@@ -139,7 +149,7 @@ async function requireTargetMember(
 async function transferOwnership(
   ctx: AuthEngineContext,
   organisation: Organisation,
-  member: OrganisationMember
+  member: OrganisationMember<string>
 ): Promise<string | null> {
   const members = await ctx.storage.listOrganisationMembers(organisation.id);
   const replacement = members.find(
@@ -164,8 +174,8 @@ async function transferOwnership(
 
 async function memberDetails(
   ctx: AuthEngineContext,
-  member: OrganisationMember
-): Promise<OrganisationMemberDetails> {
+  member: OrganisationMember<string>
+): Promise<OrganisationMemberDetails<string>> {
   const user = await ctx.storage.getUserById(member.userId);
   return {
     ...member,

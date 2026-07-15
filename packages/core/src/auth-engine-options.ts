@@ -9,6 +9,7 @@ import type {
   OwnAuthPluginRuntimeOptions
 } from "./plugin-types.js";
 import type { WebhookOptions } from "./webhook-types.js";
+import type { AnyOwnAuthAuthorizationDefinition } from "./authorization.js";
 
 export const minute = 60 * 1000;
 export const hour = 60 * minute;
@@ -23,7 +24,9 @@ export interface PasskeyOptions {
   timeoutMs?: number;
 }
 
-export interface OwnAuthOptions {
+export interface OwnAuthOptions<
+  Authorization extends AnyOwnAuthAuthorizationDefinition = AnyOwnAuthAuthorizationDefinition
+> {
   storage?: AuthStorage;
   rateLimitStore?: RateLimitStore;
   emailProvider?: EmailProvider;
@@ -33,7 +36,7 @@ export interface OwnAuthOptions {
   exposeRawTokens?: boolean;
   allowMagicLinkSignup?: boolean;
   allowPhoneSignup?: boolean;
-  redirectAllowlist?: string[];
+  redirectAllowlist?: readonly string[];
   session?: {
     ttlMs?: number;
     idleTtlMs?: number;
@@ -57,6 +60,7 @@ export interface OwnAuthOptions {
   };
   passkeys?: PasskeyOptions;
   webhooks?: WebhookOptions;
+  authorization?: Authorization;
   plugins?: readonly OwnAuthPluginDefinition[];
   pluginRuntime?: OwnAuthPluginRuntimeOptions;
 }

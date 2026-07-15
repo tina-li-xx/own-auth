@@ -21,9 +21,16 @@ Own Auth reads `DATABASE_URL` from the environment. That is enough to get starte
 ## Full configuration
 
 ```ts
-import { createOwnAuth } from "own-auth";
+import { createOwnAuth, defineOwnAuthAuthorization } from "own-auth";
 
 const appUrl = "https://app.example.com";
+const authorization = defineOwnAuthAuthorization({
+  permissions: ["documents:read", "documents:write"],
+  roles: {
+    reviewer: ["view_members", "documents:read"],
+    editor: ["view_members", "documents:read", "documents:write"],
+  },
+});
 
 export const auth = createOwnAuth({
   // Required in production
@@ -50,6 +57,9 @@ export const auth = createOwnAuth({
     password_reset: 60 * 60 * 1000,              // 1 hour
     organisation_invite: 7 * 24 * 60 * 60 * 1000, // 7 days
   },
+
+  // Application-defined organisation roles and permissions
+  authorization,
 
   // Phone and SMS settings
   sms: {
@@ -167,6 +177,29 @@ New passwords are hashed with Argon2id. Existing scrypt hashes remain valid and 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `tokenTtlMs.organisation_invite` | `number` | `604800000` (7 days) | How long an organisation invitation is valid. |
+
+### Organisation authorization
+
+Use `authorization` to add application-specific roles and permissions. The built-in `owner`, `admin`, and `member` roles remain available. Custom roles can reference built-in permissions and configured custom permissions.
+
+```ts
+const authorization = defineOwnAuthAuthorization({
+  permissions: ["documents:read", "documents:write"],
+  roles: {
+    reviewer: ["view_members", "documents:read"],
+    editor: ["view_members", "documents:read", "documents:write"],
+  },
+});
+
+const auth = createOwnAuth({
+  tokenPepper: process.env.OWN_AUTH_TOKEN_PEPPER,
+  authorization,
+});
+```
+
+The factory preserves these literal role and permission names in TypeScript. Every Own Auth instance sharing a database must use the same definition. Before removing a role, reassign its members; an unconfigured stored role has no permissions, and pending invitations for it fail with `role_not_configured`.
+
+See [Roles](/docs/organisations/roles) for identifier rules, owner protections, and migration guidance.
 
 ### Email
 

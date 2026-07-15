@@ -28,10 +28,12 @@
 - Signed core authentication webhooks with durable Postgres and D1 outboxes, leased concurrent processing, bounded retries, complete attempt history, manual retry, and retention cleanup.
 - A receiver verifier through `own-auth/webhooks` with exact-body HMAC validation, configurable timestamp tolerance, secret rotation, and an application-owned atomic replay claim.
 - Migration `008_webhooks` for webhook events, deliveries, and cascading attempt history.
+- Application-defined organisation roles and permissions with factory-inferred TypeScript unions, fail-closed removed roles, and migration `009_custom_authorization` for Postgres and D1.
 
 ### Security
 
 - OAuth state, One Tap nonces, MFA challenges, recovery codes, and WebAuthn challenges are consumed atomically.
+- Owner invitations now require an owner actor; administrators cannot grant the owner role.
 - TOTP timesteps and passkey counters use atomic comparison updates to reject replay and concurrent reuse.
 - Provider refresh tokens and TOTP secrets use purpose-separated AES-256-GCM encryption through the shared encryption key ring.
 - Disabling TOTP invalidates its recovery codes, including codes attached to an outstanding MFA challenge.
@@ -40,6 +42,7 @@
 - Browser OAuth popups exchange only completion state. OAuth codes, provider tokens, session tokens, and MFA challenge tokens are never sent through `postMessage`.
 - Telemetry uses bounded attributes and excludes passwords, tokens, personal data, request contents, delivery contents, exception details, and database queries.
 - Webhook payloads expose only fixed event fields and safe event-specific details. Delivery logs exclude response bodies, response headers, remote error messages, and raw secrets.
+- Custom roles cannot grant owner transitions to non-owners, and invitations revalidate their configured role before consuming the single-use token.
 
 ### Runtime
 

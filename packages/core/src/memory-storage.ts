@@ -31,8 +31,8 @@ export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthSt
   private readonly smsOtps = new Map<string, SmsOtp>();
   private readonly apiKeys = new Map<string, ApiKey>();
   private readonly organisations = new Map<string, Organisation>();
-  private readonly members = new Map<string, OrganisationMember>();
-  private readonly invitations = new Map<string, Invitation>();
+  private readonly members = new Map<string, OrganisationMember<string>>();
+  private readonly invitations = new Map<string, Invitation<string>>();
   private readonly auditEvents = new Map<string, AuditEvent>();
   readonly webhookStorage = new MemoryWebhookStorage(this.auditEvents);
 
@@ -312,16 +312,16 @@ export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthSt
   }
 
   async createOrganisationMember(
-    member: OrganisationMember
-  ): Promise<OrganisationMember> {
+    member: OrganisationMember<string>
+  ): Promise<OrganisationMember<string>> {
     this.members.set(member.id, clone(member));
     return clone(member);
   }
 
   async updateOrganisationMember(
     id: string,
-    patch: Partial<OrganisationMember>
-  ): Promise<OrganisationMember | null> {
+    patch: Partial<OrganisationMember<string>>
+  ): Promise<OrganisationMember<string> | null> {
     return updateStoredEntity(this.members, id, patch);
   }
 
@@ -338,37 +338,41 @@ export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthSt
     return null;
   }
 
-  async getOrganisationMemberById(id: string): Promise<OrganisationMember | null> {
+  async getOrganisationMemberById(id: string): Promise<OrganisationMember<string> | null> {
     const member = this.members.get(id);
     return member ? clone(member) : null;
   }
 
-  async listOrganisationMembers(organisationId: string): Promise<OrganisationMember[]> {
+  async listOrganisationMembers(
+    organisationId: string
+  ): Promise<OrganisationMember<string>[]> {
     return [...this.members.values()]
       .filter((member) => member.organisationId === organisationId)
       .map((member) => clone(member));
   }
 
-  async listInvitationsByOrganisationId(organisationId: string): Promise<Invitation[]> {
+  async listInvitationsByOrganisationId(
+    organisationId: string
+  ): Promise<Invitation<string>[]> {
     return [...this.invitations.values()]
       .filter((inv) => inv.organisationId === organisationId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .map((inv) => clone(inv));
   }
 
-  async createInvitation(invitation: Invitation): Promise<Invitation> {
+  async createInvitation(invitation: Invitation<string>): Promise<Invitation<string>> {
     this.invitations.set(invitation.id, clone(invitation));
     return clone(invitation);
   }
 
   async updateInvitation(
     id: string,
-    patch: Partial<Invitation>
-  ): Promise<Invitation | null> {
+    patch: Partial<Invitation<string>>
+  ): Promise<Invitation<string> | null> {
     return updateStoredEntity(this.invitations, id, patch);
   }
 
-  async getInvitationById(id: string): Promise<Invitation | null> {
+  async getInvitationById(id: string): Promise<Invitation<string> | null> {
     const invitation = this.invitations.get(id);
     return invitation ? clone(invitation) : null;
   }
@@ -383,7 +387,7 @@ export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthSt
   async getPendingInvitationByOrganisationAndEmail(
     organisationId: string,
     email: string
-  ): Promise<Invitation | null> {
+  ): Promise<Invitation<string> | null> {
     const matching = [...this.invitations.values()]
       .filter(
         (invitation) =>

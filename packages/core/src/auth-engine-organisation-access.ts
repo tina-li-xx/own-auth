@@ -1,5 +1,4 @@
 import { AuthError } from "./errors.js";
-import { roleHasPermission, type Permission } from "./permissions.js";
 import type { Organisation, OrganisationMember } from "./types.js";
 import type { AuthEngineContext } from "./auth-engine-context.js";
 
@@ -7,7 +6,7 @@ export async function checkPermission(
   ctx: AuthEngineContext,
   organisationId: string,
   userId: string,
-  permission: Permission
+  permission: string
 ): Promise<boolean> {
   const organisation = await ctx.storage.getOrganisationById(organisationId);
   if (!organisation || organisation.disabledAt) {
@@ -20,7 +19,10 @@ export async function checkPermission(
   }
 
   const member = await ctx.storage.getOrganisationMember(organisationId, userId);
-  return Boolean(member?.status === "active" && roleHasPermission(member.role, permission));
+  return Boolean(
+    member?.status === "active" &&
+    ctx.authorization.hasPermission(member.role, permission)
+  );
 }
 
 export async function requireActiveOrganisation(
@@ -39,7 +41,7 @@ export async function requireOrganisationAccess(
   ctx: AuthEngineContext,
   organisationId: string,
   userId: string
-): Promise<{ organisation: Organisation; member: OrganisationMember }> {
+): Promise<{ organisation: Organisation; member: OrganisationMember<string> }> {
   const organisation = await requireActiveOrganisation(ctx, organisationId);
   const user = await ctx.storage.getUserById(userId);
   if (!user || user.disabledAt) {
@@ -58,8 +60,8 @@ export async function requirePermission(
   ctx: AuthEngineContext,
   organisationId: string,
   userId: string,
-  permission: Permission
-): Promise<OrganisationMember> {
+  permission: string
+): Promise<OrganisationMember<string>> {
   await requireActiveOrganisation(ctx, organisationId);
   const user = await ctx.storage.getUserById(userId);
   if (!user || user.disabledAt) {
@@ -67,9 +69,19 @@ export async function requirePermission(
   }
 
   const member = await ctx.storage.getOrganisationMember(organisationId, userId);
-  if (!member || member.status !== "active" || !roleHasPermission(member.role, permission)) {
+  if (!member || member.status !== "active") {
+    throw new AuthError("permission_denied", "You do not have permission for this action", 403);
+  }
+  requireConfiguredRole(ctx, member.role);
+  if (!ctx.authorization.hasPermission(member.role, permission)) {
     throw new AuthError("permission_denied", "You do not have permission for this action", 403);
   }
 
   return member;
+}
+
+export function requireConfiguredRole(ctx: AuthEngineContext, role: string): void {
+  if (!ctx.authorization.hasRole(role)) {
+    throw new AuthError("role_not_configured", "Role is not configured", 409);
+  }
 }

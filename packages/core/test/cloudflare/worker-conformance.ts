@@ -65,7 +65,8 @@ const expectedMigrations = [
   "005_oauth_credentials",
   "006_passkeys",
   "007_plugin_migrations",
-  "008_webhooks"
+  "008_webhooks",
+  "009_custom_authorization"
 ];
 
 const expectedTables = [

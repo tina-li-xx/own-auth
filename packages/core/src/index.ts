@@ -1,4 +1,16 @@
-export { OwnAuth, createOwnAuth } from "./auth-engine.js";
+export { OwnAuth } from "./auth-engine.js";
+export { createOwnAuth } from "./create-own-auth.js";
+export {
+  corePermissions,
+  defineOwnAuthAuthorization,
+  permissionsForRole,
+  roleHasPermission
+} from "./authorization.js";
+export type {
+  CorePermission,
+  OwnAuthAuthorizationDefinition,
+  Permission
+} from "./authorization.js";
 export { coreAuditEventTypes } from "./types.js";
 export type {
   AcceptInviteInput,
@@ -169,17 +181,13 @@ export type {
   SmsMessage,
   SmsProvider
 } from "./providers.js";
-export {
-  permissionsForRole,
-  roleHasPermission
-} from "./permissions.js";
-export type { Permission } from "./permissions.js";
 export type {
   Account,
   AccountProvider,
   ApiKey,
   ApiKeyDetails,
   ApiKeyStatus,
+  BuiltInOrganisationRole,
   AuditEvent,
   AuditEventType,
   CoreAuditEventType,

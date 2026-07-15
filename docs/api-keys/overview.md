@@ -125,6 +125,8 @@ try {
 
 Scopes define what an API key can do. They are plain strings. Own Auth stores and returns them, but the application decides what they mean.
 
+API-key scopes are separate from organisation role permissions. Configure organisation access through `authorization`, then decide in application code whether an API-key scope maps to the same product action.
+
 ```ts
 const current = await auth.requireCurrentSession(sessionToken);
 

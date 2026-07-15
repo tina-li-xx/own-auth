@@ -841,6 +841,40 @@ describe("OwnAuth security regressions", () => {
     ).rejects.toMatchObject({ code: "permission_denied" });
   });
 
+  it("allows only owners to issue owner invitations", async () => {
+    const { auth, storage, owner, organisation } = await createOwnerWithOrg();
+    const adminUser = await auth.createUser({ email: "owner-invite-admin@example.com" });
+    const adminInvite = await auth.inviteMember({
+      organisationId: organisation.id,
+      invitedByUserId: owner.user.id,
+      email: adminUser.email ?? "",
+      role: "admin"
+    });
+    await auth.acceptInvite({ token: adminInvite.token ?? "", userId: adminUser.id });
+    const invitedOwnerEmail = "invited-owner@example.com";
+
+    await expect(
+      auth.inviteMember({
+        organisationId: organisation.id,
+        invitedByUserId: adminUser.id,
+        email: invitedOwnerEmail,
+        role: "owner"
+      })
+    ).rejects.toMatchObject({ code: "permission_denied" });
+    await expect(
+      storage.getPendingInvitationByOrganisationAndEmail(organisation.id, invitedOwnerEmail)
+    ).resolves.toBeNull();
+
+    await expect(
+      auth.inviteMember({
+        organisationId: organisation.id,
+        invitedByUserId: owner.user.id,
+        email: invitedOwnerEmail,
+        role: "owner"
+      })
+    ).resolves.toMatchObject({ invitation: { role: "owner" } });
+  });
+
   it("lets admins update organisation settings but not member roles", async () => {
     const { auth, owner, organisation } = await createOwnerWithOrg();
     const adminUser = await auth.createUser({ email: "role-admin@example.com" });

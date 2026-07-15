@@ -228,6 +228,7 @@ function statusForError(code: OwnAuthHttpErrorCode): number {
     code === "invite_exists" ||
     code === "already_member" ||
     code === "last_owner" ||
+    code === "role_not_configured" ||
     code === "account_linking_required" ||
     code === "oauth_account_conflict" ||
     code === "oauth_verified_email_required" ||

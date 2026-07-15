@@ -17,7 +17,13 @@ export type SmsOtpPurpose = "phone_login" | "phone_verification" | "account_reco
 
 export type ApiKeyStatus = "active" | "revoked";
 
-export type OrganisationRole = "owner" | "admin" | "member";
+export const builtInOrganisationRoles = ["owner", "admin", "member"] as const;
+
+export type BuiltInOrganisationRole = (typeof builtInOrganisationRoles)[number];
+
+export type OrganisationRole<CustomRole extends string = never> =
+  | BuiltInOrganisationRole
+  | CustomRole;
 
 export type MemberStatus = "active" | "suspended" | "removed";
 
@@ -198,11 +204,11 @@ export interface Organisation {
   disabledAt: Date | null;
 }
 
-export interface OrganisationMember {
+export interface OrganisationMember<CustomRole extends string = never> {
   id: string;
   organisationId: string;
   userId: string;
-  role: OrganisationRole;
+  role: OrganisationRole<CustomRole>;
   status: MemberStatus;
   joinedAt: Date | null;
   removedAt: Date | null;
@@ -210,18 +216,19 @@ export interface OrganisationMember {
   updatedAt: Date;
 }
 
-export interface OrganisationMemberDetails extends OrganisationMember {
+export interface OrganisationMemberDetails<CustomRole extends string = never>
+  extends OrganisationMember<CustomRole> {
   name: string | null;
   email: string | null;
 }
 
-export interface Invitation {
+export interface Invitation<CustomRole extends string = never> {
   id: string;
   tokenId: string | null;
   organisationId: string;
   email: string | null;
   phone: string | null;
-  role: OrganisationRole;
+  role: OrganisationRole<CustomRole>;
   invitedByUserId: string;
   status: InvitationStatus;
   expiresAt: Date;

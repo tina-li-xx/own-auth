@@ -4,7 +4,7 @@ Invite users to join an organisation by email. The invited person receives an em
 
 ## Create an invite
 
-The inviting user must have the `invite_members` permission.
+The inviting user must have the `invite_members` permission. An administrator can invite members and administrators, but only an owner can issue an invitation for the `owner` role.
 
 ```ts
 const { invitation } = await auth.inviteMember({
@@ -28,7 +28,8 @@ Own Auth creates the invitation, generates a single-use token, stores only its h
 |---|---|
 | `already_member` | The invited email is already an active member of this organisation. |
 | `invite_exists` | A pending invite for this email and organisation already exists. |
-| `permission_denied` | The inviting user does not have permission to invite members. |
+| `permission_denied` | The inviting user cannot issue invitations, or a non-owner tried to grant the owner role. |
+| `role_not_configured` | The requested role is not present in the current authorization configuration. |
 | `rate_limited` | Too many invites have been sent for this organisation. |
 
 ## List invitations
@@ -121,6 +122,7 @@ Own Auth does not create an account during invite acceptance.
 | `invalid_token` | The token is malformed, missing, or does not match an active invite. |
 | `invalid_session` | No signed-in user ID was supplied. |
 | `permission_denied` | The signed-in user's email does not match the invited email. |
+| `role_not_configured` | The invitation contains a role that is no longer configured. The token is not consumed. |
 | `user_not_found` | The supplied user does not exist. |
 
 ## Revoke an invitation
