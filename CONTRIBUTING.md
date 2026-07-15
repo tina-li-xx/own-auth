@@ -43,6 +43,17 @@ The integration test uses `OWN_AUTH_TEST_DATABASE_URL` first, then `DATABASE_URL
 - Keep runtime storage durable. The API should require Postgres through `DATABASE_URL`.
 - Do not commit secrets, `.env` files, or generated local databases.
 
+## Security Contributions
+
+Do not open a public issue or pull request for an undisclosed vulnerability. Use
+the private process in [SECURITY.md](./SECURITY.md#reporting-a-vulnerability).
+Security fixes should include regression coverage for the failure mode and should
+check related authentication flows for the same vulnerability class.
+
+Maintainers should use the private GitHub advisory workspace until disclosure,
+keep private vulnerability reporting enabled for the repository, and follow the
+security release process in `SECURITY.md`.
+
 ## Release
 
 Releases are maintainer operations. Prepare the release before publishing:

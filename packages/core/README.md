@@ -205,7 +205,7 @@ export const authClient = createOwnAuthReactClient();
 // const { data, isPending, error } = authClient.useSession();
 ```
 
-See the [HTTP handler](https://github.com/tina-li-xx/own-auth/blob/main/docs/http-handler.md) and [TypeScript client](https://github.com/tina-li-xx/own-auth/blob/main/docs/typescript-client.md) guides for the complete route and error contract.
+See the [HTTP handler](https://github.com/own-auth/own-auth/blob/main/docs/http-handler.md) and [TypeScript client](https://github.com/own-auth/own-auth/blob/main/docs/typescript-client.md) guides for the complete route and error contract.
 
 ### What's Next
 
@@ -429,15 +429,15 @@ const result = await auth.signInWithVerifiedExternalIdentity({
 
 Own Auth resolves the linked provider account, applies the configured account-linking policy, and either creates a session or returns `mfa_required`.
 
-`signInWithVerifiedExternalIdentity` does not verify a provider token. Only call it after a trusted provider adapter has verified the token signature, issuer, audience, expiry, and nonce where required. See [External providers](https://github.com/tina-li-xx/own-auth/blob/main/docs/external-providers.md).
+`signInWithVerifiedExternalIdentity` does not verify a provider token. Only call it after a trusted provider adapter has verified the token signature, issuer, audience, expiry, and nonce where required. See [External providers](https://github.com/own-auth/own-auth/blob/main/docs/external-providers.md).
 
 ## Multi-Factor Authentication
 
-TOTP, one-time recovery codes, and passkeys can protect every first-factor flow. No session is created until MFA succeeds. See [Multi-Factor Authentication](https://github.com/tina-li-xx/own-auth/blob/main/docs/mfa.md).
+TOTP, one-time recovery codes, and passkeys can protect every first-factor flow. No session is created until MFA succeeds. See [Multi-Factor Authentication](https://github.com/own-auth/own-auth/blob/main/docs/mfa.md).
 
 ## Passkeys
 
-Passkeys support usernameless or username-first primary sign-in and can complete pending MFA challenges. See [Passkeys](https://github.com/tina-li-xx/own-auth/blob/main/docs/passkeys.md).
+Passkeys support usernameless or username-first primary sign-in and can complete pending MFA challenges. See [Passkeys](https://github.com/own-auth/own-auth/blob/main/docs/passkeys.md).
 
 ## Email Verification
 
@@ -594,7 +594,7 @@ const auth = createOwnAuth({
 await auth.processWebhookDeliveries();
 ```
 
-See [Webhooks](https://github.com/tina-li-xx/own-auth/blob/main/docs/webhooks.md) for signature verification, retries, attempt history, cleanup, and custom storage requirements.
+See [Webhooks](https://github.com/own-auth/own-auth/blob/main/docs/webhooks.md) for signature verification, retries, attempt history, cleanup, and custom storage requirements.
 
 ## Configuration
 
@@ -647,7 +647,7 @@ createOwnAuth({
 });
 ```
 
-OAuth providers, the shared encryption key ring, TOTP, passkeys, plugins, and webhooks are documented in the [Configuration guide](https://github.com/tina-li-xx/own-auth/blob/main/docs/configuration.md).
+OAuth providers, the shared encryption key ring, TOTP, passkeys, plugins, and webhooks are documented in the [Configuration guide](https://github.com/own-auth/own-auth/blob/main/docs/configuration.md).
 
 For long-running servers, close Own Auth during graceful shutdown:
 
@@ -655,7 +655,7 @@ For long-running servers, close Own Auth during graceful shutdown:
 await auth.close();
 ```
 
-Own Auth closes only the Postgres pool it creates. Applications that pass custom storage or rate-limit adapters remain responsible for those resources. See [Database connection and shutdown](https://github.com/tina-li-xx/own-auth/blob/main/docs/configuration.md#database-connection-and-shutdown).
+Own Auth closes only the Postgres pool it creates. Applications that pass custom storage or rate-limit adapters remain responsible for those resources. See [Database connection and shutdown](https://github.com/own-auth/own-auth/blob/main/docs/configuration.md#database-connection-and-shutdown).
 
 ## Postgres Database Setup
 
@@ -694,7 +694,7 @@ Generate versioned migrations for Wrangler:
 npx own-auth generate --dialect d1 --out-dir migrations
 ```
 
-See [Cloudflare D1](https://github.com/tina-li-xx/own-auth/blob/main/docs/cloudflare-d1.md) for the complete Worker and migration setup.
+See [Cloudflare D1](https://github.com/own-auth/own-auth/blob/main/docs/cloudflare-d1.md) for the complete Worker and migration setup.
 
 ## OpenTelemetry
 
@@ -702,7 +702,7 @@ Own Auth emits privacy-safe traces and metrics through `@opentelemetry/api`. App
 
 Telemetry is controlled by the application's OpenTelemetry SDK, not by a `createOwnAuth()` option. Own Auth never records passwords, tokens, request bodies, URLs, headers, cookies, delivery contents, or database queries.
 
-See [Observability](https://github.com/tina-li-xx/own-auth/blob/main/docs/observability.md) for span hierarchy, metric names, attributes, and data-safety rules.
+See [Observability](https://github.com/own-auth/own-auth/blob/main/docs/observability.md) for span hierarchy, metric names, attributes, and data-safety rules.
 
 ## Method Reference
 
@@ -742,23 +742,27 @@ See [Observability](https://github.com/tina-li-xx/own-auth/blob/main/docs/observ
 - Redirect URL allowlist for magic links and OAuth destinations
 - HMAC-SHA256 webhook signatures with timestamp validation and receiver-owned replay claims
 
+Report suspected vulnerabilities through the private process in
+[Security Policy](https://github.com/own-auth/own-auth/blob/main/SECURITY.md#reporting-a-vulnerability). Do not open a public
+issue for an undisclosed vulnerability.
+
 ## Docs
 
-- [Installation](https://github.com/tina-li-xx/own-auth/blob/main/docs/installation.md)
-- [Security Model](https://github.com/tina-li-xx/own-auth/blob/main/docs/security-model.md)
-- [OAuth And External Providers](https://github.com/tina-li-xx/own-auth/blob/main/docs/external-providers.md)
-- [Multi-Factor Authentication](https://github.com/tina-li-xx/own-auth/blob/main/docs/mfa.md)
-- [Passkeys](https://github.com/tina-li-xx/own-auth/blob/main/docs/passkeys.md)
-- [Plugins](https://github.com/tina-li-xx/own-auth/blob/main/docs/plugins.md)
-- [Cloudflare D1](https://github.com/tina-li-xx/own-auth/blob/main/docs/cloudflare-d1.md)
-- [Webhooks](https://github.com/tina-li-xx/own-auth/blob/main/docs/webhooks.md)
-- [Observability](https://github.com/tina-li-xx/own-auth/blob/main/docs/observability.md)
-- [Next.js](https://github.com/tina-li-xx/own-auth/blob/main/docs/frameworks/nextjs.md)
-- [Express](https://github.com/tina-li-xx/own-auth/blob/main/docs/frameworks/express.md)
-- [Hono](https://github.com/tina-li-xx/own-auth/blob/main/docs/frameworks/hono.md)
-- [Fastify](https://github.com/tina-li-xx/own-auth/blob/main/docs/frameworks/fastify.md)
-- [Security Policy](https://github.com/tina-li-xx/own-auth/blob/main/SECURITY.md)
-- [Contributing](https://github.com/tina-li-xx/own-auth/blob/main/CONTRIBUTING.md)
+- [Installation](https://github.com/own-auth/own-auth/blob/main/docs/installation.md)
+- [Security Model](https://github.com/own-auth/own-auth/blob/main/docs/security-model.md)
+- [OAuth And External Providers](https://github.com/own-auth/own-auth/blob/main/docs/external-providers.md)
+- [Multi-Factor Authentication](https://github.com/own-auth/own-auth/blob/main/docs/mfa.md)
+- [Passkeys](https://github.com/own-auth/own-auth/blob/main/docs/passkeys.md)
+- [Plugins](https://github.com/own-auth/own-auth/blob/main/docs/plugins.md)
+- [Cloudflare D1](https://github.com/own-auth/own-auth/blob/main/docs/cloudflare-d1.md)
+- [Webhooks](https://github.com/own-auth/own-auth/blob/main/docs/webhooks.md)
+- [Observability](https://github.com/own-auth/own-auth/blob/main/docs/observability.md)
+- [Next.js](https://github.com/own-auth/own-auth/blob/main/docs/frameworks/nextjs.md)
+- [Express](https://github.com/own-auth/own-auth/blob/main/docs/frameworks/express.md)
+- [Hono](https://github.com/own-auth/own-auth/blob/main/docs/frameworks/hono.md)
+- [Fastify](https://github.com/own-auth/own-auth/blob/main/docs/frameworks/fastify.md)
+- [Security Policy](https://github.com/own-auth/own-auth/blob/main/SECURITY.md)
+- [Contributing](https://github.com/own-auth/own-auth/blob/main/CONTRIBUTING.md)
 
 ## Development
 
@@ -778,7 +782,7 @@ pnpm release:next
 ```
 
 Stable versions use npm's `latest` tag. Versions such as `0.4.0-next.0` use the
-`next` tag without changing `latest`. See [Contributing](https://github.com/tina-li-xx/own-auth/blob/main/CONTRIBUTING.md#release)
+`next` tag without changing `latest`. See [Contributing](https://github.com/own-auth/own-auth/blob/main/CONTRIBUTING.md#release)
 for the release checks and recovery commands.
 
 ## License

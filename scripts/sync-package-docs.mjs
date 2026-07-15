@@ -5,7 +5,7 @@ import ts from "typescript";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const checkOnly = process.argv.includes("--check");
-const repositoryFileUrl = "https://github.com/tina-li-xx/own-auth/blob/main";
+const repositoryFileUrl = "https://github.com/own-auth/own-auth/blob/main";
 const packageDocumentationFiles = listFiles("docs")
   .filter(isPackageDocumentation)
   .map((source) => ({ source, target: `packages/core/${source}` }));

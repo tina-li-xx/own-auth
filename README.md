@@ -742,6 +742,10 @@ See [Observability](./docs/observability.md) for span hierarchy, metric names, a
 - Redirect URL allowlist for magic links and OAuth destinations
 - HMAC-SHA256 webhook signatures with timestamp validation and receiver-owned replay claims
 
+Report suspected vulnerabilities through the private process in
+[Security Policy](./SECURITY.md#reporting-a-vulnerability). Do not open a public
+issue for an undisclosed vulnerability.
+
 ## Docs
 
 - [Installation](./docs/installation.md)

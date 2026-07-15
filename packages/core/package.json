@@ -7,13 +7,13 @@
   "author": "Tina Li",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tina-li-xx/own-auth.git",
+    "url": "git+https://github.com/own-auth/own-auth.git",
     "directory": "packages/core"
   },
   "bugs": {
-    "url": "https://github.com/tina-li-xx/own-auth/issues"
+    "url": "https://github.com/own-auth/own-auth/issues"
   },
-  "homepage": "https://github.com/tina-li-xx/own-auth#readme",
+  "homepage": "https://own-auth.com",
   "keywords": [
     "auth",
     "authentication",

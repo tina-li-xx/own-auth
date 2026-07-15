@@ -24,6 +24,23 @@ const publicDocs = [...publicDocSources].map((source) =>
 const publicApi = JSON.parse(
   readFileSync(new URL("etc/own-auth.api.json", repositoryRoot), "utf8")
 ) as { methods: string[] };
+const privateReportingUrl =
+  "https://github.com/own-auth/own-auth/security/advisories/new";
+const securityPolicy = readFileSync(
+  new URL("SECURITY.md", repositoryRoot),
+  "utf8"
+);
+const issueTemplateConfig = readFileSync(
+  new URL(".github/ISSUE_TEMPLATE/config.yml", repositoryRoot),
+  "utf8"
+);
+const packageManifests = ["package.json", "packages/core/package.json"].map(
+  (path) => JSON.parse(readFileSync(new URL(path, repositoryRoot), "utf8")) as {
+    bugs?: { url?: string };
+    homepage?: string;
+    repository?: { url?: string };
+  }
+);
 const examples = publicDocs.flatMap((document) =>
   [...document.matchAll(/```(?:ts|typescript)(?:[ \t]+[^\n]+)?\n([\s\S]*?)```/g)]
     .map((match) => match[1] ?? "")
@@ -71,6 +88,26 @@ describe("README contract", () => {
         documented.includes(method),
         `Public Own Auth method is missing from the documentation: ${method}`
       ).toBe(true);
+    }
+  });
+});
+
+describe("security policy contract", () => {
+  it("keeps private reporting and version support explicit", () => {
+    expect(securityPolicy).toContain(privateReportingUrl);
+    expect(issueTemplateConfig).toContain(privateReportingUrl);
+    expect(securityPolicy).toContain("| Current stable minor line | Supported");
+    expect(securityPolicy).toContain("| `next` prereleases | Testing only");
+    expect(securityPolicy).not.toContain("tina-li-xx/own-auth");
+  });
+
+  it("uses the canonical repository in published package metadata", () => {
+    for (const manifest of packageManifests) {
+      expect(manifest.repository?.url).toBe(
+        "git+https://github.com/own-auth/own-auth.git"
+      );
+      expect(manifest.bugs?.url).toBe("https://github.com/own-auth/own-auth/issues");
+      expect(manifest.homepage).toBe("https://own-auth.com");
     }
   });
 });
