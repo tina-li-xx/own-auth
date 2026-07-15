@@ -23,57 +23,60 @@ export type MemberStatus = "active" | "suspended" | "removed";
 
 export type InvitationStatus = "pending" | "accepted" | "expired" | "revoked";
 
-export type AuditEventType =
-  | "user.signed_up"
-  | "user.signed_in"
-  | "user.signed_out"
-  | "user.disabled"
-  | "user.re_enabled"
-  | "external_provider.linked"
-  | "external_provider.unlinked"
-  | "oauth.started"
-  | "oauth.signed_in"
-  | "oauth.failed"
-  | "oauth.credential_stored"
-  | "oauth.credential_refreshed"
-  | "oauth.credential_revoked"
-  | "mfa.totp_enrollment_started"
-  | "mfa.totp_enabled"
-  | "mfa.totp_disabled"
-  | "mfa.challenge_succeeded"
-  | "mfa.challenge_failed"
-  | "mfa.recovery_code_used"
-  | "mfa.recovery_codes_regenerated"
-  | "session.elevated"
-  | "passkey.registered"
-  | "passkey.authenticated"
-  | "passkey.renamed"
-  | "passkey.revoked"
-  | "session.created"
-  | "session.revoked"
-  | "session.revoked_other"
-  | "session.revoked_all"
-  | "magic_link.requested"
-  | "magic_link.used"
-  | "email_verification.requested"
-  | "email.verified"
-  | "sms_otp.sent"
-  | "sms_otp.verified"
-  | "phone.verified"
-  | "password_reset.requested"
-  | "password.changed"
-  | "api_key.created"
-  | "api_key.revoked"
-  | "api_key.used"
-  | "organisation.created"
-  | "organisation.deleted"
-  | "organisation.updated"
-  | "member.invited"
-  | "invite.accepted"
-  | "invite.revoked"
-  | "member.removed"
-  | "member.role_changed"
-  | `plugin.${string}`;
+export const coreAuditEventTypes = [
+  "user.signed_up",
+  "user.signed_in",
+  "user.signed_out",
+  "user.disabled",
+  "user.re_enabled",
+  "external_provider.linked",
+  "external_provider.unlinked",
+  "oauth.started",
+  "oauth.signed_in",
+  "oauth.failed",
+  "oauth.credential_stored",
+  "oauth.credential_refreshed",
+  "oauth.credential_revoked",
+  "mfa.totp_enrollment_started",
+  "mfa.totp_enabled",
+  "mfa.totp_disabled",
+  "mfa.challenge_succeeded",
+  "mfa.challenge_failed",
+  "mfa.recovery_code_used",
+  "mfa.recovery_codes_regenerated",
+  "session.elevated",
+  "passkey.registered",
+  "passkey.authenticated",
+  "passkey.renamed",
+  "passkey.revoked",
+  "session.created",
+  "session.revoked",
+  "session.revoked_other",
+  "session.revoked_all",
+  "magic_link.requested",
+  "magic_link.used",
+  "email_verification.requested",
+  "email.verified",
+  "sms_otp.sent",
+  "sms_otp.verified",
+  "phone.verified",
+  "password_reset.requested",
+  "password.changed",
+  "api_key.created",
+  "api_key.revoked",
+  "api_key.used",
+  "organisation.created",
+  "organisation.deleted",
+  "organisation.updated",
+  "member.invited",
+  "invite.accepted",
+  "invite.revoked",
+  "member.removed",
+  "member.role_changed"
+] as const;
+
+export type CoreAuditEventType = (typeof coreAuditEventTypes)[number];
+export type AuditEventType = CoreAuditEventType | `plugin.${string}`;
 
 export interface RequestContext {
   ipAddress?: string;

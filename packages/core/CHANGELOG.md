@@ -25,6 +25,9 @@
 - Cloudflare D1 storage and rate-limit adapters through the explicit `own-auth/d1` package export.
 - Versioned D1 migration generation through `npx own-auth generate --dialect d1` for Wrangler-managed deployment.
 - OpenTelemetry API instrumentation for core operations, HTTP handlers, provider calls, email and SMS delivery, plugins, and rate-limit denials. Applications configure their own SDK and exporters; without an SDK, telemetry is a no-op.
+- Signed core authentication webhooks with durable Postgres and D1 outboxes, leased concurrent processing, bounded retries, complete attempt history, manual retry, and retention cleanup.
+- A receiver verifier through `own-auth/webhooks` with exact-body HMAC validation, configurable timestamp tolerance, secret rotation, and an application-owned atomic replay claim.
+- Migration `008_webhooks` for webhook events, deliveries, and cascading attempt history.
 
 ### Security
 
@@ -36,6 +39,7 @@
 - Generated plugin clients reject missing or mismatched server contract fingerprints.
 - Browser OAuth popups exchange only completion state. OAuth codes, provider tokens, session tokens, and MFA challenge tokens are never sent through `postMessage`.
 - Telemetry uses bounded attributes and excludes passwords, tokens, personal data, request contents, delivery contents, exception details, and database queries.
+- Webhook payloads expose only fixed event fields and safe event-specific details. Delivery logs exclude response bodies, response headers, remote error messages, and raw secrets.
 
 ### Runtime
 

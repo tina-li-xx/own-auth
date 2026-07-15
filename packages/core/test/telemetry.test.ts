@@ -174,6 +174,43 @@ describe("OpenTelemetry instrumentation", () => {
     }));
   });
 
+  it("records webhook outcomes without payloads, URLs, or secrets", async () => {
+    const { auth } = createHarness({
+      webhooks: {
+        endpoints: [{
+          id: "public-events",
+          url: "https://sentinel-webhook.example/private",
+          secret: "sentinel-webhook-secret-at-least-32-bytes",
+          events: ["user.signed_up"]
+        }],
+        fetch: async () => new Response(null, { status: 204 })
+      }
+    });
+    await auth.signUpEmailPassword({
+      email: "sentinel-webhook-user@example.com",
+      password: "correct-horse"
+    });
+    await drainMetrics();
+    spanExporter.reset();
+
+    await auth.processWebhookDeliveries();
+    await meterProvider.forceFlush();
+
+    const span = findSpan("own-auth.webhook.deliver");
+    expect(span.attributes).toMatchObject({
+      "own_auth.webhook.endpoint.id": "public-events",
+      "own_auth.webhook.event.type": "user.signed_up",
+      "own_auth.webhook.outcome": "delivered"
+    });
+    expect(metricPoints("own_auth.webhook.delivery.count")).toContainEqual(
+      expect.objectContaining({ value: 1 })
+    );
+    const exported = JSON.stringify(ownAuthSpans().map(safeSpan));
+    expect(exported).not.toContain("sentinel-webhook.example");
+    expect(exported).not.toContain("sentinel-webhook-secret");
+    expect(exported).not.toContain("sentinel-webhook-user");
+  });
+
   it("extracts a bounded rate-limit bucket without exposing the key", async () => {
     telemetry.recordRateLimitDenial("signin:user@example.com");
     telemetry.recordRateLimitDenial("custom:user@example.com");
@@ -296,11 +333,15 @@ async function drainMetrics(): Promise<void> {
   metricExporter.reset();
 }
 
-function metricPoints(name: string): MetricData["dataPoints"] {
-  return metricExporter.getMetrics()
+function metricPoints(name: string): Array<MetricData["dataPoints"][number]> {
+  const matchingMetrics = metricExporter.getMetrics()
     .flatMap(({ scopeMetrics }) => scopeMetrics)
     .filter(({ scope }) => scope.name === "own-auth")
     .flatMap(({ metrics: scopeMetrics }) => scopeMetrics)
-    .filter(({ descriptor }) => descriptor.name === name)
-    .flatMap(({ dataPoints }) => dataPoints);
+    .filter(({ descriptor }) => descriptor.name === name);
+  const points: Array<MetricData["dataPoints"][number]> = [];
+  for (const metric of matchingMetrics) {
+    points.push(...metric.dataPoints as Array<MetricData["dataPoints"][number]>);
+  }
+  return points;
 }

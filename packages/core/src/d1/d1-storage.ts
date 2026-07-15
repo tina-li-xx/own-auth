@@ -55,8 +55,10 @@ import {
 import { rethrowD1IdentityError } from "./d1-errors.js";
 import { D1IdentityStorage } from "./d1-identity-storage.js";
 import type { D1DatabaseLike } from "./d1-types.js";
+import { D1WebhookStorage } from "./d1-webhook-storage.js";
 
 export class D1AuthStorage extends D1IdentityStorage implements AuthStorage {
+  readonly webhookStorage = new D1WebhookStorage(this.db);
   async createUser(user: User): Promise<User> {
     try {
       return mapUser(await this.insertOne("own_auth_users", userColumns, user, userReturning));

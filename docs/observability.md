@@ -26,6 +26,7 @@ The HTTP handler records the fixed endpoint ID, request method, route template, 
 Own Auth also emits spans around:
 
 - email and SMS delivery provider calls
+- webhook delivery attempts
 - Google, GitHub, and Apple provider calls
 - plugin methods and endpoints
 
@@ -41,6 +42,9 @@ Failed spans use the typed Own Auth error code as `error.type` when it is safe. 
 | `own_auth.operation.duration` | `s` | `own_auth.operation.name`, `own_auth.operation.outcome` |
 | `own_auth.delivery.count` | `{delivery}` | `own_auth.delivery.channel`, `own_auth.delivery.type`, `own_auth.delivery.outcome` |
 | `own_auth.delivery.duration` | `s` | `own_auth.delivery.channel`, `own_auth.delivery.type`, `own_auth.delivery.outcome` |
+| `own_auth.webhook.delivery.count` | `{delivery}` | `own_auth.webhook.endpoint.id`, `own_auth.webhook.event.type`, `own_auth.webhook.attempt`, `own_auth.webhook.outcome` |
+| `own_auth.webhook.delivery.duration` | `s` | `own_auth.webhook.endpoint.id`, `own_auth.webhook.event.type`, `own_auth.webhook.attempt`, `own_auth.webhook.outcome` |
+| `own_auth.webhook.retry.delay` | `s` | `own_auth.webhook.endpoint.id`, `own_auth.webhook.event.type`, `own_auth.webhook.attempt`, `own_auth.webhook.outcome` |
 | `own_auth.rate_limit.denial.count` | `{denial}` | `own_auth.rate_limit.bucket` |
 
 Metric attributes use bounded labels. Rate-limit keys, user identifiers, recipient addresses, and other dynamic values are never metric attributes.

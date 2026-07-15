@@ -9,7 +9,9 @@ import {
   type D1PreparedStatementLike,
   type D1ResultLike
 } from "../../src/d1/index.js";
-import type { Account, User } from "../../src/types.js";
+import { D1WebhookStorage } from "../../src/d1/d1-webhook-storage.js";
+import type { Account, AuditEvent, User } from "../../src/types.js";
+import type { StoredWebhookEvent } from "../../src/webhook-types.js";
 
 interface D1Call {
   sql: string;
@@ -137,6 +139,61 @@ describe("D1 persistence", () => {
     expect(database.calls[0]?.sql).toContain("own_auth_rate_limits");
     expect(database.calls[0]?.values[0]).toBe("signin:alice@example.com");
   });
+
+  it("writes the audit event and webhook outbox in one D1 batch", async () => {
+    const database = new RecordingD1();
+    const storage = new D1WebhookStorage(database);
+
+    await storage.recordAuditEventWithWebhooks(
+      webhookAuditEvent(),
+      storedWebhookEvent(),
+      [{
+        id: "whd_1",
+        endpointId: "public-events",
+        url: "https://hooks.example.com/own-auth",
+        createdAt: new Date("2026-07-15T12:00:00.000Z")
+      }]
+    );
+
+    expect(database.calls).toHaveLength(3);
+    expect(database.calls[0]?.sql).toContain("insert into own_auth_audit_events");
+    expect(database.calls[1]?.sql).toContain("insert into own_auth_webhook_events");
+    expect(database.calls[2]?.sql).toContain("insert into own_auth_webhook_deliveries");
+    expect(database.calls[2]?.values).toContain("https://hooks.example.com/own-auth");
+  });
+
+  it("settles webhook attempts under the claimed lease", async () => {
+    const database = new RecordingD1();
+    const storage = new D1WebhookStorage(database);
+    const now = new Date("2026-07-15T12:00:00.000Z");
+    database.queue([]);
+    database.queue([{ id: "wha_1" }]);
+    database.queue([]);
+
+    await expect(storage.settleWebhookDelivery({
+      deliveryId: "whd_1",
+      leaseToken: "whl_1",
+      expectedTotalAttempts: 0,
+      attempt: {
+        id: "wha_1",
+        deliveryId: "whd_1",
+        attemptNumber: 1,
+        startedAt: now,
+        finishedAt: now,
+        outcome: "delivered",
+        statusCode: 204,
+        errorCode: null,
+        nextRetryAt: null
+      },
+      status: "delivered",
+      nextAttemptAt: now
+    })).resolves.toBe(true);
+
+    expect(database.calls).toHaveLength(3);
+    expect(database.calls[1]?.sql).toContain("lease_token = ?12");
+    expect(database.calls[1]?.values[11]).toBe("whl_1");
+    expect(database.calls[2]?.sql).toContain("set lease_token = null");
+  });
 });
 
 function userEntity(): User {
@@ -201,5 +258,30 @@ function tokenRow(usedAt: number): Record<string, unknown> {
     expires_at: usedAt + 60_000,
     used_at: usedAt,
     created_at: usedAt - 60_000
+  };
+}
+
+function webhookAuditEvent(): AuditEvent {
+  return {
+    id: "evt_1",
+    eventType: "user.signed_up",
+    actorUserId: "usr_1",
+    targetUserId: "usr_1",
+    organisationId: null,
+    apiKeyId: null,
+    ipAddress: null,
+    userAgent: null,
+    metadata: { provider: "password" },
+    createdAt: new Date("2026-07-15T12:00:00.000Z")
+  };
+}
+
+function storedWebhookEvent(): StoredWebhookEvent {
+  return {
+    id: "evt_1",
+    type: "user.signed_up",
+    version: 1,
+    payload: '{"id":"evt_1","type":"user.signed_up"}',
+    createdAt: new Date("2026-07-15T12:00:00.000Z")
   };
 }

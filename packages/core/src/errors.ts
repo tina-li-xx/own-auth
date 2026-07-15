@@ -43,6 +43,10 @@ export type AuthErrorCode =
   | "passkey_not_found"
   | "plugin_denied"
   | "plugin_hook_timeout"
+  | "webhook_signature_invalid"
+  | "webhook_timestamp_invalid"
+  | "webhook_replayed"
+  | "webhook_delivery_not_retryable"
   | "auth_closed"
   | "validation_error";
 

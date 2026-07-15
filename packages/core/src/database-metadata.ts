@@ -5,7 +5,8 @@ export const coreMigrationFiles = [
   "004_mfa.sql",
   "005_oauth_credentials.sql",
   "006_passkeys.sql",
-  "007_plugin_migrations.sql"
+  "007_plugin_migrations.sql",
+  "008_webhooks.sql"
 ] as const;
 
 export const initialMigration = coreMigrationFiles[0];
@@ -30,5 +31,8 @@ export const databaseTables = {
   mfaChallenges: "own_auth_mfa_challenges",
   passkeys: "own_auth_passkeys",
   webAuthnChallenges: "own_auth_webauthn_challenges",
-  pluginMigrations: "own_auth_plugin_migrations"
+  pluginMigrations: "own_auth_plugin_migrations",
+  webhookEvents: "own_auth_webhook_events",
+  webhookDeliveries: "own_auth_webhook_deliveries",
+  webhookAttempts: "own_auth_webhook_attempts"
 } as const;

@@ -79,4 +79,51 @@ describeWithDatabase("core Postgres migrations", () => {
       await database.close();
     }
   });
+
+  it("deletes webhook attempts when their delivery is deleted", async () => {
+    const database = await createPostgresTestDatabase();
+
+    try {
+      const now = new Date("2026-07-15T12:00:00.000Z");
+      await database.client.query(
+        `insert into own_auth_webhook_events (
+           id, event_type, version, payload, created_at
+         ) values ($1, $2, 1, $3, $4)`,
+        ["evt_AAAAAAAAAAAAAAAAAAAAAA", "user.signed_up", "{}", now]
+      );
+      await database.client.query(
+        `insert into own_auth_webhook_deliveries (
+           id, event_id, endpoint_id, endpoint_url, status,
+           next_attempt_at, created_at, updated_at
+         ) values ($1, $2, $3, $4, 'delivered', $5, $5, $5)`,
+        [
+          "whd_1",
+          "evt_AAAAAAAAAAAAAAAAAAAAAA",
+          "public-events",
+          "https://hooks.example.com/own-auth",
+          now
+        ]
+      );
+      await database.client.query(
+        `insert into own_auth_webhook_attempts (
+           id, delivery_id, attempt_number, started_at, finished_at,
+           outcome, status_code
+         ) values ($1, $2, 1, $3, $3, 'delivered', 204)`,
+        ["wha_1", "whd_1", now]
+      );
+
+      await database.client.query(
+        "delete from own_auth_webhook_deliveries where id = $1",
+        ["whd_1"]
+      );
+      const attempts = await database.client.query<{ count: string }>(
+        "select count(*) as count from own_auth_webhook_attempts where delivery_id = $1",
+        ["whd_1"]
+      );
+
+      expect(Number(attempts.rows[0]?.count)).toBe(0);
+    } finally {
+      await database.close();
+    }
+  });
 });

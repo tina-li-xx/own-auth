@@ -72,6 +72,9 @@ This creates the tables Own Auth needs in your database:
 - `own_auth_passkeys`
 - `own_auth_webauthn_challenges`
 - `own_auth_plugin_migrations`
+- `own_auth_webhook_events`
+- `own_auth_webhook_deliveries`
+- `own_auth_webhook_attempts`
 
 All Own Auth tables are prefixed with `own_auth_` to avoid conflicts. Your existing application tables are not modified.
 

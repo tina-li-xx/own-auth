@@ -55,10 +55,12 @@ import {
 import { withPostgresIdentityErrors } from "./postgres-errors.js";
 import { PostgresIdentityStorage } from "./postgres-identity-storage.js";
 import type { PostgresQueryable } from "./postgres-types.js";
+import { PostgresWebhookStorage } from "./postgres-webhook-storage.js";
 
 export type { PostgresQueryable, PostgresQueryResult } from "./postgres-types.js";
 
 export class PostgresAuthStorage extends PostgresIdentityStorage implements AuthStorage {
+  readonly webhookStorage = new PostgresWebhookStorage(this.db);
 
   async createUser(user: User): Promise<User> {
     return withPostgresIdentityErrors(async () =>

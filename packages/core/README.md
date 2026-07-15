@@ -574,6 +574,28 @@ const events = await auth.listAuditEvents({
 });
 ```
 
+## Webhooks
+
+Configure signed authentication events and run the delivery processor from an application worker or scheduled job:
+
+```ts
+const auth = createOwnAuth({
+  tokenPepper: process.env.OWN_AUTH_TOKEN_PEPPER,
+  webhooks: {
+    endpoints: [{
+      id: "application-events",
+      url: process.env.OWN_AUTH_WEBHOOK_URL!,
+      secret: process.env.OWN_AUTH_WEBHOOK_SECRET!,
+      events: ["user.signed_up", "password.changed"],
+    }],
+  },
+});
+
+await auth.processWebhookDeliveries();
+```
+
+See [Webhooks](https://github.com/tina-li-xx/own-auth/blob/main/docs/webhooks.md) for signature verification, retries, attempt history, cleanup, and custom storage requirements.
+
 ## Configuration
 
 ```ts
@@ -625,7 +647,7 @@ createOwnAuth({
 });
 ```
 
-OAuth providers, the shared encryption key ring, TOTP, passkeys, and plugins are documented in the [Configuration guide](https://github.com/tina-li-xx/own-auth/blob/main/docs/configuration.md).
+OAuth providers, the shared encryption key ring, TOTP, passkeys, plugins, and webhooks are documented in the [Configuration guide](https://github.com/tina-li-xx/own-auth/blob/main/docs/configuration.md).
 
 For long-running servers, close Own Auth during graceful shutdown:
 
@@ -643,7 +665,7 @@ Auto-migrate (recommended):
 npx own-auth migrate
 ```
 
-Own Auth saves users, sessions, tokens, API keys, organisations, and rate-limit attempts in Postgres.
+Own Auth saves users, sessions, tokens, API keys, organisations, rate-limit attempts, and configured webhook delivery history in Postgres.
 
 Or generate SQL and apply it yourself:
 
@@ -676,7 +698,7 @@ See [Cloudflare D1](https://github.com/tina-li-xx/own-auth/blob/main/docs/cloudf
 
 ## OpenTelemetry
 
-Own Auth emits privacy-safe traces and metrics through `@opentelemetry/api`. Applications with an OpenTelemetry SDK configured receive operation, HTTP handler, provider, delivery, plugin, and rate-limit telemetry. Without an SDK, telemetry is a no-op.
+Own Auth emits privacy-safe traces and metrics through `@opentelemetry/api`. Applications with an OpenTelemetry SDK configured receive operation, HTTP handler, provider, email/SMS delivery, webhook delivery, plugin, and rate-limit telemetry. Without an SDK, telemetry is a no-op.
 
 Telemetry is controlled by the application's OpenTelemetry SDK, not by a `createOwnAuth()` option. Own Auth never records passwords, tokens, request bodies, URLs, headers, cookies, delivery contents, or database queries.
 
@@ -703,6 +725,7 @@ See [Observability](https://github.com/tina-li-xx/own-auth/blob/main/docs/observ
 | **Members & Invites** | `getMember` `listMembers` `inviteMember` `acceptInvite` `revokeInvitation` `listInvitations` `changeMemberRole` `removeMember` |
 | **Permissions** | `checkPermission` `requirePermission` |
 | **Audit Logs** | `listAuditEvents` `cleanupAuditLogs` |
+| **Webhooks** | `processWebhookDeliveries` `listWebhookDeliveries` `retryWebhookDelivery` `cleanupWebhookDeliveries` |
 | **Plugins** | `callPluginMethod` plus methods and endpoints declared by configured plugins |
 | **Lifecycle** | `close` |
 
@@ -717,6 +740,7 @@ See [Observability](https://github.com/tina-li-xx/own-auth/blob/main/docs/observ
 - Built-in rate limiting for password, email, SMS, OAuth, invitation, and API-key flows
 - Account enumeration protection on reset and verification endpoints
 - Redirect URL allowlist for magic links and OAuth destinations
+- HMAC-SHA256 webhook signatures with timestamp validation and receiver-owned replay claims
 
 ## Docs
 
@@ -727,6 +751,7 @@ See [Observability](https://github.com/tina-li-xx/own-auth/blob/main/docs/observ
 - [Passkeys](https://github.com/tina-li-xx/own-auth/blob/main/docs/passkeys.md)
 - [Plugins](https://github.com/tina-li-xx/own-auth/blob/main/docs/plugins.md)
 - [Cloudflare D1](https://github.com/tina-li-xx/own-auth/blob/main/docs/cloudflare-d1.md)
+- [Webhooks](https://github.com/tina-li-xx/own-auth/blob/main/docs/webhooks.md)
 - [Observability](https://github.com/tina-li-xx/own-auth/blob/main/docs/observability.md)
 - [Next.js](https://github.com/tina-li-xx/own-auth/blob/main/docs/frameworks/nextjs.md)
 - [Express](https://github.com/tina-li-xx/own-auth/blob/main/docs/frameworks/express.md)

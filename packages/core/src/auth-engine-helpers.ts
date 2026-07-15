@@ -12,6 +12,7 @@ import type { SessionResult } from "./auth-engine-types.js";
 import type { AuthEngineContext } from "./auth-engine-context.js";
 import { hash } from "./auth-engine-token-helpers.js";
 import { isExternalAccountProvider } from "./oauth-types.js";
+import { recordAuthEvent } from "./webhook-outbox.js";
 
 export async function audit(
   ctx: AuthEngineContext,
@@ -25,7 +26,7 @@ export async function audit(
     metadata?: JsonRecord;
   }
 ): Promise<void> {
-  await ctx.storage.createAuditEvent({
+  await recordAuthEvent(ctx, {
     id: createId("evt"),
     eventType: input.eventType,
     actorUserId: input.actorUserId ?? null,

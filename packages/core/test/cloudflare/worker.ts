@@ -3,10 +3,12 @@ import {
   conformanceErrorResponse,
   handleAuthRpc,
   handleCloseLifecycle,
+  handleWebhookFlow,
   handleInspection,
   handleRateLimitRpc,
   handleSchemaInspection,
-  handleStorageRpc
+  handleStorageRpc,
+  handleWebhookVerification
 } from "./worker-conformance.js";
 
 interface Env {
@@ -32,6 +34,10 @@ export default {
           return await handleSchemaInspection(env.DB);
         case "/conformance/close":
           return await handleCloseLifecycle(env.DB);
+        case "/conformance/webhook-verifier":
+          return await handleWebhookVerification(request);
+        case "/conformance/webhook-flow":
+          return await handleWebhookFlow(env.DB);
         default:
           return new Response("Not found", { status: 404 });
       }

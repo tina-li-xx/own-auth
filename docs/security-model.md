@@ -135,6 +135,14 @@ Plugin routes are namespaced and cannot replace core routes, error identifiers, 
 
 Plugin migrations are checksummed per database dialect. Postgres runs each pending migration in its own transaction. D1 migrations are generated as versioned files and applied transactionally by Wrangler.
 
+## Webhooks
+
+Webhook payloads are signed with endpoint-specific HMAC-SHA256 secrets. The signature covers the stable event ID, delivery timestamp, and exact request bytes. The receiver helper validates the signature and timestamp before returning the event.
+
+Receivers provide an atomic `claimEvent` operation so a repeated event ID is rejected. Webhook events contain a fixed, versioned subset of audit data and never include passwords, session tokens, API-key values, one-time tokens, provider credentials, or arbitrary audit metadata.
+
+Own Auth stores delivery attempts but not response bodies, response headers, or remote error messages. See [Webhooks](/docs/webhooks) for the complete sender and receiver contract.
+
 ## Audit logs
 
 Supported security-sensitive operations write audit events containing the actor, target user, organisation, API-key record, request context, and event-specific metadata when those values are available.
@@ -163,6 +171,9 @@ Own Auth does not:
 - [ ] The encryption key ring is configured and backed up before enabling TOTP or provider offline access.
 - [ ] OAuth callback URLs exactly match the URLs registered with each provider.
 - [ ] Passkey RP ID and expected origins exactly match the deployed application.
+- [ ] Every configured webhook endpoint has a unique secret of at least 32 bytes.
+- [ ] A worker or scheduled job runs `processWebhookDeliveries` when webhooks are enabled.
+- [ ] Webhook receivers verify exact request bytes and claim event IDs atomically.
 - [ ] The built-in Postgres or D1 rate-limit store is active, or a durable `rateLimitStore` is supplied with custom storage.
 - [ ] Every `actorUserId` comes from a verified session rather than client input.
 - [ ] Audit-log access is restricted and a retention policy has been chosen.

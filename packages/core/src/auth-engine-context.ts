@@ -21,6 +21,11 @@ import {
 } from "./auth-engine-types.js";
 import type { PasskeyOptions } from "./auth-engine-options.js";
 import { normalizeTrustedWebOrigin } from "./url-security.js";
+import { normalizeWebhookOptions, type WebhookRuntimeConfig } from "./webhook-config.js";
+import {
+  isWebhookCapableStorage,
+  type WebhookStorage
+} from "./webhook-storage.js";
 
 export interface AuthEngineContext {
   storage: AuthStorage;
@@ -48,6 +53,8 @@ export interface AuthEngineContext {
   mfaMaxAttempts: number;
   recoveryCodeCount: number;
   passkeys: Required<PasskeyOptions> | null;
+  webhooks: WebhookRuntimeConfig | null;
+  webhookStorage: WebhookStorage | null;
   closePersistence(): Promise<void>;
 }
 
@@ -61,6 +68,16 @@ export function createAuthEngineContext(options: OwnAuthOptions = {}): AuthEngin
   const persistence = createDefaultPersistence(options.storage);
   const encryption = createEncryptionKeyRing(options.encryption);
   const oauthProviders = createOAuthProviderRegistry(options.oauth);
+  const webhooks = normalizeWebhookOptions(options.webhooks);
+  const webhookStorage = webhooks && isWebhookCapableStorage(persistence.storage)
+    ? persistence.storage.webhookStorage
+    : null;
+  if (webhooks && !webhookStorage) {
+    throw new Error(
+      "Webhook delivery requires storage that supports WebhookCapableStorage. " +
+      "The configured storage adapter does not implement it."
+    );
+  }
   if (!encryption && [...oauthProviders.values()].some((provider) => provider.offlineAccess)) {
     throw new Error("OAuth offline access requires encryption configuration");
   }
@@ -92,6 +109,8 @@ export function createAuthEngineContext(options: OwnAuthOptions = {}): AuthEngin
     mfaMaxAttempts: mfa.maxAttempts,
     recoveryCodeCount: mfa.recoveryCodeCount,
     passkeys: normalizePasskeyOptions(options.passkeys),
+    webhooks,
+    webhookStorage,
     closePersistence: persistence.close
   };
 }

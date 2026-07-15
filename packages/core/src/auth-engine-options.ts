@@ -8,6 +8,7 @@ import type {
   OwnAuthPluginDefinition,
   OwnAuthPluginRuntimeOptions
 } from "./plugin-types.js";
+import type { WebhookOptions } from "./webhook-types.js";
 
 export const minute = 60 * 1000;
 export const hour = 60 * minute;
@@ -55,6 +56,7 @@ export interface OwnAuthOptions {
     recoveryCodeCount?: number;
   };
   passkeys?: PasskeyOptions;
+  webhooks?: WebhookOptions;
   plugins?: readonly OwnAuthPluginDefinition[];
   pluginRuntime?: OwnAuthPluginRuntimeOptions;
 }

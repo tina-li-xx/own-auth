@@ -33,6 +33,18 @@ const rateLimitDenialCount = meter.createCounter("own_auth.rate_limit.denial.cou
   description: "Own Auth operations denied by rate limiting",
   unit: "{denial}"
 });
+const webhookDeliveryCount = meter.createCounter("own_auth.webhook.delivery.count", {
+  description: "Completed Own Auth webhook delivery attempts",
+  unit: "{attempt}"
+});
+const webhookDeliveryDuration = meter.createHistogram("own_auth.webhook.delivery.duration", {
+  description: "Duration of Own Auth webhook delivery attempts",
+  unit: "s"
+});
+const webhookRetryDelay = meter.createHistogram("own_auth.webhook.retry.delay", {
+  description: "Scheduled delay before an Own Auth webhook retry",
+  unit: "s"
+});
 
 const emailDeliveryTypes = new Set([
   "email_verification",
@@ -149,6 +161,43 @@ export function traceOAuthProvider<Result>(
   }, work);
 }
 
+export function traceWebhookDelivery<Result extends {
+  status: "delivered" | "failed" | "pending";
+  errorCode: string | null;
+  finishedAt: Date;
+  nextAttemptAt: Date;
+}>(
+  endpointId: string,
+  eventType: string,
+  attempt: number,
+  work: () => Promise<Result>
+): Promise<Result> {
+  const attributes = {
+    "own_auth.webhook.endpoint.id": endpointId,
+    "own_auth.webhook.event.type": eventType,
+    "own_auth.webhook.attempt": attempt
+  };
+  return runSpan(
+    "own-auth.webhook.deliver",
+    attributes,
+    work,
+    (_outcome, durationSeconds, span, result) => {
+      if (!result) return;
+      const outcome = result.status === "pending" ? "retry_scheduled" : result.status;
+      const metricAttributes = { ...attributes, "own_auth.webhook.outcome": outcome };
+      safely(() => span.setAttribute("own_auth.webhook.outcome", outcome));
+      safely(() => webhookDeliveryCount.add(1, metricAttributes));
+      safely(() => webhookDeliveryDuration.record(durationSeconds, metricAttributes));
+      if (result.status === "pending") {
+        const delay = Math.max(0, result.nextAttemptAt.getTime() - result.finishedAt.getTime()) / 1_000;
+        safely(() => webhookRetryDelay.record(delay, metricAttributes));
+      }
+      if (result.status === "failed") markSpanError(span, result.errorCode ?? "webhook_failed");
+    },
+    SpanKind.CLIENT
+  );
+}
+
 export function recordRateLimitDenial(key: string): void {
   safely(() => rateLimitDenialCount.add(1, {
     "own_auth.rate_limit.bucket": safeRateLimitBucket(key)
@@ -164,13 +213,14 @@ function runSpan<Result>(
     durationSeconds: number,
     span: Span,
     result?: Result
-  ) => void
+  ) => void,
+  kind: SpanKind = SpanKind.INTERNAL
 ): Promise<Result> {
   let callbackStarted = false;
   try {
     return tracer.startActiveSpan(
       name,
-      { kind: SpanKind.INTERNAL, attributes },
+      { kind, attributes },
       async (span) => {
         callbackStarted = true;
         const startedAt = Date.now();

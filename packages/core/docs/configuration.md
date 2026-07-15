@@ -298,6 +298,34 @@ const auth = createOwnAuth({
 
 See [Plugins](/docs/plugins) for the public extension and migration contract.
 
+### Webhooks
+
+Configure signed authentication events under `webhooks`:
+
+```ts
+const auth = createOwnAuth({
+  tokenPepper: process.env.OWN_AUTH_TOKEN_PEPPER,
+  webhooks: {
+    endpoints: [{
+      id: "application-events",
+      url: process.env.OWN_AUTH_WEBHOOK_URL!,
+      secret: process.env.OWN_AUTH_WEBHOOK_SECRET!,
+      events: ["user.signed_up", "password.changed"],
+    }],
+  },
+});
+```
+
+| Option | Type | Description |
+|---|---|---|
+| `webhooks.endpoints[].id` | `string` | Stable endpoint identifier containing 1 to 64 safe characters. |
+| `webhooks.endpoints[].url` | `string \| URL` | HTTPS endpoint or HTTP loopback URL. |
+| `webhooks.endpoints[].secret` | `string` | Signing secret containing at least 32 UTF-8 bytes. |
+| `webhooks.endpoints[].events` | `WebhookEventType[]` | Core events sent to this endpoint. |
+| `webhooks.fetch` | `typeof fetch` | Optional fetch implementation. Defaults to `globalThis.fetch`. |
+
+Own Auth queues subscribed events but does not start a background worker. See [Webhooks](/docs/webhooks) for processing, signature verification, retries, cleanup, and custom storage requirements.
+
 ## Database connection and shutdown
 
 Postgres is the default persistence path. `createOwnAuth` validates `DATABASE_URL` when the auth instance is created, then loads the Postgres driver and opens the database connection only when the first database operation runs.

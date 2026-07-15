@@ -211,6 +211,13 @@
           "source": "docs/cloudflare-d1.md"
         },
         {
+          "title": "Webhooks",
+          "description": "Send signed authentication events through a durable outbox with retry history and receiver-side replay protection.",
+          "href": "/docs/webhooks",
+          "slug": ["webhooks"],
+          "source": "docs/webhooks.md"
+        },
+        {
           "title": "Observability",
           "description": "Collect privacy-safe OpenTelemetry traces and metrics for Own Auth operations, HTTP handlers, provider calls, delivery, plugins, and rate-limit denials.",
           "href": "/docs/observability",

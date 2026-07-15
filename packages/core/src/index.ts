@@ -1,4 +1,5 @@
 export { OwnAuth, createOwnAuth } from "./auth-engine.js";
+export { coreAuditEventTypes } from "./types.js";
 export type {
   AcceptInviteInput,
   AcceptInviteResult,
@@ -181,6 +182,7 @@ export type {
   ApiKeyStatus,
   AuditEvent,
   AuditEventType,
+  CoreAuditEventType,
   AuthToken,
   CurrentSession,
   ExternalAccountProvider,
@@ -201,6 +203,33 @@ export type {
   User,
   VerifiedApiKey
 } from "./types.js";
+export type {
+  CleanupWebhookDeliveriesInput,
+  ListWebhookDeliveriesInput,
+  ProcessWebhookDeliveriesInput,
+  ProcessWebhookDeliveriesResult,
+  RetryWebhookDeliveryInput,
+  StoredWebhookEvent,
+  WebhookAttempt,
+  WebhookAttemptErrorCode,
+  WebhookAttemptOutcome,
+  WebhookDelivery,
+  WebhookDeliveryDetails,
+  WebhookDeliveryStatus,
+  WebhookEndpointOptions,
+  WebhookEvent,
+  WebhookEventData,
+  WebhookEventType,
+  WebhookOptions
+} from "./webhook-types.js";
+export type {
+  ClaimedWebhookDelivery,
+  ListedWebhookDelivery,
+  SettleWebhookDeliveryInput,
+  WebhookCapableStorage,
+  WebhookDeliverySeed,
+  WebhookStorage
+} from "./webhook-storage.js";
 export {
   clearMfaChallengeCookie,
   clearSessionCookie,

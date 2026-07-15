@@ -36,7 +36,10 @@ describe("own-auth CLI", () => {
     expect(output().stdout).toContain("create table if not exists own_auth_migrations");
     expect(output().stdout).toContain("create table if not exists own_auth_users");
     expect(output().stdout).toContain("002_external_providers");
-    expect(output().stdout).toContain("007_plugin_migrations");
+    expect(output().stdout).toContain("008_webhooks");
+    expect(output().stdout).toContain(
+      "references own_auth_webhook_deliveries(id) on delete cascade"
+    );
     expect(output().stderr).toBe("");
   });
 
@@ -67,6 +70,11 @@ describe("own-auth CLI", () => {
       await expect(
         readFile(join(directory, "001_own_auth_initial.sql"), "utf8")
       ).resolves.toContain("Dates are stored as Unix milliseconds");
+      await expect(
+        readFile(join(directory, "008_own_auth_webhooks.sql"), "utf8")
+      ).resolves.toContain(
+        "references own_auth_webhook_deliveries(id) on delete cascade"
+      );
 
       const current = createIo();
       await expect(runCli(
@@ -118,7 +126,7 @@ describe("own-auth CLI", () => {
     expect(exitCode).toBe(0);
     expect(output().stdout).toBe(
       "Database: connected\n" +
-      "Migration version: 007_plugin_migrations\n" +
+      "Migration version: 008_webhooks\n" +
       "Status: current\n"
     );
     expect(output().stderr).toBe("");

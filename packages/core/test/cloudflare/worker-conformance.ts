@@ -8,6 +8,7 @@ import {
   createD1Persistence,
   type D1DatabaseLike
 } from "../../dist/d1/index.js";
+import { verifyOwnAuthWebhook } from "../../dist/webhooks.js";
 import { createConformanceGoogleProvider } from "../conformance/conformance-oauth-provider.js";
 import {
   evaluatePersistenceChecks,
@@ -63,7 +64,8 @@ const expectedMigrations = [
   "004_mfa",
   "005_oauth_credentials",
   "006_passkeys",
-  "007_plugin_migrations"
+  "007_plugin_migrations",
+  "008_webhooks"
 ];
 
 const expectedTables = [
@@ -86,7 +88,10 @@ const expectedTables = [
   "own_auth_sms_otps",
   "own_auth_tokens",
   "own_auth_users",
-  "own_auth_webauthn_challenges"
+  "own_auth_webauthn_challenges",
+  "own_auth_webhook_attempts",
+  "own_auth_webhook_deliveries",
+  "own_auth_webhook_events"
 ];
 
 export async function handleAuthRpc(request: Request, database: D1DatabaseLike): Promise<Response> {
@@ -112,6 +117,60 @@ export async function handleRateLimitRpc(
   const rpc = await readRpc(request);
   if (rpc.method !== "hit" && rpc.method !== "reset") return methodNotAllowed();
   return invoke(createD1Persistence(database).rateLimitStore, rpc);
+}
+
+export async function handleWebhookVerification(request: Request): Promise<Response> {
+  const event = await verifyOwnAuthWebhook({
+    body: new Uint8Array(await request.arrayBuffer()),
+    headers: request.headers,
+    secrets: ["cloudflare-webhook-verifier-secret-32-bytes"],
+    claimEvent: async () => true
+  });
+  return Response.json({ id: event.id, type: event.type });
+}
+
+export async function handleWebhookFlow(database: D1DatabaseLike): Promise<Response> {
+  let sentBody = "";
+  let sentHeaders = new Headers();
+  const secret = "cloudflare-webhook-delivery-secret-32-bytes";
+  const auth = createOwnAuth({
+    ...createD1Persistence(database),
+    tokenPepper: "cloudflare-webhook-flow",
+    webhooks: {
+      endpoints: [{
+        id: "worker-events",
+        url: "https://hooks.example.com/own-auth",
+        secret,
+        events: ["user.signed_up"]
+      }],
+      fetch: async (_input, init) => {
+        sentBody = String(init?.body ?? "");
+        sentHeaders = new Headers(init?.headers);
+        return new Response(null, { status: 204 });
+      }
+    }
+  });
+
+  await auth.signUpEmailPassword({
+    email: `worker-webhook-${crypto.randomUUID()}@example.com`,
+    password: "correct-horse"
+  });
+  const queued = await auth.listWebhookDeliveries();
+  const processed = await auth.processWebhookDeliveries();
+  const [delivery] = await auth.listWebhookDeliveries();
+  const verified = await verifyOwnAuthWebhook({
+    body: sentBody,
+    headers: sentHeaders,
+    secrets: [secret],
+    claimEvent: async () => true
+  });
+
+  return Response.json({
+    queued: queued.length === 1 && queued[0]?.status === "pending",
+    processed: processed.delivered === 1 && processed.leaseLost === 0,
+    settled: delivery?.status === "delivered" && delivery.attempts.length === 1,
+    verified: verified.id === delivery?.eventId && verified.type === "user.signed_up"
+  });
 }
 
 export async function handleInspection(

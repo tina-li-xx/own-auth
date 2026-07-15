@@ -14,6 +14,7 @@ import type {
   TokenType,
   User
 } from "./types.js";
+import { MemoryWebhookStorage } from "./memory-webhook-storage.js";
 
 function isUsableSmsOtp(otp: SmsOtp, at: Date): boolean {
   return (
@@ -33,6 +34,7 @@ export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthSt
   private readonly members = new Map<string, OrganisationMember>();
   private readonly invitations = new Map<string, Invitation>();
   private readonly auditEvents = new Map<string, AuditEvent>();
+  readonly webhookStorage = new MemoryWebhookStorage(this.auditEvents);
 
   async createUser(user: User): Promise<User> {
     this.users.set(user.id, clone(user));

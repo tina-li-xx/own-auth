@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { PostgresAuthStorage, type PostgresQueryable } from "../../src/postgres/index.js";
-import type { ApiKey, Session, User } from "../../src/index.js";
+import { PostgresWebhookStorage } from "../../src/postgres/postgres-webhook-storage.js";
+import type {
+  ApiKey,
+  AuditEvent,
+  Session,
+  User
+} from "../../src/index.js";
+import type { StoredWebhookEvent } from "../../src/webhook-types.js";
 
 interface QueryCall {
   sql: string;
@@ -334,6 +341,71 @@ describe("PostgresAuthStorage", () => {
   });
 });
 
+describe("PostgresWebhookStorage", () => {
+  it("writes the audit event and webhook outbox with one atomic statement", async () => {
+    const db = new RecordingDb();
+    const storage = new PostgresWebhookStorage(db);
+
+    await storage.recordAuditEventWithWebhooks(
+      webhookAuditEvent(),
+      storedWebhookEvent(),
+      [{
+        id: "whd_1",
+        endpointId: "public-events",
+        url: "https://hooks.example.com/own-auth",
+        createdAt: new Date("2026-01-01T00:00:00.000Z")
+      }]
+    );
+
+    expect(db.calls).toHaveLength(1);
+    expect(db.lastCall.sql).toContain("with inserted_audit as");
+    expect(db.lastCall.sql).toContain("insert into own_auth_webhook_events");
+    expect(db.lastCall.sql).toContain("insert into own_auth_webhook_deliveries");
+    expect(db.lastCall.sql).toContain("jsonb_to_recordset");
+    expect(JSON.stringify(db.lastCall.params)).toContain("https://hooks.example.com/own-auth");
+  });
+
+  it("claims due deliveries with row locks and settles attempts conditionally", async () => {
+    const db = new RecordingDb();
+    const storage = new PostgresWebhookStorage(db);
+    const now = new Date("2026-01-01T00:00:00.000Z");
+    db.queueRows([]);
+
+    await storage.claimWebhookDeliveries({
+      now,
+      leaseToken: "lease_1",
+      leaseExpiresAt: new Date(now.getTime() + 30_000),
+      limit: 10
+    });
+
+    expect(db.lastCall.sql).toContain("for update skip locked");
+    expect(db.lastCall.sql).toContain("lease_token = $3");
+
+    db.queueRows([{ id: "wha_1" }]);
+    await expect(storage.settleWebhookDelivery({
+      deliveryId: "whd_1",
+      leaseToken: "lease_1",
+      expectedTotalAttempts: 0,
+      attempt: {
+        id: "wha_1",
+        deliveryId: "whd_1",
+        attemptNumber: 1,
+        startedAt: now,
+        finishedAt: now,
+        outcome: "delivered",
+        statusCode: 204,
+        errorCode: null,
+        nextRetryAt: null
+      },
+      status: "delivered",
+      nextAttemptAt: now
+    })).resolves.toBe(true);
+
+    expect(db.lastCall.sql).toContain("total_attempts = $3");
+    expect(db.lastCall.sql).toContain("insert into own_auth_webhook_attempts");
+  });
+});
+
 function userEntity(): User {
   return {
     id: "usr_1",
@@ -523,5 +595,30 @@ function auditEventRow(overrides: Record<string, unknown> = {}): Record<string, 
     metadata: { requiredScopes: ["read users"] },
     created_at: "2026-01-01T00:00:00.000Z",
     ...overrides
+  };
+}
+
+function webhookAuditEvent(): AuditEvent {
+  return {
+    id: "evt_1",
+    eventType: "user.signed_up",
+    actorUserId: "usr_1",
+    targetUserId: "usr_1",
+    organisationId: null,
+    apiKeyId: null,
+    ipAddress: null,
+    userAgent: null,
+    metadata: { provider: "password" },
+    createdAt: new Date("2026-01-01T00:00:00.000Z")
+  };
+}
+
+function storedWebhookEvent(): StoredWebhookEvent {
+  return {
+    id: "evt_1",
+    type: "user.signed_up",
+    version: 1,
+    payload: '{"id":"evt_1","type":"user.signed_up"}',
+    createdAt: new Date("2026-01-01T00:00:00.000Z")
   };
 }

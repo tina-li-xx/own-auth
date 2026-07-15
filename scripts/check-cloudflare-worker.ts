@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { createHmac } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,7 +40,9 @@ try {
   worker = await startWorker();
 
   const origin = `http://127.0.0.1:${port}`;
+  await assertWebhookVerifier(origin);
   await assertChecks(await postAction(`${origin}/conformance/schema`), "D1 schema");
+  await assertChecks(await postAction(`${origin}/conformance/webhook-flow`), "D1 webhook flow");
 
   for (const testCase of atomicAdapterCases) {
     await runCase("D1 atomic adapter conformance", testCase.name, () =>
@@ -75,7 +78,7 @@ try {
 
   console.log(
     `Cloudflare D1 passed ${atomicAdapterCases.length} atomic cases, ` +
-    `${authConcurrencyCases.length} auth races, lifecycle, migration, secret, and close checks.`
+    `${authConcurrencyCases.length} auth races, webhook, lifecycle, migration, secret, and close checks.`
   );
 } catch (error) {
   if (workerOutput.length > 0) console.error(workerOutput.join(""));
@@ -158,6 +161,45 @@ async function assertChecks(value: unknown, label: string): Promise<void> {
   if (!isRecord(value)) throw new Error(`${label} returned an invalid result`);
   for (const [check, passed] of Object.entries(value)) {
     if (passed !== true) throw new Error(`${label} failed: ${check}`);
+  }
+}
+
+async function assertWebhookVerifier(origin: string): Promise<void> {
+  const event = {
+    id: "evt_AAAAAAAAAAAAAAAAAAAAAA",
+    type: "user.signed_up",
+    version: 1,
+    createdAt: new Date().toISOString(),
+    data: {
+      actorUserId: "usr_1",
+      targetUserId: "usr_1",
+      organisationId: null,
+      apiKeyId: null,
+      details: { provider: "password" }
+    }
+  };
+  const body = JSON.stringify(event);
+  const timestamp = Math.floor(Date.now() / 1_000).toString();
+  const signature = createHmac(
+    "sha256",
+    "cloudflare-webhook-verifier-secret-32-bytes"
+  ).update(`v1.${event.id}.${timestamp}.${body}`).digest("base64url");
+  const response = await fetch(`${origin}/conformance/webhook-verifier`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-own-auth-webhook-id": event.id,
+      "x-own-auth-webhook-timestamp": timestamp,
+      "x-own-auth-webhook-signature": `v1=${signature}`
+    },
+    body
+  });
+  if (!response.ok) {
+    throw new Error(`Cloudflare webhook verifier returned ${response.status}`);
+  }
+  const verified = await response.json() as { id?: string; type?: string };
+  if (verified.id !== event.id || verified.type !== event.type) {
+    throw new Error("Cloudflare webhook verifier returned the wrong event");
   }
 }
 

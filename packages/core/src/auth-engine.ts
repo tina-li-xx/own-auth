@@ -33,6 +33,7 @@ import * as passkeys from "./auth-engine-passkeys.js";
 import * as sessions from "./auth-engine-sessions.js";
 import * as sms from "./auth-engine-sms.js";
 import * as users from "./auth-engine-users.js";
+import * as webhookOperations from "./auth-engine-webhooks.js";
 import { OwnAuthPluginRuntime, type RegisteredPluginEndpoint } from "./plugin-runtime.js";
 import type {
   CallOwnAuthPluginMethodOptions,
@@ -112,6 +113,14 @@ import type {
 import { isRecord } from "./value-guards.js";
 import { createAuthClosedError } from "./errors.js";
 import { traceAuthOperation, tracePluginOperation } from "./telemetry.js";
+import type {
+  CleanupWebhookDeliveriesInput,
+  ListWebhookDeliveriesInput,
+  ProcessWebhookDeliveriesInput,
+  ProcessWebhookDeliveriesResult,
+  RetryWebhookDeliveryInput,
+  WebhookDeliveryDetails
+} from "./webhook-types.js";
 
 export type { OwnAuthOptions } from "./auth-engine-types.js";
 
@@ -450,6 +459,22 @@ export class OwnAuth {
   cleanupAuditLogs(input: CleanupAuditLogsInput): Promise<number> {
     return this.executeCore("cleanupAuditLogs", input, () =>
       auditEvents.cleanupAuditLogs(this.ctx, input));
+  }
+  processWebhookDeliveries(input?: ProcessWebhookDeliveriesInput): Promise<ProcessWebhookDeliveriesResult> {
+    return this.executeCore("processWebhookDeliveries", input, () =>
+      webhookOperations.processWebhookDeliveries(this.ctx, input));
+  }
+  listWebhookDeliveries(input?: ListWebhookDeliveriesInput): Promise<WebhookDeliveryDetails[]> {
+    return this.executeCore("listWebhookDeliveries", input, () =>
+      webhookOperations.listWebhookDeliveries(this.ctx, input));
+  }
+  retryWebhookDelivery(input: RetryWebhookDeliveryInput): Promise<void> {
+    return this.executeCore("retryWebhookDelivery", input, () =>
+      webhookOperations.retryWebhookDelivery(this.ctx, input));
+  }
+  cleanupWebhookDeliveries(input: CleanupWebhookDeliveriesInput): Promise<number> {
+    return this.executeCore("cleanupWebhookDeliveries", input, () =>
+      webhookOperations.cleanupWebhookDeliveries(this.ctx, input));
   }
 
   close(): Promise<void> {

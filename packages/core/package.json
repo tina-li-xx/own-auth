@@ -76,6 +76,10 @@
       "types": "./dist/google-one-tap.d.ts",
       "default": "./dist/google-one-tap.js"
     },
+    "./webhooks": {
+      "types": "./dist/webhooks.d.ts",
+      "default": "./dist/webhooks.js"
+    },
     "./migrations/001_initial.sql": "./migrations/001_initial.sql",
     "./migrations/002_external_providers.sql": "./migrations/002_external_providers.sql",
     "./migrations/003_oauth_transactions.sql": "./migrations/003_oauth_transactions.sql",
@@ -83,6 +87,7 @@
     "./migrations/005_oauth_credentials.sql": "./migrations/005_oauth_credentials.sql",
     "./migrations/006_passkeys.sql": "./migrations/006_passkeys.sql",
     "./migrations/007_plugin_migrations.sql": "./migrations/007_plugin_migrations.sql",
+    "./migrations/008_webhooks.sql": "./migrations/008_webhooks.sql",
     "./migrations/d1/*.sql": "./migrations/d1/*.sql",
     "./docs/installation.md": "./docs/installation.md",
     "./docs/cloudflare-d1.md": "./docs/cloudflare-d1.md",

@@ -94,7 +94,8 @@ export async function signUpEmailPassword(
     eventType: "user.signed_up",
     actorUserId: user.id,
     targetUserId: user.id,
-    context: input.request
+    context: input.request,
+    metadata: { provider: "password" }
   });
 
   const result = await completeFirstFactor(ctx, user, "password", input.request);
