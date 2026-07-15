@@ -38,6 +38,7 @@
 ### Runtime
 
 - `DATABASE_URL` is validated when `createOwnAuth` runs, while driver import and connection errors retain their original PostgreSQL diagnostics on first use.
+- Postgres identity uniqueness races now return typed email, phone, or provider-account errors instead of exposing SQLSTATE `23505`.
 - Auth operations after `auth.close()` fail with the typed `auth_closed` error.
 
 The trusted `signInWithVerifiedExternalIdentity` flow remains available for native provider SDKs and other integrations that verify provider credentials before calling Own Auth.

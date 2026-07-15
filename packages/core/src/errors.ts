@@ -71,3 +71,16 @@ export function toAuthError(error: unknown): AuthError {
 export function createAuthClosedError(): AuthError {
   return new AuthError("auth_closed", "Own Auth has been closed", 503);
 }
+
+const identityConflicts = {
+  email: ["email_already_exists", "Email already exists"],
+  phone: ["phone_already_exists", "Phone already exists"],
+  providerAccount: ["oauth_account_conflict", "Provider account is already linked"]
+} as const satisfies Record<string, readonly [AuthErrorCode, string]>;
+
+export function createIdentityConflictError(
+  conflict: keyof typeof identityConflicts
+): AuthError {
+  const [code, message] = identityConflicts[conflict];
+  return new AuthError(code, message, 409);
+}

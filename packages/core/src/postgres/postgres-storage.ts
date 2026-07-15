@@ -52,6 +52,7 @@ import {
   atomicConsumeToken,
   atomicIncrementSmsOtpAttempts
 } from "./postgres-atomic-operations.js";
+import { withPostgresIdentityErrors } from "./postgres-errors.js";
 import { PostgresIdentityStorage } from "./postgres-identity-storage.js";
 import type { PostgresQueryable } from "./postgres-types.js";
 
@@ -60,13 +61,16 @@ export type { PostgresQueryable, PostgresQueryResult } from "./postgres-types.js
 export class PostgresAuthStorage extends PostgresIdentityStorage implements AuthStorage {
 
   async createUser(user: User): Promise<User> {
-    const row = await this.insertOne("own_auth_users", userColumns, user, userReturning);
-    return mapUser(row);
+    return withPostgresIdentityErrors(async () =>
+      mapUser(await this.insertOne("own_auth_users", userColumns, user, userReturning))
+    );
   }
 
   async updateUser(id: string, patch: Partial<User>): Promise<User | null> {
-    const row = await this.updateOne("own_auth_users", userColumns, id, patch, userReturning);
-    return row ? mapUser(row) : null;
+    return withPostgresIdentityErrors(async () => {
+      const row = await this.updateOne("own_auth_users", userColumns, id, patch, userReturning);
+      return row ? mapUser(row) : null;
+    });
   }
 
   async getUserById(id: string): Promise<User | null> {
@@ -85,37 +89,45 @@ export class PostgresAuthStorage extends PostgresIdentityStorage implements Auth
   }
 
   async createAccount(account: Account): Promise<Account> {
-    const row = await this.insertOne("own_auth_accounts", accountColumns, account, accountReturning);
-    return mapAccount(row);
+    return withPostgresIdentityErrors(async () =>
+      mapAccount(await this.insertOne(
+        "own_auth_accounts",
+        accountColumns,
+        account,
+        accountReturning
+      ))
+    );
   }
 
   async createUserAndAccount(user: User, account: Account): Promise<Account> {
-    const userEntries = databaseColumnEntries(userColumns, user);
-    const accountEntries = databaseColumnEntries(accountColumns, account);
-    const values = [
-      ...userEntries.map(([key]) => user[key]),
-      ...accountEntries.map(([key]) => account[key])
-    ];
-    const userPlaceholders = userEntries.map((_, index) => `$${index + 1}`);
-    const accountOffset = userEntries.length;
-    const accountPlaceholders = accountEntries.map(
-      (_, index) => `$${accountOffset + index + 1}`
-    );
-    const result = await this.db.query<Record<string, unknown>>(
-      `with inserted_user as (
-         insert into own_auth_users (${userEntries.map(([, column]) => column).join(", ")})
-         values (${userPlaceholders.join(", ")}) returning id
-       )
-       insert into own_auth_accounts (${accountEntries.map(([, column]) => column).join(", ")})
-       select ${accountPlaceholders.join(", ")} from inserted_user
-       returning ${accountReturning}`,
-      values
-    );
-    const row = result.rows[0];
-    if (!row) {
-      throw new Error("Postgres identity creation returned no account");
-    }
-    return mapAccount(row);
+    return withPostgresIdentityErrors(async () => {
+      const userEntries = databaseColumnEntries(userColumns, user);
+      const accountEntries = databaseColumnEntries(accountColumns, account);
+      const values = [
+        ...userEntries.map(([key]) => user[key]),
+        ...accountEntries.map(([key]) => account[key])
+      ];
+      const userPlaceholders = userEntries.map((_, index) => `$${index + 1}`);
+      const accountOffset = userEntries.length;
+      const accountPlaceholders = accountEntries.map(
+        (_, index) => `$${accountOffset + index + 1}`
+      );
+      const result = await this.db.query<Record<string, unknown>>(
+        `with inserted_user as (
+           insert into own_auth_users (${userEntries.map(([, column]) => column).join(", ")})
+           values (${userPlaceholders.join(", ")}) returning id
+         )
+         insert into own_auth_accounts (${accountEntries.map(([, column]) => column).join(", ")})
+         select ${accountPlaceholders.join(", ")} from inserted_user
+         returning ${accountReturning}`,
+        values
+      );
+      const row = result.rows[0];
+      if (!row) {
+        throw new Error("Postgres identity creation returned no account");
+      }
+      return mapAccount(row);
+    });
   }
 
   async getAccountByProvider(
