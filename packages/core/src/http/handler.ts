@@ -24,6 +24,7 @@ import { executeEndpoint, type EndpointExecution } from "./execution.js";
 import { createOAuthCallbackResponse } from "./oauth-response.js";
 import { pluginInputContract, readEndpointInput } from "./request-input.js";
 import { getOwnAuthRoutePath, normalizeOwnAuthBasePath } from "./routing.js";
+import { traceHttpEndpoint } from "../telemetry.js";
 
 export interface OwnAuthHandlerOptions {
   basePath?: string;
@@ -57,7 +58,14 @@ export function createOwnAuthHandler(
     const pluginEndpoint = endpoint ? null : auth.findPluginEndpoint(routePath, request.method);
     if (!endpoint) {
       if (pluginEndpoint) {
-        return handlePluginEndpoint(auth, pluginEndpoint, request, requestUrl, options);
+        return traceHttpEndpoint(
+          {
+            endpointId: `plugin.${pluginEndpoint.plugin.id}.${pluginEndpoint.endpoint.id}`,
+            method: request.method,
+            route: `${basePath}${pluginEndpoint.path}`
+          },
+          () => handlePluginEndpoint(auth, pluginEndpoint, request, requestUrl, options)
+        );
       }
       const pluginMethods = auth.getPluginEndpointMethods(routePath);
       if (candidates.length === 0 && pluginMethods.length === 0) {
@@ -68,49 +76,58 @@ export function createOwnAuthHandler(
       });
     }
 
-    const sessionCredential = readSessionToken(request, options.cookie);
-    try {
-      if (endpoint.csrf !== "oauth_state") {
-        assertCsrfSafe(
-          request,
-          sessionCredential.source === "cookie",
-          options.trustedOrigins ?? []
-        );
-      }
-      const input = await readEndpointInput(
-        request,
-        endpoint,
-        endpoint.requestTransport === "form"
-          ? Math.min(maxRequestBodyBytes, 64 * 1024)
-          : maxRequestBodyBytes
-      );
-      const context = options.getRequestContext
-        ? await options.getRequestContext(request)
-        : defaultRequestContext(request);
-      const execution = await executeEndpoint(
-        auth,
-        endpoint.id,
-        input,
-        sessionCredential.token,
-        readMfaChallengeToken(request, options.mfaCookie),
-        context
-      );
-      const headers = responseHeaders();
-      applyCookies(headers, execution, requestUrl, options);
+    return traceHttpEndpoint(
+      {
+        endpointId: endpoint.id,
+        method: request.method,
+        route: `${basePath}${endpoint.path}`
+      },
+      async () => {
+        const sessionCredential = readSessionToken(request, options.cookie);
+        try {
+          if (endpoint.csrf !== "oauth_state") {
+            assertCsrfSafe(
+              request,
+              sessionCredential.source === "cookie",
+              options.trustedOrigins ?? []
+            );
+          }
+          const input = await readEndpointInput(
+            request,
+            endpoint,
+            endpoint.requestTransport === "form"
+              ? Math.min(maxRequestBodyBytes, 64 * 1024)
+              : maxRequestBodyBytes
+          );
+          const context = options.getRequestContext
+            ? await options.getRequestContext(request)
+            : defaultRequestContext(request);
+          const execution = await executeEndpoint(
+            auth,
+            endpoint.id,
+            input,
+            sessionCredential.token,
+            readMfaChallengeToken(request, options.mfaCookie),
+            context
+          );
+          const headers = responseHeaders();
+          applyCookies(headers, execution, requestUrl, options);
 
-      if (endpoint.responseKind === "oauth_callback") {
-        return createOAuthCallbackResponse(execution, requestUrl, headers);
+          if (endpoint.responseKind === "oauth_callback") {
+            return createOAuthCallbackResponse(execution, requestUrl, headers);
+          }
+          return new Response(JSON.stringify(execution.body), { status: 200, headers });
+        } catch (error) {
+          return handleRequestError(
+            error,
+            request,
+            requestUrl,
+            options,
+            endpoint.responseKind === "oauth_callback"
+          );
+        }
       }
-      return new Response(JSON.stringify(execution.body), { status: 200, headers });
-    } catch (error) {
-      return handleRequestError(
-        error,
-        request,
-        requestUrl,
-        options,
-        endpoint.responseKind === "oauth_callback"
-      );
-    }
+    );
   };
 }
 

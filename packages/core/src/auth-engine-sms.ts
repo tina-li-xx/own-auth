@@ -11,6 +11,7 @@ import {
 } from "./auth-engine-internals.js";
 import { completeFirstFactor } from "./auth-engine-mfa.js";
 import { createUser } from "./auth-engine-users.js";
+import { sendSms } from "./auth-engine-delivery.js";
 
 export async function requestSmsOtp(
   ctx: AuthEngineContext,
@@ -41,7 +42,7 @@ export async function requestSmsOtp(
     lastSentAt: now
   });
 
-  await ctx.smsProvider.send({
+  await sendSms(ctx, {
     to: phone,
     purpose,
     code,

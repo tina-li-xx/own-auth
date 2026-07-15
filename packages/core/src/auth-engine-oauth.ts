@@ -27,6 +27,7 @@ import {
   createExternalProviderSession,
   resolveExternalIdentity
 } from "./auth-engine-external.js";
+import { traceOAuthProvider } from "./telemetry.js";
 
 const oauthTransactionTtlMs = 10 * minute;
 
@@ -65,7 +66,9 @@ export async function createOAuthAuthorizationUrl(
     consumedAt: null,
     createdAt: now
   });
-  const url = await provider.createAuthorizationUrl({ state, codeChallenge, nonce });
+  const url = await traceOAuthProvider(input.provider, "authorization", () =>
+    provider.createAuthorizationUrl({ state, codeChallenge, nonce })
+  );
   await audit(ctx, {
     eventType: "oauth.started",
     actorUserId: input.actorUserId ?? null,
@@ -105,12 +108,14 @@ export async function completeOAuthSignIn(
 
   try {
     const { codeVerifier, nonce } = await deriveOAuthSecrets(state);
-    const exchanged = await provider.exchangeCode({
-      callbackParameters: input.callbackParameters,
-      state,
-      codeVerifier,
-      nonce
-    });
+    const exchanged = await traceOAuthProvider(input.provider, "exchange", () =>
+      provider.exchangeCode({
+        callbackParameters: input.callbackParameters,
+        state,
+        codeVerifier,
+        nonce
+      })
+    );
     const resolved = await resolveExternalIdentity(ctx, exchanged.identity, {
       intent: transaction.intent,
       userId: transaction.userId ?? undefined,
@@ -204,7 +209,8 @@ export async function signInWithGoogleOneTap(
   input: GoogleOneTapInput
 ): Promise<OAuthCompletionResult> {
   const provider = requireOAuthProvider(ctx.oauthProviders, "google");
-  if (!provider.verifyCredential) {
+  const verifyCredential = provider.verifyCredential;
+  if (!verifyCredential) {
     throw new AuthError("validation_error", "Google One Tap is not configured", 400);
   }
   await rateLimitByIp(ctx, "one-tap-verify", input.request?.ipAddress, 30, 10 * minute);
@@ -225,7 +231,9 @@ export async function signInWithGoogleOneTap(
     throw new AuthError("oauth_transaction_invalid", "One Tap transaction is invalid or expired", 400);
   }
   try {
-    const identity = await provider.verifyCredential(input.credential, input.nonce);
+    const identity = await traceOAuthProvider("google", "verify_credential", () =>
+      verifyCredential(input.credential, input.nonce)
+    );
     const resolved = await resolveExternalIdentity(ctx, identity, {
       intent: "sign_in",
       request: input.request

@@ -1,4 +1,5 @@
 import { AuthError } from "./errors.js";
+import { recordRateLimitDenial } from "./telemetry.js";
 
 export interface RateLimitResult {
   count: number;
@@ -59,6 +60,7 @@ export async function enforceRateLimit(
   const result = await store.hit(options.key, options.windowMs, options.limit);
 
   if (!result.allowed) {
+    recordRateLimitDenial(options.key);
     throw new AuthError("rate_limited", "Too many attempts. Try again later.", 429);
   }
 }

@@ -24,6 +24,7 @@
 - `auth.close()` for idempotent shutdown of the Postgres pool owned by Own Auth.
 - Cloudflare D1 storage and rate-limit adapters through the explicit `own-auth/d1` package export.
 - Versioned D1 migration generation through `npx own-auth generate --dialect d1` for Wrangler-managed deployment.
+- OpenTelemetry API instrumentation for core operations, HTTP handlers, provider calls, email and SMS delivery, plugins, and rate-limit denials. Applications configure their own SDK and exporters; without an SDK, telemetry is a no-op.
 
 ### Security
 
@@ -34,11 +35,11 @@
 - HTTP request body limits are enforced while streaming, including Apple's 64 KiB form-post callback limit.
 - Generated plugin clients reject missing or mismatched server contract fingerprints.
 - Browser OAuth popups exchange only completion state. OAuth codes, provider tokens, session tokens, and MFA challenge tokens are never sent through `postMessage`.
+- Telemetry uses bounded attributes and excludes passwords, tokens, personal data, request contents, delivery contents, exception details, and database queries.
 
 ### Runtime
 
 - `DATABASE_URL` is validated when `createOwnAuth` runs, while driver import and connection errors retain their original PostgreSQL diagnostics on first use.
-- Postgres identity uniqueness races now return typed email, phone, or provider-account errors instead of exposing SQLSTATE `23505`.
 - Auth operations after `auth.close()` fail with the typed `auth_closed` error.
 
 The trusted `signInWithVerifiedExternalIdentity` flow remains available for native provider SDKs and other integrations that verify provider credentials before calling Own Auth.

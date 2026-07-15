@@ -209,6 +209,13 @@
           "href": "/docs/cloudflare-d1",
           "slug": ["cloudflare-d1"],
           "source": "docs/cloudflare-d1.md"
+        },
+        {
+          "title": "Observability",
+          "description": "Collect privacy-safe OpenTelemetry traces and metrics for Own Auth operations, HTTP handlers, provider calls, delivery, plugins, and rate-limit denials.",
+          "href": "/docs/observability",
+          "slug": ["observability"],
+          "source": "docs/observability.md"
         }
       ]
     },

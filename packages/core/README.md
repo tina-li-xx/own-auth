@@ -674,6 +674,14 @@ npx own-auth generate --dialect d1 --out-dir migrations
 
 See [Cloudflare D1](https://github.com/tina-li-xx/own-auth/blob/main/docs/cloudflare-d1.md) for the complete Worker and migration setup.
 
+## OpenTelemetry
+
+Own Auth emits privacy-safe traces and metrics through `@opentelemetry/api`. Applications with an OpenTelemetry SDK configured receive operation, HTTP handler, provider, delivery, plugin, and rate-limit telemetry. Without an SDK, telemetry is a no-op.
+
+Telemetry is controlled by the application's OpenTelemetry SDK, not by a `createOwnAuth()` option. Own Auth never records passwords, tokens, request bodies, URLs, headers, cookies, delivery contents, or database queries.
+
+See [Observability](https://github.com/tina-li-xx/own-auth/blob/main/docs/observability.md) for span hierarchy, metric names, attributes, and data-safety rules.
+
 ## Method Reference
 
 ### Methods
@@ -719,6 +727,7 @@ See [Cloudflare D1](https://github.com/tina-li-xx/own-auth/blob/main/docs/cloudf
 - [Passkeys](https://github.com/tina-li-xx/own-auth/blob/main/docs/passkeys.md)
 - [Plugins](https://github.com/tina-li-xx/own-auth/blob/main/docs/plugins.md)
 - [Cloudflare D1](https://github.com/tina-li-xx/own-auth/blob/main/docs/cloudflare-d1.md)
+- [Observability](https://github.com/tina-li-xx/own-auth/blob/main/docs/observability.md)
 - [Next.js](https://github.com/tina-li-xx/own-auth/blob/main/docs/frameworks/nextjs.md)
 - [Express](https://github.com/tina-li-xx/own-auth/blob/main/docs/frameworks/express.md)
 - [Hono](https://github.com/tina-li-xx/own-auth/blob/main/docs/frameworks/hono.md)

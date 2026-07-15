@@ -25,6 +25,7 @@ import {
   requireActiveOrganisation,
   requirePermission
 } from "./auth-engine-organisation-access.js";
+import { sendEmail } from "./auth-engine-delivery.js";
 
 export async function inviteMember(
   ctx: AuthEngineContext,
@@ -80,7 +81,7 @@ export async function inviteMember(
   });
   const url = buildUrl(ctx, "/auth/invitations/accept", { token: issued.rawToken });
 
-  await ctx.emailProvider.send({
+  await sendEmail(ctx, {
     to: email,
     type: "organisation_invite",
     token: issued.rawToken,

@@ -45,6 +45,9 @@
     "typecheck": "pnpm --filter own-auth typecheck && pnpm --filter own-auth-basic-node-example build"
   },
   "devDependencies": {
+    "@opentelemetry/context-async-hooks": "2.9.0",
+    "@opentelemetry/sdk-metrics": "2.9.0",
+    "@opentelemetry/sdk-trace-base": "2.9.0",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.15.5",
     "@types/react": "^19.2.17",

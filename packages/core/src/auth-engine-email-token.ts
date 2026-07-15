@@ -1,6 +1,7 @@
 import { normalizeEmail } from "./normalise.js";
 import type { AuditEventType, RequestContext, TokenType } from "./types.js";
 import type { DeliveryResult } from "./auth-engine-types.js";
+import { sendEmail } from "./auth-engine-delivery.js";
 import {
   audit,
   buildUrl,
@@ -44,7 +45,7 @@ export async function requestEmailToken(
     ...input.extraUrlParams
   });
 
-  await ctx.emailProvider.send({
+  await sendEmail(ctx, {
     to: email,
     type: input.emailType,
     token: issued.rawToken,

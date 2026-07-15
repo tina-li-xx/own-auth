@@ -111,6 +111,7 @@ import type {
 } from "./auth-engine-types.js";
 import { isRecord } from "./value-guards.js";
 import { createAuthClosedError } from "./errors.js";
+import { traceAuthOperation, tracePluginOperation } from "./telemetry.js";
 
 export type { OwnAuthOptions } from "./auth-engine-types.js";
 
@@ -152,8 +153,11 @@ export class OwnAuth {
     sessionToken: string | null,
     request: RequestContext
   ): Promise<unknown> {
-    return this.runWhileOpen(() =>
-      this.pluginRuntime.executeEndpoint(endpoint, input, sessionToken, request)
+    return this.executePlugin(
+      endpoint.plugin.id,
+      endpoint.endpoint.id,
+      "endpoint",
+      () => this.pluginRuntime.executeEndpoint(endpoint, input, sessionToken, request)
     );
   }
   callPluginMethod(
@@ -162,8 +166,21 @@ export class OwnAuth {
     input: unknown,
     options?: CallOwnAuthPluginMethodOptions
   ): Promise<unknown> {
+    return this.executePlugin(
+      pluginId,
+      method,
+      "method",
+      () => this.pluginRuntime.callServerMethod(pluginId, method, input, options)
+    );
+  }
+  private executePlugin<Result>(
+    pluginId: string,
+    operation: string,
+    kind: "endpoint" | "method",
+    work: () => Promise<Result>
+  ): Promise<Result> {
     return this.runWhileOpen(() =>
-      this.pluginRuntime.callServerMethod(pluginId, method, input, options)
+      tracePluginOperation({ pluginId, operation, kind }, work)
     );
   }
   private executeCore<Result>(
@@ -172,11 +189,14 @@ export class OwnAuth {
     work: () => Promise<Result>
   ): Promise<Result> {
     return this.runWhileOpen(() =>
-      this.pluginRuntime.runCoreOperation(
+      traceAuthOperation(
         operation,
-        input,
-        requestContextFrom(input),
-        work
+        () => this.pluginRuntime.runCoreOperation(
+          operation,
+          input,
+          requestContextFrom(input),
+          work
+        )
       )
     );
   }

@@ -8,6 +8,7 @@ import type {
   RevokeExternalProviderAccessInput
 } from "./auth-engine-types.js";
 import { audit, requireActiveUser, type AuthEngineContext } from "./auth-engine-internals.js";
+import { traceOAuthProvider } from "./telemetry.js";
 
 export async function getExternalAccessToken(
   ctx: AuthEngineContext,
@@ -20,7 +21,8 @@ export async function getExternalAccessToken(
   }
   const encryption = requireEncryptionKeyRing(ctx.encryption, "OAuth offline access");
   const provider = requireOAuthProvider(ctx.oauthProviders, input.provider);
-  if (!provider.refresh) {
+  const refresh = provider.refresh;
+  if (!refresh) {
     throw new AuthError("validation_error", "This OAuth provider cannot refresh access", 400);
   }
   const decrypted = await encryption.decrypt(
@@ -32,7 +34,9 @@ export async function getExternalAccessToken(
     "oauth-refresh",
     { accountId: account.id, provider: input.provider }
   );
-  const refreshed = await provider.refresh(decrypted.plaintext);
+  const refreshed = await traceOAuthProvider(input.provider, "refresh", () =>
+    refresh(decrypted.plaintext)
+  );
   const replacement = refreshed.refreshToken ?? decrypted.plaintext;
   if (refreshed.refreshToken || decrypted.needsRotation) {
     const encrypted = await encryption.encrypt(replacement, "oauth-refresh", {
@@ -83,7 +87,8 @@ export async function revokeExternalProviderAccess(
   }
   const encryption = requireEncryptionKeyRing(ctx.encryption, "OAuth offline access");
   const provider = requireOAuthProvider(ctx.oauthProviders, input.provider);
-  if (provider.revoke) {
+  const revoke = provider.revoke;
+  if (revoke) {
     const decrypted = await encryption.decrypt(
       {
         ciphertext: credential.ciphertext,
@@ -93,7 +98,9 @@ export async function revokeExternalProviderAccess(
       "oauth-refresh",
       { accountId: account.id, provider: input.provider }
     );
-    await provider.revoke(decrypted.plaintext);
+    await traceOAuthProvider(input.provider, "revoke", () =>
+      revoke(decrypted.plaintext)
+    );
   }
   await ctx.storage.deleteOAuthCredentialByAccountId(account.id);
   await audit(ctx, {
