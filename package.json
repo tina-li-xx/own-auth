@@ -32,7 +32,7 @@
   },
   "scripts": {
     "build": "pnpm -r build",
-    "cloudflare:check": "node scripts/check-cloudflare-worker.mjs",
+    "cloudflare:check": "tsx scripts/check-cloudflare-worker.ts",
     "d1-resolution:check": "node scripts/check-d1-package-resolution.mjs",
     "postgres-loading:check": "node ./scripts/check-lazy-postgres.mjs",
     "docs:check": "node scripts/sync-package-docs.mjs --check",
