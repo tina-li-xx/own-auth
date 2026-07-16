@@ -111,7 +111,12 @@ export class D1IdentityStorage extends D1StorageBase {
       rotated_at: patch.rotatedAt
     }).filter(([, value]) => value !== undefined);
     if (entries.length === 0) {
-      return this.getOAuthCredentialById(id);
+      const row = await this.selectOne(
+        `${oauthCredentialReturning} from own_auth_oauth_credentials ` +
+        "where id = ?1 and ciphertext = ?2",
+        [id, expectedCiphertext]
+      );
+      return row ? mapOAuthCredential(row) : null;
     }
     const params: unknown[] = entries.map(([, value]) => value);
     params.push(id, expectedCiphertext);
@@ -363,13 +368,5 @@ export class D1IdentityStorage extends D1StorageBase {
       [challengeHash, purpose, consumedAt.getTime()]
     ).first<DatabaseRow>();
     return row ? mapWebAuthnChallenge(row) : null;
-  }
-
-  private async getOAuthCredentialById(id: string): Promise<OAuthCredential | null> {
-    const row = await this.selectOne(
-      `${oauthCredentialReturning} from own_auth_oauth_credentials where id = ?1`,
-      [id]
-    );
-    return row ? mapOAuthCredential(row) : null;
   }
 }

@@ -114,8 +114,9 @@ export class PostgresIdentityStorage extends PostgresStorageBase {
     }).filter(([, value]) => value !== undefined);
     if (entries.length === 0) {
       const row = await this.selectOne(
-        `${oauthCredentialReturning} from own_auth_oauth_credentials where id = $1`,
-        [id]
+        `${oauthCredentialReturning} from own_auth_oauth_credentials ` +
+        "where id = $1 and ciphertext = $2",
+        [id, expectedCiphertext]
       );
       return row ? mapOAuthCredential(row) : null;
     }

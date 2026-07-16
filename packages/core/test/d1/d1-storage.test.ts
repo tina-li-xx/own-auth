@@ -114,6 +114,19 @@ describe("D1 persistence", () => {
     ]);
   });
 
+  it("keeps empty OAuth credential rotations conditional on the ciphertext", async () => {
+    const database = new RecordingD1();
+    const storage = new D1AuthStorage(database);
+    database.queue([]);
+
+    await expect(
+      storage.rotateOAuthCredential("oac_1", "expected-ciphertext", {})
+    ).resolves.toBeNull();
+
+    expect(database.calls[0]?.sql).toContain("where id = ?1 and ciphertext = ?2");
+    expect(database.calls[0]?.values).toEqual(["oac_1", "expected-ciphertext"]);
+  });
+
   it("maps D1 identity collisions to typed Own Auth errors", async () => {
     const database = new RecordingD1();
     const storage = new D1AuthStorage(database);

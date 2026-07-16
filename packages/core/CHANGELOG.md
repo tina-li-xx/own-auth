@@ -38,6 +38,7 @@
 - Owner invitations now require an owner actor; administrators cannot grant the owner role.
 - Personal API keys stop authenticating when their owning user is missing or disabled.
 - Core endpoint and plugin contracts are runtime-owned and immutable, so caller mutation cannot change routes, session requirements, validation schemas, handlers, or client fingerprints after setup.
+- Empty OAuth credential rotations now retain their expected-ciphertext comparison in Postgres and D1.
 - TOTP timesteps and passkey counters use atomic comparison updates to reject replay and concurrent reuse.
 - Provider refresh tokens and TOTP secrets use purpose-separated AES-256-GCM encryption through the shared encryption key ring.
 - Disabling TOTP invalidates its recovery codes, including codes attached to an outstanding MFA challenge.

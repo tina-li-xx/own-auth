@@ -78,6 +78,19 @@ describe("PostgresAuthStorage", () => {
     expect(db.lastCall.params).toEqual(["Case@Example.com"]);
   });
 
+  it("keeps empty OAuth credential rotations conditional on the ciphertext", async () => {
+    const db = new RecordingDb();
+    const storage = new PostgresAuthStorage(db);
+    db.queueRows([]);
+
+    await expect(
+      storage.rotateOAuthCredential("oac_1", "expected-ciphertext", {})
+    ).resolves.toBeNull();
+
+    expect(db.lastCall.sql).toContain("where id = $1 and ciphertext = $2");
+    expect(db.lastCall.params).toEqual(["oac_1", "expected-ciphertext"]);
+  });
+
   it("updates only provided session fields and maps nullable revoke metadata", async () => {
     const db = new RecordingDb();
     const storage = new PostgresAuthStorage(db);

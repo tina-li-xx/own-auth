@@ -10,6 +10,8 @@ import type {
 import { audit, requireActiveUser, type AuthEngineContext } from "./auth-engine-internals.js";
 import { traceOAuthProvider } from "./telemetry.js";
 
+const oauthRefreshEncryptionPurpose = "oauth-refresh" as const;
+
 export async function getExternalAccessToken(
   ctx: AuthEngineContext,
   input: GetExternalAccessTokenInput
@@ -20,6 +22,7 @@ export async function getExternalAccessToken(
     throw missingCredential();
   }
   const encryption = requireEncryptionKeyRing(ctx.encryption, "OAuth offline access");
+  const encryptionMetadata = oauthRefreshEncryptionMetadata(account);
   const provider = requireOAuthProvider(ctx.oauthProviders, input.provider);
   const refresh = provider.refresh;
   if (!refresh) {
@@ -31,18 +34,21 @@ export async function getExternalAccessToken(
       nonce: credential.nonce,
       encryptionKeyId: credential.encryptionKeyId
     },
-    "oauth-refresh",
-    { accountId: account.id, provider: input.provider }
+    oauthRefreshEncryptionPurpose,
+    encryptionMetadata
   );
   const refreshed = await traceOAuthProvider(input.provider, "refresh", () =>
     refresh(decrypted.plaintext)
   );
+  const scopes = refreshed.scopes.length > 0 ? refreshed.scopes : credential.scopes;
   const replacement = refreshed.refreshToken ?? decrypted.plaintext;
   if (refreshed.refreshToken || decrypted.needsRotation) {
-    const encrypted = await encryption.encrypt(replacement, "oauth-refresh", {
-      accountId: account.id,
-      provider: input.provider
-    });
+    const encrypted = await encryption.encrypt(
+      replacement,
+      oauthRefreshEncryptionPurpose,
+      encryptionMetadata
+    );
+    const updatedAt = new Date();
     const rotated = await ctx.storage.rotateOAuthCredential(
       credential.id,
       credential.ciphertext,
@@ -50,9 +56,9 @@ export async function getExternalAccessToken(
         ciphertext: encrypted.ciphertext,
         nonce: encrypted.nonce,
         encryptionKeyId: encrypted.encryptionKeyId,
-        scopes: refreshed.scopes.length > 0 ? refreshed.scopes : credential.scopes,
-        updatedAt: new Date(),
-        rotatedAt: refreshed.refreshToken ? new Date() : credential.rotatedAt
+        scopes,
+        updatedAt,
+        rotatedAt: refreshed.refreshToken ? updatedAt : credential.rotatedAt
       }
     );
     if (!rotated) {
@@ -72,7 +78,7 @@ export async function getExternalAccessToken(
   });
   return {
     accessToken: refreshed.accessToken,
-    scopes: refreshed.scopes.length > 0 ? refreshed.scopes : credential.scopes
+    scopes
   };
 }
 
@@ -86,6 +92,7 @@ export async function revokeExternalProviderAccess(
     throw missingCredential();
   }
   const encryption = requireEncryptionKeyRing(ctx.encryption, "OAuth offline access");
+  const encryptionMetadata = oauthRefreshEncryptionMetadata(account);
   const provider = requireOAuthProvider(ctx.oauthProviders, input.provider);
   const revoke = provider.revoke;
   if (revoke) {
@@ -95,8 +102,8 @@ export async function revokeExternalProviderAccess(
         nonce: credential.nonce,
         encryptionKeyId: credential.encryptionKeyId
       },
-      "oauth-refresh",
-      { accountId: account.id, provider: input.provider }
+      oauthRefreshEncryptionPurpose,
+      encryptionMetadata
     );
     await traceOAuthProvider(input.provider, "revoke", () =>
       revoke(decrypted.plaintext)
@@ -110,6 +117,10 @@ export async function revokeExternalProviderAccess(
     context: input.request,
     metadata: { provider: input.provider }
   });
+}
+
+function oauthRefreshEncryptionMetadata(account: Account): Record<string, string> {
+  return { accountId: account.id, provider: account.provider };
 }
 
 async function requireOwnedProviderAccount(
