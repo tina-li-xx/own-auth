@@ -1,168 +1,114 @@
 # Express
 
-Use Own Auth from Express 5 routes. Complete the [Quickstart](https://own-auth.com/docs/quickstart) first so the shared `auth` instance and database tables are ready.
+Mount the framework-neutral Own Auth handler in one Express 5 route. Complete the [Quickstart](https://own-auth.com/docs/quickstart) first so the shared `auth` instance and database tables are ready.
 
 ## Install
 
 ```bash
-npm install own-auth express cookie-parser
-npm install --save-dev @types/express @types/cookie-parser
+npm install own-auth express
+npm install --save-dev @types/express
 ```
 
-## Complete Server
+## Add the handler
 
-This server provides signup, signin, current-session, and signout routes. Express 5 forwards errors thrown by async handlers to the final error middleware.
+Register the auth route before `express.json()` or any other middleware that consumes the request body. Own Auth reads and validates its own bounded request stream.
 
 ```ts server.ts
-import cookieParser from "cookie-parser";
+import { Readable } from "node:stream";
 import express, {
-  type NextFunction,
-  type Request,
-  type Response,
+  type Request as ExpressRequest,
+  type Response as ExpressResponse,
 } from "express";
-import { AuthError } from "own-auth";
+import { createOwnAuthHandler } from "own-auth/http";
 
 import { auth } from "./auth";
 
-type Credentials = {
-  email: string;
-  password: string;
-  name?: string;
-};
-
-type MfaBody = {
-  code: string;
-  method: "totp" | "recovery_code";
-};
-
 const app = express();
-const sessionCookieName = "own_auth_session";
-const mfaCookieName = "own_auth_mfa";
-const sessionCookieOptions = {
-  httpOnly: true,
-  path: "/",
-  sameSite: "lax" as const,
-  secure: process.env.NODE_ENV === "production",
-};
+const requestContexts = new WeakMap<Request, {
+  ipAddress?: string;
+  userAgent?: string;
+}>();
+const authHandler = createOwnAuthHandler(auth, {
+  getRequestContext: (request) => requestContexts.get(request) ?? {},
+});
 
+app.all("/api/auth/{*path}", async (request, response) => {
+  const webRequest = toWebRequest(request);
+  requestContexts.set(webRequest, {
+    ipAddress: request.ip,
+    userAgent: request.get("user-agent"),
+  });
+  await sendWebResponse(
+    response,
+    await authHandler(webRequest),
+  );
+});
+
+// Register application body middleware after the auth catch-all route.
 app.use(express.json());
-app.use(cookieParser());
-
-function readSessionToken(request: Request): string | undefined {
-  return request.cookies[sessionCookieName];
-}
-
-function setSessionCookie(
-  response: Response,
-  token: string,
-  expires: Date,
-) {
-  response.cookie(sessionCookieName, token, {
-    ...sessionCookieOptions,
-    expires,
-  });
-}
-
-app.post("/auth/signup", async (request, response) => {
-  const result = await auth.signUpEmailPassword(
-    request.body as Credentials,
-  );
-
-  setSessionCookie(response, result.sessionToken, result.session.expiresAt);
-  return response.status(201).json({ user: result.user });
-});
-
-app.post("/auth/signin", async (request, response) => {
-  const result = await auth.signInEmailPassword(
-    request.body as Credentials,
-  );
-
-  if (result.status === "mfa_required") {
-    response.cookie(mfaCookieName, result.challengeToken, {
-      ...sessionCookieOptions,
-      expires: result.expiresAt,
-    });
-    return response.status(202).json({
-      status: result.status,
-      methods: result.methods,
-      expiresAt: result.expiresAt,
-    });
-  }
-
-  setSessionCookie(response, result.sessionToken, result.session.expiresAt);
-  return response.json({ user: result.user });
-});
-
-app.post("/auth/mfa", async (request, response) => {
-  const challengeToken = request.cookies[mfaCookieName];
-  if (!challengeToken) {
-    return response.status(401).json({ error: "MFA challenge expired" });
-  }
-
-  const { code, method } = request.body as MfaBody;
-  const result = method === "recovery_code"
-    ? await auth.completeMfaWithRecoveryCode({ challengeToken, code })
-    : await auth.completeMfaWithTotp({ challengeToken, code });
-
-  response.clearCookie(mfaCookieName, sessionCookieOptions);
-  setSessionCookie(response, result.sessionToken, result.session.expiresAt);
-  return response.json({ user: result.user });
-});
-
-app.get("/auth/session", async (request, response) => {
-  const sessionToken = readSessionToken(request);
-  const current = sessionToken
-    ? await auth.getCurrentSession(sessionToken)
-    : null;
-
-  if (!current) {
-    return response.status(401).json({ error: "Unauthorized" });
-  }
-
-  return response.json({
-    session: current.session,
-    user: current.user,
-  });
-});
-
-app.post("/auth/signout", async (request, response) => {
-  const sessionToken = readSessionToken(request);
-
-  if (sessionToken) {
-    await auth.signOut(sessionToken);
-  }
-
-  response.clearCookie(sessionCookieName, sessionCookieOptions);
-  return response.status(204).send();
-});
-
-app.use(
-  (
-    error: unknown,
-    _request: Request,
-    response: Response,
-    _next: NextFunction,
-  ) => {
-    if (error instanceof AuthError) {
-      return response.status(error.statusCode).json({
-        error: {
-          code: error.code,
-          message: error.safeMessage,
-        },
-      });
-    }
-
-    console.error(error);
-    return response.status(500).json({
-      error: {
-        code: "internal_error",
-        message: "Authentication failed",
-      },
-    });
-  },
-);
 
 app.listen(3000);
+
+function toWebRequest(request: ExpressRequest): Request {
+  const host = request.host;
+  if (!host) throw new Error("Host header is required");
+
+  const method = request.method.toUpperCase();
+  const hasBody = method !== "GET" && method !== "HEAD";
+  const init: RequestInit & { duplex?: "half" } = {
+    method,
+    headers: toWebHeaders(request),
+  };
+
+  if (hasBody) {
+    init.body = Readable.toWeb(request) as ReadableStream<Uint8Array>;
+    init.duplex = "half";
+  }
+
+  return new Request(
+    new URL(request.originalUrl, `${request.protocol}://${host}`),
+    init,
+  );
+}
+
+function toWebHeaders(request: ExpressRequest): Headers {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(request.headers)) {
+    if (Array.isArray(value)) {
+      for (const entry of value) headers.append(name, entry);
+    } else if (value !== undefined) {
+      headers.set(name, value);
+    }
+  }
+  return headers;
+}
+
+async function sendWebResponse(
+  expressResponse: ExpressResponse,
+  response: Response,
+): Promise<void> {
+  expressResponse.status(response.status);
+  for (const [name, value] of response.headers) {
+    if (name !== "set-cookie") expressResponse.setHeader(name, value);
+  }
+
+  const cookies = response.headers.getSetCookie();
+  if (cookies.length > 0) expressResponse.setHeader("set-cookie", cookies);
+
+  expressResponse.send(Buffer.from(await response.arrayBuffer()));
+}
 ```
 
-The browser receives only the `HttpOnly` session cookie. Raw session tokens are not returned in the JSON responses.
+This exposes the complete [HTTP handler contract](https://own-auth.com/docs/http-handler) under `/api/auth` without duplicating auth routes, cookie policy, MFA handling, CSRF checks, request validation, or error mapping inside Express.
+
+The request-context bridge passes Express's resolved client IP to Own Auth so IP-based OAuth and One Tap limits remain active.
+
+If Express runs behind a reverse proxy, configure `trust proxy` for the exact proxy boundary so `request.ip`, `request.host`, and `request.protocol` reflect the external request. Ensure that proxy overwrites forwarded host, protocol, and client-IP headers; do not trust values supplied directly by clients.
+
+## Add the client
+
+```ts auth-client.ts
+import { createOwnAuthClient } from "own-auth/client";
+
+export const authClient = createOwnAuthClient();
+```

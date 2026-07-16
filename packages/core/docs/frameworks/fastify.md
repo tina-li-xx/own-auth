@@ -1,158 +1,113 @@
 # Fastify
 
-Use Own Auth from Fastify 5 routes. Complete the [Quickstart](https://own-auth.com/docs/quickstart) first so the shared `auth` instance and database tables are ready.
+Mount the framework-neutral Own Auth handler in one Fastify 5 route. Complete the [Quickstart](https://own-auth.com/docs/quickstart) first so the shared `auth` instance and database tables are ready.
 
 ## Install
 
 ```bash
-npm install own-auth fastify @fastify/cookie
+npm install own-auth fastify
 ```
 
-## Complete Server
+## Add the handler
 
-This server provides signup, signin, current-session, and signout routes. Register `@fastify/cookie` before the routes so request cookies and reply cookie methods are available.
+Keep the auth routes in an encapsulated Fastify plugin. The scoped content-type parser preserves the original bounded request body for Own Auth instead of parsing auth payloads a second time.
 
 ```ts server.ts
-import cookie from "@fastify/cookie";
-import Fastify from "fastify";
-import { AuthError } from "own-auth";
+import Fastify, { type FastifyRequest } from "fastify";
+import { createOwnAuthHandler } from "own-auth/http";
 
 import { auth } from "./auth";
 
-type Credentials = {
-  email: string;
-  password: string;
-  name?: string;
-};
-
-type MfaBody = {
-  code: string;
-  method: "totp" | "recovery_code";
-};
-
+const maxAuthBodyBytes = 64 * 1024;
 const app = Fastify({ logger: true });
-const sessionCookieName = "own_auth_session";
-const mfaCookieName = "own_auth_mfa";
-const sessionCookieOptions = {
-  httpOnly: true,
-  path: "/",
-  sameSite: "lax" as const,
-  secure: process.env.NODE_ENV === "production",
-};
-
-await app.register(cookie);
-
-app.post<{ Body: Credentials }>("/auth/signup", async (request, reply) => {
-  const result = await auth.signUpEmailPassword(request.body);
-
-  reply.setCookie(sessionCookieName, result.sessionToken, {
-    ...sessionCookieOptions,
-    expires: result.session.expiresAt,
-  });
-
-  return reply.code(201).send({ user: result.user });
+const requestContexts = new WeakMap<Request, {
+  ipAddress?: string;
+  userAgent?: string;
+}>();
+const authHandler = createOwnAuthHandler(auth, {
+  maxRequestBodyBytes: maxAuthBodyBytes,
+  getRequestContext: (request) => requestContexts.get(request) ?? {},
 });
 
-app.post<{ Body: Credentials }>("/auth/signin", async (request, reply) => {
-  const result = await auth.signInEmailPassword(request.body);
+app.register((routes, _options, done) => {
+  routes.removeAllContentTypeParsers();
+  routes.addContentTypeParser(
+    "*",
+    { parseAs: "buffer", bodyLimit: maxAuthBodyBytes },
+    (_request, body, parseDone) => parseDone(null, body),
+  );
 
-  if (result.status === "mfa_required") {
-    reply.setCookie(mfaCookieName, result.challengeToken, {
-      ...sessionCookieOptions,
-      expires: result.expiresAt,
-    });
-    return reply.code(202).send({
-      status: result.status,
-      methods: result.methods,
-      expiresAt: result.expiresAt,
-    });
-  }
-
-  reply.setCookie(sessionCookieName, result.sessionToken, {
-    ...sessionCookieOptions,
-    expires: result.session.expiresAt,
-  });
-
-  return reply.send({ user: result.user });
-});
-
-app.post<{ Body: MfaBody }>("/auth/mfa", async (request, reply) => {
-  const challengeToken = request.cookies[mfaCookieName];
-  if (!challengeToken) {
-    return reply.code(401).send({ error: "MFA challenge expired" });
-  }
-
-  const result = request.body.method === "recovery_code"
-    ? await auth.completeMfaWithRecoveryCode({
-        challengeToken,
-        code: request.body.code,
-      })
-    : await auth.completeMfaWithTotp({
-        challengeToken,
-        code: request.body.code,
+  routes.setErrorHandler((error, _request, reply) => {
+    if (error.code === "FST_ERR_CTP_BODY_TOO_LARGE") {
+      return reply.code(413).send({
+        error: { code: "invalid_request", message: "Request body is too large" },
       });
-
-  reply.clearCookie(mfaCookieName, { path: sessionCookieOptions.path });
-  reply.setCookie(sessionCookieName, result.sessionToken, {
-    ...sessionCookieOptions,
-    expires: result.session.expiresAt,
-  });
-  return reply.send({ user: result.user });
-});
-
-app.get("/auth/session", async (request, reply) => {
-  const sessionToken = request.cookies[sessionCookieName];
-  const current = sessionToken
-    ? await auth.getCurrentSession(sessionToken)
-    : null;
-
-  if (!current) {
-    return reply.code(401).send({ error: "Unauthorized" });
-  }
-
-  return reply.send({
-    session: current.session,
-    user: current.user,
-  });
-});
-
-app.post("/auth/signout", async (request, reply) => {
-  const sessionToken = request.cookies[sessionCookieName];
-
-  if (sessionToken) {
-    await auth.signOut(sessionToken);
-  }
-
-  reply.clearCookie(sessionCookieName, {
-    path: sessionCookieOptions.path,
+    }
+    if (error.code === "FST_ERR_CTP_INVALID_CONTENT_LENGTH") {
+      return reply.code(400).send({
+        error: { code: "invalid_request", message: "Invalid Content-Length" },
+      });
+    }
+    throw error;
   });
 
-  return reply.code(204).send();
-});
-
-app.setErrorHandler((error, request, reply) => {
-  if (error instanceof AuthError) {
-    return reply.code(error.statusCode).send({
-      error: {
-        code: error.code,
-        message: error.safeMessage,
-      },
+  routes.all("/*", { bodyLimit: maxAuthBodyBytes }, async (request, reply) => {
+    const webRequest = toWebRequest(request);
+    requestContexts.set(webRequest, {
+      ipAddress: request.ip,
+      userAgent: request.headers["user-agent"],
     });
+    return reply.send(await authHandler(webRequest));
+  });
+
+  done();
+}, { prefix: "/api/auth" });
+
+await app.listen({ host: "0.0.0.0", port: 3000 });
+
+function toWebRequest(request: FastifyRequest): Request {
+  if (!request.host) throw new Error("Host header is required");
+
+  const method = request.method.toUpperCase();
+  const init: RequestInit & { duplex?: "half" } = {
+    method,
+    headers: toWebHeaders(request),
+  };
+
+  if (method !== "GET" && method !== "HEAD" && Buffer.isBuffer(request.body)) {
+    init.body = request.body;
+    init.duplex = "half";
   }
 
-  request.log.error(error);
-  return reply.code(500).send({
-    error: {
-      code: "internal_error",
-      message: "Authentication failed",
-    },
-  });
-});
+  return new Request(
+    new URL(request.raw.url ?? "/", `${request.protocol}://${request.host}`),
+    init,
+  );
+}
 
-await app.listen({
-  host: "0.0.0.0",
-  port: 3000,
-});
+function toWebHeaders(request: FastifyRequest): Headers {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(request.headers)) {
+    if (Array.isArray(value)) {
+      for (const entry of value) headers.append(name, entry);
+    } else if (value !== undefined) {
+      headers.set(name, value);
+    }
+  }
+  return headers;
+}
 ```
 
-The browser receives only the `HttpOnly` session cookie. Raw session tokens are not returned in the JSON responses.
+This exposes the complete [HTTP handler contract](https://own-auth.com/docs/http-handler) under `/api/auth` without duplicating auth routes, cookie policy, MFA handling, CSRF checks, request validation, or error mapping inside Fastify.
+
+The request-context bridge passes Fastify's resolved client IP to Own Auth so IP-based OAuth and One Tap limits remain active. The scoped error handler also keeps Fastify's pre-handler body-limit failures in Own Auth's public error shape.
+
+If Fastify runs behind a reverse proxy, configure `trustProxy` for the exact proxy boundary so `request.ip`, `request.host`, and `request.protocol` reflect the external request. Ensure that proxy overwrites forwarded host, protocol, and client-IP headers; do not trust values supplied directly by clients.
+
+## Add the client
+
+```ts auth-client.ts
+import { createOwnAuthClient } from "own-auth/client";
+
+export const authClient = createOwnAuthClient();
+```
