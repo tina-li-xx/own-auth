@@ -25,6 +25,20 @@ describe("InMemoryAuthStorage", () => {
     await expect(storage.getUserById("usr_replacement")).resolves.toBeNull();
   });
 
+  it("returns all matching users and audit events when no limit is supplied", async () => {
+    const storage = new InMemoryAuthStorage();
+    const user = memoryUser();
+    await storage.createUser(user);
+    await storage.createAuditEvent(memoryAuditEvent(user.createdAt));
+
+    await expect(storage.listUsers()).resolves.toEqual([
+      expect.objectContaining({ id: user.id })
+    ]);
+    await expect(storage.listAuditEvents()).resolves.toEqual([
+      expect.objectContaining({ id: "whe_memory" })
+    ]);
+  });
+
   it("clones webhook delivery seed dates before storing them", async () => {
     const storage = new InMemoryAuthStorage();
     const createdAt = new Date("2026-07-15T12:00:00.000Z");

@@ -6,16 +6,27 @@ import type {
 } from "../types.js";
 import type { PasskeyCredential } from "../identity-types.js";
 import type {
+  AdministrationSession,
+  AdministrationUser
+} from "../administration.js";
+import type {
   AuthSessionPayload,
   DeliveryPayload,
   PublicAuthSession,
   PublicAuthUser,
+  PublicAdministrationAuditEvent,
+  PublicAdministrationSession,
+  PublicAdministrationUser,
   PublicOrganisation,
   PublicOrganisationMember,
   PublicPasskey
 } from "./contract.js";
+import type { AuditEvent } from "../types.js";
 
-export function serializeUser(user: User): PublicAuthUser {
+type PublicUserSource = Omit<User, "disabledAt" | "passwordHash">;
+type PublicSessionSource = Omit<Session, "revokeReason" | "revokedAt" | "tokenHash">;
+
+export function serializeUser(user: PublicUserSource): PublicAuthUser {
   return {
     id: user.id,
     email: user.email,
@@ -31,7 +42,7 @@ export function serializeUser(user: User): PublicAuthUser {
   };
 }
 
-export function serializeSession(session: Session): PublicAuthSession {
+export function serializeSession(session: PublicSessionSource): PublicAuthSession {
   return {
     id: session.id,
     userId: session.userId,
@@ -67,6 +78,43 @@ export function serializePasskey(passkey: PasskeyCredential): PublicPasskey {
     backedUp: passkey.backedUp,
     createdAt: passkey.createdAt.toISOString(),
     lastUsedAt: toIso(passkey.lastUsedAt)
+  };
+}
+
+export function serializeAdministrationUser(
+  user: AdministrationUser
+): PublicAdministrationUser {
+  return {
+    ...serializeUser(user),
+    disabledAt: toIso(user.disabledAt)
+  };
+}
+
+export function serializeAdministrationSession(
+  session: AdministrationSession
+): PublicAdministrationSession {
+  return {
+    ...serializeSession(session),
+    revokedAt: toIso(session.revokedAt),
+    revokeReason: session.revokeReason,
+    effectiveStatus: session.effectiveStatus
+  };
+}
+
+export function serializeAdministrationAuditEvent(
+  event: AuditEvent
+): PublicAdministrationAuditEvent {
+  return {
+    id: event.id,
+    eventType: event.eventType,
+    actorUserId: event.actorUserId,
+    targetUserId: event.targetUserId,
+    organisationId: event.organisationId,
+    apiKeyId: event.apiKeyId,
+    ipAddress: event.ipAddress,
+    userAgent: event.userAgent,
+    metadata: structuredClone(event.metadata),
+    createdAt: event.createdAt.toISOString()
   };
 }
 

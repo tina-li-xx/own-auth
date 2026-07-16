@@ -63,6 +63,29 @@ export interface PublicPasskey {
   lastUsedAt: string | null;
 }
 
+export interface PublicAdministrationUser extends PublicAuthUser {
+  disabledAt: string | null;
+}
+
+export interface PublicAdministrationSession extends PublicAuthSession {
+  revokedAt: string | null;
+  revokeReason: string | null;
+  effectiveStatus: "active" | "disabled_user" | "expired" | "revoked";
+}
+
+export interface PublicAdministrationAuditEvent {
+  id: string;
+  eventType: string;
+  actorUserId: string | null;
+  targetUserId: string | null;
+  organisationId: string | null;
+  apiKeyId: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
 export interface AuthSessionPayload {
   status: "complete";
   user: PublicAuthUser;
@@ -131,6 +154,18 @@ export interface OwnAuthEndpointInputMap {
   listPasskeys: undefined;
   renamePasskey: { passkeyId: string; name: string };
   revokePasskey: { passkeyId: string };
+  adminListUsers: {
+    query?: string;
+    status?: "active" | "disabled" | "all";
+    cursor?: string;
+    limit?: string;
+  };
+  adminGetUser: { userId: string };
+  adminListUserSessions: { userId: string };
+  adminListUserAuditEvents: { userId: string; cursor?: string; limit?: string };
+  adminDisableUser: { userId: string; reason: string };
+  adminEnableUser: { userId: string; reason: string };
+  adminRevokeUserSessions: { userId: string; reason: string };
 }
 
 export interface OwnAuthEndpointOutputMap {
@@ -169,6 +204,16 @@ export interface OwnAuthEndpointOutputMap {
   listPasskeys: { passkeys: PublicPasskey[] };
   renamePasskey: { passkey: PublicPasskey };
   revokePasskey: { success: true };
+  adminListUsers: { users: PublicAdministrationUser[]; nextCursor: string | null };
+  adminGetUser: { user: PublicAdministrationUser };
+  adminListUserSessions: { sessions: PublicAdministrationSession[] };
+  adminListUserAuditEvents: {
+    events: PublicAdministrationAuditEvent[];
+    nextCursor: string | null;
+  };
+  adminDisableUser: { user: PublicAdministrationUser };
+  adminEnableUser: { user: PublicAdministrationUser };
+  adminRevokeUserSessions: { revoked: number };
 }
 
 export type OwnAuthEndpointId = keyof OwnAuthEndpointInputMap;
@@ -197,4 +242,5 @@ export interface OwnAuthEndpointDefinition {
   readonly errors: readonly OwnAuthHttpErrorCode[];
   readonly session: "none" | "optional" | "required" | "create" | "clear";
   readonly csrf?: "default" | "oauth_state";
+  readonly feature?: "administration";
 }

@@ -19,6 +19,7 @@ export type AuthErrorCode =
   | "organisation_not_found"
   | "member_not_found"
   | "permission_denied"
+  | "administration_not_configured"
   | "role_not_configured"
   | "last_owner"
   | "already_member"

@@ -13,6 +13,13 @@ import type { AuthEngineContext } from "./auth-engine-context.js";
 import { hash } from "./auth-engine-token-helpers.js";
 import { isExternalAccountProvider } from "./oauth-types.js";
 import { recordAuthEvent } from "./webhook-outbox.js";
+import { isRecord } from "./value-guards.js";
+
+export function requestContextFrom(input: unknown): RequestContext {
+  return isRecord(input) && isRecord(input.request)
+    ? input.request as RequestContext
+    : {};
+}
 
 export async function audit(
   ctx: AuthEngineContext,

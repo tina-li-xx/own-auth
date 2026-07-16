@@ -14,6 +14,7 @@ export {
   hasRemainingAuthenticationMethod,
   markUserLoggedIn,
   rateLimit,
+  requestContextFrom,
   requireActiveUser,
   userFor,
   uniqueOrganisationSlug

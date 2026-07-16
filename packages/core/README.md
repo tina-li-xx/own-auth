@@ -667,6 +667,8 @@ createOwnAuth({
 
 OAuth providers, the shared encryption key ring, TOTP, passkeys, plugins, and webhooks are documented in the [Configuration guide](https://github.com/own-auth/own-auth/blob/main/docs/configuration.md).
 
+Privileged support workflows are available through the optional, application-authorized [`auth.admin` namespace](https://github.com/own-auth/own-auth/blob/main/docs/administration.md).
+
 For long-running servers, close Own Auth during graceful shutdown:
 
 ```ts
@@ -743,6 +745,7 @@ See [Observability](https://github.com/own-auth/own-auth/blob/main/docs/observab
 | **Members & Invites** | `getMember` `listMembers` `inviteMember` `acceptInvite` `revokeInvitation` `listInvitations` `changeMemberRole` `removeMember` |
 | **Permissions** | `checkPermission` `requirePermission` |
 | **Audit Logs** | `listAuditEvents` `cleanupAuditLogs` |
+| **Administration** | `auth.admin.listUsers` `auth.admin.getUser` `auth.admin.listUserSessions` `auth.admin.listUserAuditEvents` `auth.admin.disableUser` `auth.admin.enableUser` `auth.admin.revokeUserSessions` |
 | **Webhooks** | `processWebhookDeliveries` `listWebhookDeliveries` `retryWebhookDelivery` `cleanupWebhookDeliveries` |
 | **Plugins** | `callPluginMethod` plus methods and endpoints declared by configured plugins |
 | **Lifecycle** | `close` |
@@ -775,6 +778,7 @@ issue for an undisclosed vulnerability.
 - [Cloudflare D1](https://github.com/own-auth/own-auth/blob/main/docs/cloudflare-d1.md)
 - [Webhooks](https://github.com/own-auth/own-auth/blob/main/docs/webhooks.md)
 - [Observability](https://github.com/own-auth/own-auth/blob/main/docs/observability.md)
+- [Administration](https://github.com/own-auth/own-auth/blob/main/docs/administration.md)
 - [Next.js](https://github.com/own-auth/own-auth/blob/main/docs/frameworks/nextjs.md)
 - [Express](https://github.com/own-auth/own-auth/blob/main/docs/frameworks/express.md)
 - [Hono](https://github.com/own-auth/own-auth/blob/main/docs/frameworks/hono.md)

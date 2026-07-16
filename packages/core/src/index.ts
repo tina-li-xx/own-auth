@@ -1,6 +1,27 @@
 export { OwnAuth } from "./auth-engine.js";
 export { createOwnAuth } from "./create-own-auth.js";
 export {
+  administrationActions,
+  isAdministrationCapableStorage
+} from "./administration.js";
+export type {
+  AdministrationAction,
+  AdministrationAuditEventPage,
+  AdministrationAuthorizationContext,
+  AdministrationCapableStorage,
+  AdministrationOptions,
+  AdministrationPage,
+  AdministrationSession,
+  AdministrationSessionStatus,
+  AdministrationUser,
+  AdministrationUserMutationInput,
+  AdministrationUserStatus,
+  GetAdministrationUserInput,
+  ListAdministrationUserAuditEventsInput,
+  ListAdministrationUserSessionsInput,
+  ListAdministrationUsersInput
+} from "./administration.js";
+export {
   corePermissions,
   defineOwnAuthAuthorization,
   permissionsForRole,
@@ -161,7 +182,12 @@ export type {
 } from "./plugin-types.js";
 export { OWN_AUTH_VERSION } from "./version.js";
 export { InMemoryAuthStorage } from "./memory-storage.js";
-export type { AuditEventFilter, AuthStorage } from "./storage.js";
+export type {
+  AuditEventFilter,
+  AuthStorage,
+  ListUsersFilter,
+  StoragePageCursor
+} from "./storage.js";
 export {
   InMemoryRateLimitStore,
   enforceRateLimit
@@ -271,6 +297,9 @@ export type {
   OwnAuthSessionCookieOptions,
   PublicAuthSession,
   PublicAuthUser,
+  PublicAdministrationAuditEvent,
+  PublicAdministrationSession,
+  PublicAdministrationUser,
   PublicOrganisation,
   PublicOrganisationMember,
   PublicPasskey,

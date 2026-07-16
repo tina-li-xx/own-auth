@@ -78,6 +78,30 @@ describe("PostgresAuthStorage", () => {
     expect(db.lastCall.params).toEqual(["Case@Example.com"]);
   });
 
+  it("lists users with literal prefix search, status, cursor, and limit parameters", async () => {
+    const db = new RecordingDb();
+    const storage = new PostgresAuthStorage(db);
+    const createdAt = new Date("2026-01-01T00:00:00.000Z");
+    db.queueRows([userRow()]);
+
+    const users = await storage.listUsers({
+      query: "Ali%",
+      status: "active",
+      cursor: { createdAt, id: "usr_cursor" },
+      limit: 51
+    });
+
+    expect(users).toHaveLength(1);
+    expect(db.lastCall.sql).toContain("lower(substr(coalesce(email, ''), 1, char_length($1)))");
+    expect(db.lastCall.sql).not.toContain("like");
+    expect(db.lastCall.sql).toContain("disabled_at is null");
+    expect(db.lastCall.sql).toContain(
+      "(created_at < $2 or (created_at = $2 and id < $3))"
+    );
+    expect(db.lastCall.sql).toContain("order by created_at desc, id desc limit $4");
+    expect(db.lastCall.params).toEqual(["Ali%", createdAt, "usr_cursor", 51]);
+  });
+
   it("keeps empty OAuth credential rotations conditional on the ciphertext", async () => {
     const db = new RecordingDb();
     const storage = new PostgresAuthStorage(db);
@@ -336,6 +360,25 @@ describe("PostgresAuthStorage", () => {
     expect(db.lastCall.sql).toContain("api_key_id = $3");
     expect(db.lastCall.sql).toContain("order by created_at desc");
     expect(db.lastCall.params).toEqual(["usr_1", "org_1", "key_1"]);
+  });
+
+  it("paginates audit events with a deterministic cursor", async () => {
+    const db = new RecordingDb();
+    const storage = new PostgresAuthStorage(db);
+    const createdAt = new Date("2026-01-01T00:00:00.000Z");
+    db.queueRows([auditEventRow()]);
+
+    await storage.listAuditEvents({
+      userId: "usr_1",
+      cursor: { createdAt, id: "evt_cursor" },
+      limit: 51
+    });
+
+    expect(db.lastCall.sql).toContain(
+      "(created_at < $2 or (created_at = $2 and id < $3))"
+    );
+    expect(db.lastCall.sql).toContain("order by created_at desc, id desc limit $4");
+    expect(db.lastCall.params).toEqual(["usr_1", createdAt, "evt_cursor", 51]);
   });
 
   it("deletes audit events before a cutoff with parameterized SQL", async () => {

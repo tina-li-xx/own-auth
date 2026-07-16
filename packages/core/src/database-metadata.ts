@@ -7,7 +7,8 @@ export const coreMigrationFiles = [
   "006_passkeys.sql",
   "007_plugin_migrations.sql",
   "008_webhooks.sql",
-  "009_custom_authorization.sql"
+  "009_custom_authorization.sql",
+  "010_administration.sql"
 ] as const;
 
 export const initialMigration = coreMigrationFiles[0];

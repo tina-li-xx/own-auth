@@ -171,6 +171,13 @@
           "source": "docs/security/audit-logs.md"
         },
         {
+          "title": "Administration",
+          "description": "Add application-authorized support operations for user lookup, session review and revocation, audit history, and account access controls.",
+          "href": "/docs/administration",
+          "slug": ["administration"],
+          "source": "docs/administration.md"
+        },
+        {
           "title": "Security Model",
           "description": "How Own Auth protects an authentication system. This page covers the security decisions built into the library, including what is hashed, what expires, what is rate-limited, and what remains the application's responsibility.",
           "href": "/docs/security-model",

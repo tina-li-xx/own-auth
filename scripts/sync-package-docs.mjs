@@ -79,11 +79,13 @@ for (const target of listFiles("packages/core/docs")) {
 function publicApiSnapshot() {
   const index = sourceFile("packages/core/src/index.ts");
   const authEngine = sourceFile("packages/core/src/auth-engine.ts");
+  const administration = sourceFile("packages/core/src/auth-engine-administration.ts");
   const options = sourceFile("packages/core/src/auth-engine-options.ts");
   const errors = sourceFile("packages/core/src/errors.ts");
   const exportedValues = [];
   const exportedTypes = [];
   const methods = [];
+  const administrationMethods = [];
   const optionNames = [];
   const errorCodes = [];
 
@@ -123,6 +125,20 @@ function publicApiSnapshot() {
     }
   }
 
+  for (const statement of administration.statements) {
+    if (
+      !ts.isClassDeclaration(statement) ||
+      statement.name?.text !== "OwnAuthAdministration"
+    ) {
+      continue;
+    }
+    for (const member of statement.members) {
+      if (ts.isMethodDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+        administrationMethods.push(member.name.text);
+      }
+    }
+  }
+
   for (const statement of options.statements) {
     if (!ts.isInterfaceDeclaration(statement) || statement.name.text !== "OwnAuthOptions") {
       continue;
@@ -152,6 +168,7 @@ function publicApiSnapshot() {
     errorCodes: errorCodes.sort(),
     exports: exportedValues.sort(),
     methods: methods.sort(),
+    namespaces: { admin: administrationMethods.sort() },
     options: optionNames.sort(),
     typeExports: exportedTypes.sort()
   };

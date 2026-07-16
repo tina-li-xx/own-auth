@@ -14,7 +14,7 @@ import type {
   VerifiedApiKey
 } from "./types.js";
 import type { RateLimitStore } from "./rate-limit.js";
-import { createAuthEngineContext, type AuthEngineContext } from "./auth-engine-internals.js";
+import { createAuthEngineContext, requestContextFrom, type AuthEngineContext } from "./auth-engine-internals.js";
 import * as apiKeys from "./auth-engine-api-keys.js";
 import * as auditEvents from "./auth-engine-audit.js";
 import * as email from "./auth-engine-email.js";
@@ -31,6 +31,7 @@ import * as sessions from "./auth-engine-sessions.js";
 import * as sms from "./auth-engine-sms.js";
 import * as users from "./auth-engine-users.js";
 import * as webhookOperations from "./auth-engine-webhooks.js";
+import { OwnAuthAdministration } from "./auth-engine-administration.js";
 import { OwnAuthPluginRuntime, type RegisteredPluginEndpoint } from "./plugin-runtime.js";
 import type { CallOwnAuthPluginMethodOptions, OwnAuthPluginDefinition } from "./plugin-types.js";
 import type {
@@ -104,7 +105,6 @@ import type {
   VerifySmsOtpInput,
   VerifyTokenInput
 } from "./auth-engine-types.js";
-import { isRecord } from "./value-guards.js";
 import { createAuthClosedError } from "./errors.js";
 import { traceAuthOperation, tracePluginOperation } from "./telemetry.js";
 import type {
@@ -121,6 +121,7 @@ export type { OwnAuthOptions } from "./auth-engine-types.js";
 export class OwnAuth<CustomRole extends string = never, CustomPermission extends string = never> {
   readonly storage: AuthStorage;
   readonly rateLimitStore: RateLimitStore;
+  readonly admin: OwnAuthAdministration;
   private readonly ctx: AuthEngineContext;
   private readonly pluginRuntime: OwnAuthPluginRuntime;
   private closed = false;
@@ -137,10 +138,14 @@ export class OwnAuth<CustomRole extends string = never, CustomPermission extends
       () => this as unknown as OwnAuth<string, string>,
       options.pluginRuntime
     );
+    this.admin = new OwnAuthAdministration(this.ctx, (operation, input, work) =>
+      this.executeCore(operation, input, work));
   }
 
   get plugins(): readonly OwnAuthPluginDefinition[] { return this.pluginRuntime.definitions; }
   get pluginContractFingerprint(): string { return this.pluginRuntime.fingerprint; }
+  /** @internal Used by createOwnAuthHandler. */
+  isAdministrationConfigured(): boolean { return this.ctx.administration !== null; }
   /** @internal Used by createOwnAuthHandler. */
   findPluginEndpoint(path: string, method: string): RegisteredPluginEndpoint | null {
     return this.pluginRuntime.findEndpoint(path, method);
@@ -490,10 +495,4 @@ export class OwnAuth<CustomRole extends string = never, CustomPermission extends
     this.closePromise = this.ctx.closePersistence();
     return this.closePromise;
   }
-}
-
-function requestContextFrom(input: unknown): RequestContext {
-  return isRecord(input) && isRecord(input.request)
-    ? input.request as RequestContext
-    : {};
 }

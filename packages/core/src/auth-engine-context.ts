@@ -30,6 +30,10 @@ import {
   createAuthorizationRegistry,
   type AuthorizationRegistry
 } from "./authorization.js";
+import {
+  isAdministrationCapableStorage,
+  type AdministrationOptions
+} from "./administration.js";
 
 export interface AuthEngineContext {
   storage: AuthStorage;
@@ -59,6 +63,7 @@ export interface AuthEngineContext {
   passkeys: Required<PasskeyOptions> | null;
   webhooks: WebhookRuntimeConfig | null;
   webhookStorage: WebhookStorage | null;
+  administration: Readonly<AdministrationOptions> | null;
   authorization: AuthorizationRegistry;
   closePersistence(): Promise<void>;
 }
@@ -87,6 +92,13 @@ export function createAuthEngineContext(options: OwnAuthOptions = {}): AuthEngin
     throw new Error("OAuth offline access requires encryption configuration");
   }
   const mfa = normalizeMfaOptions(options.mfa);
+  const administration = normalizeAdministrationOptions(options.administration);
+  if (administration && !isAdministrationCapableStorage(persistence.storage)) {
+    throw new Error(
+      "Administration requires storage that supports AdministrationCapableStorage. " +
+      "The configured storage adapter does not implement listUsers()."
+    );
+  }
 
   return {
     storage: persistence.storage,
@@ -116,9 +128,20 @@ export function createAuthEngineContext(options: OwnAuthOptions = {}): AuthEngin
     passkeys: normalizePasskeyOptions(options.passkeys),
     webhooks,
     webhookStorage,
+    administration,
     authorization: createAuthorizationRegistry(options.authorization),
     closePersistence: persistence.close
   };
+}
+
+function normalizeAdministrationOptions(
+  options: AdministrationOptions | undefined
+): Readonly<AdministrationOptions> | null {
+  if (!options) return null;
+  if (typeof options.authorize !== "function") {
+    throw new Error("administration.authorize must be a function");
+  }
+  return Object.freeze({ authorize: options.authorize });
 }
 
 function normalizeMfaOptions(options: OwnAuthOptions["mfa"]): {

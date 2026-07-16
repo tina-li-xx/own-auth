@@ -201,6 +201,26 @@ The factory preserves these literal role and permission names in TypeScript. Eve
 
 See [Roles](/docs/organisations/roles) for identifier rules, owner protections, and migration guidance.
 
+### Administration
+
+Administration is disabled unless `administration.authorize` is configured. The callback connects Own Auth to the application's system-level staff or support permissions.
+
+```ts
+const auth = createOwnAuth({
+  tokenPepper: process.env.OWN_AUTH_TOKEN_PEPPER,
+  administration: {
+    authorize: ({ actor, action, targetUserId }) =>
+      canUseAuthAdministration({
+        actorUserId: actor.id,
+        action,
+        targetUserId,
+      }),
+  },
+});
+```
+
+Organisation roles do not grant system administration access. Returning `false`, throwing, or rejecting denies the operation. See [Administration](/docs/administration) for actions, methods, HTTP routes, audit behavior, and rate limits.
+
 ### Email
 
 Configure `emailProvider` to send auth emails using any email service. This is not needed if you use Own Auth Delivery.

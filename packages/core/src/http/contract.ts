@@ -3,6 +3,9 @@ import {
   nullableStringSchema,
   objectSchema,
   openObjectSchema,
+  publicAdministrationAuditEventSchema,
+  publicAdministrationSessionSchema,
+  publicAdministrationUserSchema,
   publicAuthUserSchema,
   publicPasskeySchema,
   signInSchema,
@@ -84,6 +87,28 @@ const mfaErrors = [
   "mfa_timestep_reused",
   "rate_limited"
 ] as const;
+const administrationErrors = [
+  "invalid_session",
+  "permission_denied",
+  "user_not_found",
+  "rate_limited",
+  "validation_error"
+] as const;
+const administrationUserIdSchema = objectSchema(
+  { userId: stringSchema() },
+  ["userId"]
+);
+const administrationMutationSchema = objectSchema(
+  {
+    userId: stringSchema(),
+    reason: stringSchema()
+  },
+  ["userId", "reason"]
+);
+const administrationUserResponseSchema = objectSchema(
+  { user: publicAdministrationUserSchema },
+  ["user"]
+);
 
 type OwnAuthEndpointSpec = Omit<OwnAuthEndpointDefinition, "id">;
 type OwnAuthEndpointSpecMap = { readonly [Id in OwnAuthEndpointId]: OwnAuthEndpointSpec };
@@ -254,7 +279,81 @@ const ownAuthEndpointSpecs = {
   revokePasskey: endpoint("POST", "/passkeys/revoke", "Revoke a passkey", {
     request: objectSchema({ passkeyId: stringSchema() }, ["passkeyId"]), response: successSchema,
     errors: ["invalid_session", "passkey_not_found", "authentication_method_required"], session: "required"
-  })
+  }),
+  adminListUsers: administrationEndpoint("GET", "/admin/users", "List users for administration", {
+    request: objectSchema({
+      query: stringSchema(),
+      status: { type: "string", enum: ["active", "disabled", "all"] },
+      cursor: stringSchema(),
+      limit: stringSchema()
+    }),
+    requestTransport: "query",
+    response: objectSchema(
+      {
+        users: { type: "array", items: publicAdministrationUserSchema },
+        nextCursor: nullableStringSchema
+      },
+      ["users", "nextCursor"]
+    )
+  }),
+  adminGetUser: administrationEndpoint("GET", "/admin/user", "Get a user for administration", {
+    request: administrationUserIdSchema,
+    requestTransport: "query",
+    response: administrationUserResponseSchema
+  }),
+  adminListUserSessions: administrationEndpoint(
+    "GET",
+    "/admin/user/sessions",
+    "List a user's sessions for administration",
+    {
+      request: administrationUserIdSchema,
+      requestTransport: "query",
+      response: objectSchema(
+        { sessions: { type: "array", items: publicAdministrationSessionSchema } },
+        ["sessions"]
+      )
+    }
+  ),
+  adminListUserAuditEvents: administrationEndpoint(
+    "GET",
+    "/admin/user/audit-events",
+    "List a user's audit events for administration",
+    {
+      request: objectSchema(
+        {
+          userId: stringSchema(),
+          cursor: stringSchema(),
+          limit: stringSchema()
+        },
+        ["userId"]
+      ),
+      requestTransport: "query",
+      response: objectSchema(
+        {
+          events: { type: "array", items: publicAdministrationAuditEventSchema },
+          nextCursor: nullableStringSchema
+        },
+        ["events", "nextCursor"]
+      )
+    }
+  ),
+  adminDisableUser: administrationEndpoint("POST", "/admin/user/disable", "Disable a user", {
+    request: administrationMutationSchema,
+    response: administrationUserResponseSchema
+  }),
+  adminEnableUser: administrationEndpoint("POST", "/admin/user/enable", "Enable a user", {
+    request: administrationMutationSchema,
+    response: administrationUserResponseSchema
+  }),
+  adminRevokeUserSessions: administrationEndpoint(
+    "POST",
+    "/admin/user/sessions/revoke",
+    "Revoke all sessions for a user",
+    {
+      request: administrationMutationSchema,
+      response: objectSchema({ revoked: { type: "integer" } }, ["revoked"])
+    }
+  )
 } satisfies OwnAuthEndpointSpecMap;
 
 const ownAuthEndpointMap = cloneAndDeepFreeze(Object.fromEntries(
@@ -286,6 +385,23 @@ function endpoint(
   rest: Omit<OwnAuthEndpointDefinition, "id" | "method" | "path" | "summary">
 ): OwnAuthEndpointSpec {
   return { method, path, summary, ...rest };
+}
+
+function administrationEndpoint(
+  method: "GET" | "POST",
+  path: string,
+  summary: string,
+  rest: Omit<
+    OwnAuthEndpointDefinition,
+    "id" | "method" | "path" | "summary" | "errors" | "session" | "feature"
+  >
+): OwnAuthEndpointSpec {
+  return endpoint(method, path, summary, {
+    ...rest,
+    errors: administrationErrors,
+    session: "required",
+    feature: "administration"
+  });
 }
 
 function oauthCallback(

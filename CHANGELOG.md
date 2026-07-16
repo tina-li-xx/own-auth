@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Optional application-authorized administration methods under `auth.admin` for user lookup, session and audit review, account disabling and enabling, and full user-session revocation.
+- Feature-gated administration HTTP routes and opt-in OpenAPI operations. Routes return `404` when administration is not configured.
+- Migration `010_administration` adds cursor-query indexes for Postgres and Cloudflare D1 without adding database-owned administrator roles.
+- Custom storage adapters opt into administration through `AdministrationCapableStorage`; adapters that do not use administration keep the existing `AuthStorage` contract.
+
+### Security
+
+- Every administration operation requires an active actor, passes the configured authorization callback, and shares a 120-request-per-minute limit per actor.
+- Administration responses exclude password hashes, session token hashes, and raw tokens. Free-text mutation reasons remain in audit logs but are excluded from webhook payloads.
+- Administration pagination cursors are signed and contain only response-visible creation timestamps and record IDs.
+
 ## 0.3.0
 
 ### Breaking changes

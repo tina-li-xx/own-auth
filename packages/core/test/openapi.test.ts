@@ -21,16 +21,30 @@ describe("Own Auth OpenAPI", () => {
       ).length,
       0
     );
-    expect(operationCount).toBe(ownAuthEndpointContract.length);
+    const publicEndpoints = ownAuthEndpointContract.filter(
+      ({ feature }) => feature !== "administration"
+    );
+    expect(operationCount).toBe(publicEndpoints.length);
     expect(document.servers).toEqual([{ url: "https://api.example.com" }]);
 
-    for (const endpoint of ownAuthEndpointContract) {
+    for (const endpoint of publicEndpoints) {
       const operation = document.paths[`/auth${endpoint.path}`]?.[
         endpoint.method.toLowerCase()
       ] as Record<string, unknown> | undefined;
       expect(operation?.operationId).toBe(endpoint.id);
       expect(operation?.["x-own-auth-errors"]).toEqual(endpoint.errors);
     }
+  });
+
+  it("includes administration operations only when explicitly requested", () => {
+    const core = createOwnAuthOpenApiDocument();
+    const configured = createOwnAuthOpenApiDocument({ includeAdministration: true });
+
+    expect(core.paths).not.toHaveProperty("/api/auth/admin/users");
+    expect(configured.paths["/api/auth/admin/users"]?.get).toMatchObject({
+      operationId: "adminListUsers",
+      security: [{ sessionCookie: [] }, { bearerSession: [] }]
+    });
   });
 
   it("keeps Apple GET and form-post callbacks as separate operations", () => {

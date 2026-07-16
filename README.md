@@ -667,6 +667,8 @@ createOwnAuth({
 
 OAuth providers, the shared encryption key ring, TOTP, passkeys, plugins, and webhooks are documented in the [Configuration guide](./docs/configuration.md).
 
+Privileged support workflows are available through the optional, application-authorized [`auth.admin` namespace](./docs/administration.md).
+
 For long-running servers, close Own Auth during graceful shutdown:
 
 ```ts
@@ -743,6 +745,7 @@ See [Observability](./docs/observability.md) for span hierarchy, metric names, a
 | **Members & Invites** | `getMember` `listMembers` `inviteMember` `acceptInvite` `revokeInvitation` `listInvitations` `changeMemberRole` `removeMember` |
 | **Permissions** | `checkPermission` `requirePermission` |
 | **Audit Logs** | `listAuditEvents` `cleanupAuditLogs` |
+| **Administration** | `auth.admin.listUsers` `auth.admin.getUser` `auth.admin.listUserSessions` `auth.admin.listUserAuditEvents` `auth.admin.disableUser` `auth.admin.enableUser` `auth.admin.revokeUserSessions` |
 | **Webhooks** | `processWebhookDeliveries` `listWebhookDeliveries` `retryWebhookDelivery` `cleanupWebhookDeliveries` |
 | **Plugins** | `callPluginMethod` plus methods and endpoints declared by configured plugins |
 | **Lifecycle** | `close` |
@@ -775,6 +778,7 @@ issue for an undisclosed vulnerability.
 - [Cloudflare D1](./docs/cloudflare-d1.md)
 - [Webhooks](./docs/webhooks.md)
 - [Observability](./docs/observability.md)
+- [Administration](./docs/administration.md)
 - [Next.js](./docs/frameworks/nextjs.md)
 - [Express](./docs/frameworks/express.md)
 - [Hono](./docs/frameworks/hono.md)

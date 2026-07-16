@@ -2,7 +2,10 @@ export {
   getOwnAuthEndpoint,
   ownAuthEndpointContract,
   publicAuthSessionSchema,
-  publicAuthUserSchema
+  publicAuthUserSchema,
+  publicAdministrationAuditEventSchema,
+  publicAdministrationSessionSchema,
+  publicAdministrationUserSchema
 } from "./contract.js";
 export type {
   AuthSessionPayload,
@@ -18,6 +21,9 @@ export type {
   OwnAuthHttpMethod,
   PublicAuthSession,
   PublicAuthUser,
+  PublicAdministrationAuditEvent,
+  PublicAdministrationSession,
+  PublicAdministrationUser,
   PublicOrganisation,
   PublicOrganisationMember,
   PublicPasskey,

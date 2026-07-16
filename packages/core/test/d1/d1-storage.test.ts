@@ -96,6 +96,62 @@ describe("D1 persistence", () => {
     expect(database.calls[0]?.values).toContain(user.createdAt.getTime());
   });
 
+  it("lists users with literal prefix search, status, cursor, and limit bindings", async () => {
+    const database = new RecordingD1();
+    const storage = new D1AuthStorage(database);
+    const createdAt = new Date("2026-07-15T12:00:00.000Z");
+    database.queue([userRow()]);
+
+    const users = await storage.listUsers({
+      query: "Ali%",
+      status: "disabled",
+      cursor: { createdAt, id: "usr_cursor" },
+      limit: 51
+    });
+
+    expect(users).toHaveLength(1);
+    expect(database.calls[0]?.sql).toContain(
+      "lower(substr(coalesce(email, ''), 1, length(?1)))"
+    );
+    expect(database.calls[0]?.sql).not.toContain("like");
+    expect(database.calls[0]?.sql).toContain("disabled_at is not null");
+    expect(database.calls[0]?.sql).toContain(
+      "(created_at < ?2 or (created_at = ?2 and id < ?3))"
+    );
+    expect(database.calls[0]?.sql).toContain("order by created_at desc, id desc limit ?4");
+    expect(database.calls[0]?.values).toEqual([
+      "Ali%",
+      createdAt.getTime(),
+      "usr_cursor",
+      51
+    ]);
+  });
+
+  it("paginates audit events with a deterministic cursor", async () => {
+    const database = new RecordingD1();
+    const storage = new D1AuthStorage(database);
+    const createdAt = new Date("2026-07-15T12:00:00.000Z");
+    database.queue([auditEventRow()]);
+
+    const events = await storage.listAuditEvents({
+      userId: "usr_1",
+      cursor: { createdAt, id: "evt_cursor" },
+      limit: 51
+    });
+
+    expect(events).toHaveLength(1);
+    expect(database.calls[0]?.sql).toContain(
+      "(created_at < ?2 or (created_at = ?2 and id < ?3))"
+    );
+    expect(database.calls[0]?.sql).toContain("order by created_at desc, id desc limit ?4");
+    expect(database.calls[0]?.values).toEqual([
+      "usr_1",
+      createdAt.getTime(),
+      "evt_cursor",
+      51
+    ]);
+  });
+
   it("consumes a token with one conditional update", async () => {
     const database = new RecordingD1();
     const storage = new D1AuthStorage(database);
@@ -271,6 +327,21 @@ function tokenRow(usedAt: number): Record<string, unknown> {
     expires_at: usedAt + 60_000,
     used_at: usedAt,
     created_at: usedAt - 60_000
+  };
+}
+
+function auditEventRow(): Record<string, unknown> {
+  return {
+    id: "evt_1",
+    event_type: "user.signed_in",
+    actor_user_id: "usr_1",
+    target_user_id: "usr_1",
+    organisation_id: null,
+    api_key_id: null,
+    ip_address: null,
+    user_agent: null,
+    metadata: '{"method":"password"}',
+    created_at: 1_752_580_800_000
   };
 }
 

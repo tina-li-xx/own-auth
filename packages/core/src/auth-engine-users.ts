@@ -5,7 +5,7 @@ import {
   verifyPassword
 } from "./crypto.js";
 import { normalizeEmail, normalizePhone } from "./normalise.js";
-import type { User } from "./types.js";
+import type { RequestContext, User } from "./types.js";
 import {
   minute,
   type ChangePasswordInput,
@@ -194,30 +194,13 @@ async function setUserDisabled(
     );
   }
 
-  const user = await ctx.storage.getUserById(input.userId);
-  if (!user) {
-    throw new AuthError("user_not_found", "User not found", 404);
-  }
-
-  if (Boolean(user.disabledAt) === disabled) {
-    return user;
-  }
-
-  const now = new Date();
-  const updatedUser = await ctx.storage.updateUser(input.userId, {
-    disabledAt: disabled ? now : null,
-    updatedAt: now
+  const result = await setUserDisabledState(ctx, {
+    userId: input.userId,
+    disabled,
+    actorUserId: input.actorUserId,
+    request: input.request
   });
-
-  if (disabled) {
-    await revokeAllSessionsForUser(
-      ctx,
-      input.userId,
-      "user_disabled",
-      input.actorUserId,
-      input.request
-    );
-  }
+  if (!result.changed) return result.user;
 
   await audit(ctx, {
     eventType: disabled ? "user.disabled" : "user.re_enabled",
@@ -226,5 +209,45 @@ async function setUserDisabled(
     context: input.request
   });
 
-  return updatedUser ?? user;
+  return result.user;
+}
+
+interface SetUserDisabledStateInput {
+  userId: string;
+  disabled: boolean;
+  actorUserId: string;
+  request?: RequestContext;
+  sessionRevokeReason?: string;
+}
+
+export async function setUserDisabledState(
+  ctx: AuthEngineContext,
+  input: SetUserDisabledStateInput
+): Promise<{ user: User; changed: boolean }> {
+  const user = await ctx.storage.getUserById(input.userId);
+  if (!user) {
+    throw new AuthError("user_not_found", "User not found", 404);
+  }
+  if (Boolean(user.disabledAt) === input.disabled) {
+    return { user, changed: false };
+  }
+
+  const now = new Date();
+  const updated = await ctx.storage.updateUser(user.id, {
+    disabledAt: input.disabled ? now : null,
+    updatedAt: now
+  });
+  if (!updated) throw new AuthError("user_not_found", "User not found", 404);
+
+  if (input.disabled) {
+    await revokeAllSessionsForUser(
+      ctx,
+      user.id,
+      input.sessionRevokeReason ?? "user_disabled",
+      input.actorUserId,
+      input.request
+    );
+  }
+
+  return { user: updated, changed: true };
 }

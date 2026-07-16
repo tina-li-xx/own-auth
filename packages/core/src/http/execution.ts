@@ -15,6 +15,9 @@ import type {
   SignInPayload
 } from "./contract.js";
 import {
+  serializeAdministrationAuditEvent,
+  serializeAdministrationSession,
+  serializeAdministrationUser,
   serializeAuthSession,
   serializeDelivery,
   serializeMember,
@@ -276,7 +279,73 @@ const endpointExecutors = {
       request
     });
     return { body: { success: true } };
-  }
+  },
+
+  adminListUsers: async (context, input) => {
+    const result = await context.auth.admin.listUsers(await administrationInput(context, {
+      ...input,
+      limit: optionalInteger(input.limit)
+    }));
+    return {
+      body: {
+        users: result.items.map(serializeAdministrationUser),
+        nextCursor: result.nextCursor
+      }
+    };
+  },
+
+  adminGetUser: async (context, input) => ({
+    body: {
+      user: serializeAdministrationUser(
+        await context.auth.admin.getUser(await administrationInput(context, input))
+      )
+    }
+  }),
+
+  adminListUserSessions: async (context, input) => ({
+    body: {
+      sessions: (await context.auth.admin.listUserSessions(
+        await administrationInput(context, input)
+      )).map(serializeAdministrationSession)
+    }
+  }),
+
+  adminListUserAuditEvents: async (context, input) => {
+    const result = await context.auth.admin.listUserAuditEvents(await administrationInput(context, {
+      ...input,
+      limit: optionalInteger(input.limit)
+    }));
+    return {
+      body: {
+        events: result.items.map(serializeAdministrationAuditEvent),
+        nextCursor: result.nextCursor
+      }
+    };
+  },
+
+  adminDisableUser: async (context, input) => ({
+    body: {
+      user: serializeAdministrationUser(
+        await context.auth.admin.disableUser(await administrationInput(context, input))
+      )
+    }
+  }),
+
+  adminEnableUser: async (context, input) => ({
+    body: {
+      user: serializeAdministrationUser(
+        await context.auth.admin.enableUser(await administrationInput(context, input))
+      )
+    }
+  }),
+
+  adminRevokeUserSessions: async (context, input) => ({
+    body: {
+      revoked: await context.auth.admin.revokeUserSessions(
+        await administrationInput(context, input)
+      )
+    }
+  })
 } satisfies EndpointExecutorMap;
 
 export function executeEndpoint<Id extends OwnAuthEndpointId>(
@@ -356,4 +425,18 @@ function requireToken(token: string | null, kind: "session" | "MFA challenge"): 
     throw new AuthError(code, `Invalid or expired ${kind}`, 401);
   }
   return token;
+}
+
+async function administrationInput<Input extends object>(
+  context: EndpointExecutionContext,
+  input: Input
+): Promise<Input & { actorUserId: string; request: RequestContext }> {
+  const current = await context.auth.requireCurrentSession(
+    requireToken(context.sessionToken, "session")
+  );
+  return { ...input, actorUserId: current.user.id, request: context.request };
+}
+
+function optionalInteger(value: string | undefined): number | undefined {
+  return value === undefined ? undefined : Number(value);
 }

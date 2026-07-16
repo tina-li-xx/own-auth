@@ -84,3 +84,59 @@ export const publicPasskeySchema = objectSchema(
   },
   ["id", "name", "discoverable", "deviceType", "backedUp", "createdAt", "lastUsedAt"]
 );
+
+export const publicAdministrationUserSchema = objectSchema(
+  {
+    ...(publicAuthUserSchema.properties as Record<string, JsonSchema>),
+    disabledAt: nullableStringSchema
+  },
+  [
+    ...(publicAuthUserSchema.required as string[]),
+    "disabledAt"
+  ]
+);
+
+export const publicAdministrationSessionSchema = objectSchema(
+  {
+    ...(publicAuthSessionSchema.properties as Record<string, JsonSchema>),
+    revokedAt: nullableStringSchema,
+    revokeReason: nullableStringSchema,
+    effectiveStatus: {
+      type: "string",
+      enum: ["active", "disabled_user", "expired", "revoked"]
+    }
+  },
+  [
+    ...(publicAuthSessionSchema.required as string[]),
+    "revokedAt",
+    "revokeReason",
+    "effectiveStatus"
+  ]
+);
+
+export const publicAdministrationAuditEventSchema = objectSchema(
+  {
+    id: stringSchema(),
+    eventType: stringSchema(),
+    actorUserId: nullableStringSchema,
+    targetUserId: nullableStringSchema,
+    organisationId: nullableStringSchema,
+    apiKeyId: nullableStringSchema,
+    ipAddress: nullableStringSchema,
+    userAgent: nullableStringSchema,
+    metadata: openObjectSchema,
+    createdAt: stringSchema("date-time")
+  },
+  [
+    "id",
+    "eventType",
+    "actorUserId",
+    "targetUserId",
+    "organisationId",
+    "apiKeyId",
+    "ipAddress",
+    "userAgent",
+    "metadata",
+    "createdAt"
+  ]
+);

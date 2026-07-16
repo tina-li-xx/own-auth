@@ -11,7 +11,11 @@ import type {
   TokenType,
   User
 } from "../types.js";
-import type { AuditEventFilter, AuthStorage } from "../storage.js";
+import type { AuditEventFilter, AuthStorage, ListUsersFilter } from "../storage.js";
+import {
+  buildAuditEventListQuery,
+  buildUserListQuery
+} from "../database-administration-queries.js";
 import {
   mapAccount,
   mapApiKey,
@@ -86,6 +90,12 @@ export class PostgresAuthStorage extends PostgresIdentityStorage implements Auth
   async getUserByPhone(phone: string): Promise<User | null> {
     const row = await this.selectOne(`${userReturning} from own_auth_users where phone = $1`, [phone]);
     return row ? mapUser(row) : null;
+  }
+
+  async listUsers(filter?: ListUsersFilter): Promise<User[]> {
+    const query = buildUserListQuery(userReturning, filter, "postgres");
+    const rows = await this.selectMany(query.sql, query.params);
+    return rows.map(mapUser);
   }
 
   async createAccount(account: Account): Promise<Account> {
@@ -434,29 +444,8 @@ export class PostgresAuthStorage extends PostgresIdentityStorage implements Auth
   }
 
   async listAuditEvents(filter?: AuditEventFilter): Promise<AuditEvent[]> {
-    const clauses: string[] = [];
-    const params: unknown[] = [];
-
-    if (filter?.userId) {
-      params.push(filter.userId);
-      clauses.push(`(actor_user_id = $${params.length} or target_user_id = $${params.length})`);
-    }
-
-    if (filter?.organisationId) {
-      params.push(filter.organisationId);
-      clauses.push(`organisation_id = $${params.length}`);
-    }
-
-    if (filter?.apiKeyId) {
-      params.push(filter.apiKeyId);
-      clauses.push(`api_key_id = $${params.length}`);
-    }
-
-    const where = clauses.length > 0 ? ` where ${clauses.join(" and ")}` : "";
-    const rows = await this.selectMany(
-      `${auditEventReturning} from own_auth_audit_events${where} order by created_at desc`,
-      params
-    );
+    const query = buildAuditEventListQuery(auditEventReturning, filter, "postgres");
+    const rows = await this.selectMany(query.sql, query.params);
     return rows.map(mapAuditEvent);
   }
 

@@ -23,7 +23,7 @@ const publicDocs = [...publicDocSources].map((source) =>
 );
 const publicApi = JSON.parse(
   readFileSync(new URL("etc/own-auth.api.json", repositoryRoot), "utf8")
-) as { methods: string[] };
+) as { methods: string[]; namespaces?: Record<string, string[]> };
 const privateReportingUrl =
   "https://github.com/own-auth/own-auth/security/advisories/new";
 const securityPolicy = readFileSync(
@@ -88,6 +88,15 @@ describe("README contract", () => {
         documented.includes(method),
         `Public Own Auth method is missing from the documentation: ${method}`
       ).toBe(true);
+    }
+
+    for (const [namespace, methods] of Object.entries(publicApi.namespaces ?? {})) {
+      for (const method of methods) {
+        expect(
+          documented.includes(`auth.${namespace}.${method}`),
+          `Public Own Auth method is missing from the documentation: auth.${namespace}.${method}`
+        ).toBe(true);
+      }
     }
   });
 });

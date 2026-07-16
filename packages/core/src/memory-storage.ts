@@ -1,4 +1,9 @@
-import type { AuditEventFilter, AuthStorage } from "./storage.js";
+import type {
+  AuditEventFilter,
+  AuthStorage,
+  ListUsersFilter,
+  StoragePageCursor
+} from "./storage.js";
 import { MemoryIdentityStorage } from "./memory-identity-storage.js";
 import {
   cloneStored as clone,
@@ -60,6 +65,27 @@ export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthSt
 
   async getUserByPhone(phone: string): Promise<User | null> {
     return findStored(this.users, (user) => user.phone === phone);
+  }
+
+  async listUsers(filter?: ListUsersFilter): Promise<User[]> {
+    const query = filter?.query?.toLowerCase();
+    const status = filter?.status ?? "all";
+    const users = [...this.users.values()]
+      .filter((user) => {
+        if (status === "active" && user.disabledAt) return false;
+        if (status === "disabled" && !user.disabledAt) return false;
+        if (
+          query &&
+          !user.email?.toLowerCase().startsWith(query) &&
+          !user.name?.toLowerCase().startsWith(query)
+        ) {
+          return false;
+        }
+        return isBeforeCursor(user, filter?.cursor);
+      })
+      .sort(compareNewestFirst);
+    return take(users, filter?.limit)
+      .map((user) => clone(user));
   }
 
   async createUserAndAccount(user: User, account: Account): Promise<Account> {
@@ -371,7 +397,7 @@ export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthSt
   }
 
   async listAuditEvents(filter?: AuditEventFilter): Promise<AuditEvent[]> {
-    return [...this.auditEvents.values()]
+    const events = [...this.auditEvents.values()]
       .filter((event) => {
         if (filter?.userId && event.actorUserId !== filter.userId && event.targetUserId !== filter.userId) {
           return false;
@@ -387,7 +413,9 @@ export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthSt
 
         return true;
       })
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .filter((event) => isBeforeCursor(event, filter?.cursor))
+      .sort(compareNewestFirst);
+    return take(events, filter?.limit)
       .map((event) => clone(event));
   }
 
@@ -403,4 +431,25 @@ export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthSt
 
     return deleted;
   }
+}
+
+function compareNewestFirst(
+  left: { createdAt: Date; id: string },
+  right: { createdAt: Date; id: string }
+): number {
+  return right.createdAt.getTime() - left.createdAt.getTime() ||
+    right.id.localeCompare(left.id);
+}
+
+function take<Value>(values: Value[], limit: number | undefined): Value[] {
+  return limit === undefined ? values : values.slice(0, limit);
+}
+
+function isBeforeCursor(
+  value: { createdAt: Date; id: string },
+  cursor: StoragePageCursor | undefined
+): boolean {
+  if (!cursor) return true;
+  const timeDifference = value.createdAt.getTime() - cursor.createdAt.getTime();
+  return timeDifference < 0 || (timeDifference === 0 && value.id < cursor.id);
 }

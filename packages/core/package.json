@@ -89,6 +89,7 @@
     "./migrations/007_plugin_migrations.sql": "./migrations/007_plugin_migrations.sql",
     "./migrations/008_webhooks.sql": "./migrations/008_webhooks.sql",
     "./migrations/009_custom_authorization.sql": "./migrations/009_custom_authorization.sql",
+    "./migrations/010_administration.sql": "./migrations/010_administration.sql",
     "./migrations/d1/*.sql": "./migrations/d1/*.sql",
     "./docs/installation.md": "./docs/installation.md",
     "./docs/cloudflare-d1.md": "./docs/cloudflare-d1.md",

@@ -49,6 +49,7 @@ const storageMethods = new Set([
   "incrementSmsOtpAttempts",
   "listAccountsByUserId",
   "listOrganisationMembers",
+  "listUsers",
   "listSessionsByUserId",
   "replaceRecoveryCodes",
   "rotateOAuthCredential",
@@ -66,7 +67,8 @@ const expectedMigrations = [
   "006_passkeys",
   "007_plugin_migrations",
   "008_webhooks",
-  "009_custom_authorization"
+  "009_custom_authorization",
+  "010_administration"
 ];
 
 const expectedTables = [

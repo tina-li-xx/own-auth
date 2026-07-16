@@ -25,6 +25,20 @@ export interface AuditEventFilter {
   userId?: string;
   organisationId?: string;
   apiKeyId?: string;
+  cursor?: StoragePageCursor;
+  limit?: number;
+}
+
+export interface StoragePageCursor {
+  createdAt: Date;
+  id: string;
+}
+
+export interface ListUsersFilter {
+  query?: string;
+  status?: "active" | "disabled" | "all";
+  cursor?: StoragePageCursor;
+  limit?: number;
 }
 
 export interface AuthStorage {
@@ -33,6 +47,7 @@ export interface AuthStorage {
   getUserById(id: string): Promise<User | null>;
   getUserByEmail(email: string): Promise<User | null>;
   getUserByPhone(phone: string): Promise<User | null>;
+  listUsers?(filter?: ListUsersFilter): Promise<User[]>;
 
   createAccount(account: Account): Promise<Account>;
   createUserAndAccount(user: User, account: Account): Promise<Account>;

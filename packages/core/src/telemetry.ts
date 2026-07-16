@@ -58,6 +58,7 @@ const smsDeliveryTypes = new Set([
   "phone_verification"
 ]);
 const rateLimitBuckets = new Set([
+  "administration",
   "api-key-create",
   "change-password",
   "email-verification",

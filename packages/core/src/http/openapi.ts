@@ -15,6 +15,7 @@ export interface OwnAuthOpenApiOptions {
   serverUrl?: string;
   sessionCookieName?: string;
   mfaCookieName?: string;
+  includeAdministration?: boolean;
 }
 
 export interface OwnAuthOpenApiDocument {
@@ -79,6 +80,9 @@ export function createOwnAuthOpenApiDocument(
   }
 
   for (const endpoint of ownAuthEndpointContract) {
+    if (endpoint.feature === "administration" && !options.includeAdministration) {
+      continue;
+    }
     const path = `${basePath}${endpoint.path}`;
     const pathItem = document.paths[path] ?? {};
     pathItem[endpoint.method.toLowerCase()] = operationFor(endpoint);

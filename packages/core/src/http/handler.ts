@@ -53,7 +53,9 @@ export function createOwnAuthHandler(
     const routePath = getOwnAuthRoutePath(requestUrl.pathname, basePath);
     if (!routePath) return errorResponse("not_found", "Auth endpoint not found", 404);
 
-    const candidates = getOwnAuthEndpointsForPath(routePath);
+    const candidates = getOwnAuthEndpointsForPath(routePath).filter(
+      (candidate) => endpointIsEnabled(auth, candidate.feature)
+    );
     const endpoint = candidates.find((candidate) => candidate.method === request.method);
     const pluginEndpoint = endpoint ? null : auth.findPluginEndpoint(routePath, request.method);
     if (!endpoint) {
@@ -129,6 +131,13 @@ export function createOwnAuthHandler(
       }
     );
   };
+}
+
+function endpointIsEnabled(
+  auth: OwnAuth<string, string>,
+  feature: "administration" | undefined
+): boolean {
+  return feature !== "administration" || auth.isAdministrationConfigured();
 }
 
 async function handlePluginEndpoint(
