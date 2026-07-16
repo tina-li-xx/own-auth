@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.3.2
+
+### Documentation
+
+- The opening description now explains Own Auth without listing database adapters.
+
 ## 0.3.1
 
 ### Added
