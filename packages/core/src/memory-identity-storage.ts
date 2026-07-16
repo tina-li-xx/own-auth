@@ -7,7 +7,11 @@ import type {
   TotpFactor,
   WebAuthnChallenge
 } from "./identity-types.js";
-import { cloneStored, updateStoredEntity } from "./memory-storage-helpers.js";
+import {
+  cloneStored,
+  findStored,
+  updateStoredEntity
+} from "./memory-storage-helpers.js";
 import type { Account } from "./types.js";
 
 export class MemoryIdentityStorage {
@@ -29,11 +33,11 @@ export class MemoryIdentityStorage {
     provider: string,
     providerAccountId: string
   ): Promise<Account | null> {
-    const account = [...this.accounts.values()].find(
-      (candidate) =>
-        candidate.provider === provider && candidate.providerAccountId === providerAccountId
+    return findStored(
+      this.accounts,
+      (account) =>
+        account.provider === provider && account.providerAccountId === providerAccountId
     );
-    return account ? cloneStored(account) : null;
   }
 
   async listAccountsByUserId(userId: string): Promise<Account[]> {
@@ -77,10 +81,10 @@ export class MemoryIdentityStorage {
   }
 
   async getOAuthCredentialByAccountId(accountId: string): Promise<OAuthCredential | null> {
-    const credential = [...this.oauthCredentials.values()].find(
-      (candidate) => candidate.accountId === accountId
+    return findStored(
+      this.oauthCredentials,
+      (credential) => credential.accountId === accountId
     );
-    return credential ? cloneStored(credential) : null;
   }
 
   async upsertOAuthCredential(credential: OAuthCredential): Promise<OAuthCredential> {
@@ -122,10 +126,10 @@ export class MemoryIdentityStorage {
   }
 
   async getActiveTotpFactorByUserId(userId: string): Promise<TotpFactor | null> {
-    const factor = [...this.totpFactors.values()].find(
-      (candidate) => candidate.userId === userId && candidate.status === "active"
+    return findStored(
+      this.totpFactors,
+      (factor) => factor.userId === userId && factor.status === "active"
     );
-    return factor ? cloneStored(factor) : null;
   }
 
   async updateTotpFactor(id: string, patch: Partial<TotpFactor>): Promise<TotpFactor | null> {
@@ -203,10 +207,10 @@ export class MemoryIdentityStorage {
   }
 
   async getMfaChallengeByTokenHash(tokenHash: string): Promise<MfaChallenge | null> {
-    const challenge = [...this.mfaChallenges.values()].find(
-      (candidate) => candidate.tokenHash === tokenHash
+    return findStored(
+      this.mfaChallenges,
+      (challenge) => challenge.tokenHash === tokenHash
     );
-    return challenge ? cloneStored(challenge) : null;
   }
 
   async incrementMfaChallengeAttempts(
@@ -242,10 +246,10 @@ export class MemoryIdentityStorage {
   async getPasskeyCredentialByCredentialId(
     credentialId: string
   ): Promise<PasskeyCredential | null> {
-    const credential = [...this.passkeys.values()].find(
-      (candidate) => candidate.credentialId === credentialId
+    return findStored(
+      this.passkeys,
+      (credential) => credential.credentialId === credentialId
     );
-    return credential ? cloneStored(credential) : null;
   }
 
   async listPasskeyCredentialsByUserId(userId: string): Promise<PasskeyCredential[]> {

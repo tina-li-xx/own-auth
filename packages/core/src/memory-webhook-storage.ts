@@ -39,7 +39,7 @@ export class MemoryWebhookStorage implements WebhookStorage {
     this.auditEvents.set(auditEvent.id, clone(auditEvent));
     this.events.set(webhookEvent.id, clone(webhookEvent));
     for (const delivery of deliveries) {
-      this.deliveries.set(delivery.id, deliveryFromSeed(delivery, webhookEvent.id));
+      this.deliveries.set(delivery.id, clone(deliveryFromSeed(delivery, webhookEvent.id)));
     }
   }
 

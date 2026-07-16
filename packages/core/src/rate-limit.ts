@@ -31,7 +31,11 @@ export class InMemoryRateLimitStore implements RateLimitStore {
         resetAt: new Date(now + windowMs)
       };
       this.buckets.set(key, bucket);
-      return { ...bucket, allowed: true };
+      return {
+        ...bucket,
+        resetAt: new Date(bucket.resetAt.getTime()),
+        allowed: true
+      };
     }
 
     existing.count += 1;
@@ -39,7 +43,7 @@ export class InMemoryRateLimitStore implements RateLimitStore {
 
     return {
       count: existing.count,
-      resetAt: existing.resetAt,
+      resetAt: new Date(existing.resetAt.getTime()),
       allowed: existing.count <= limit
     };
   }

@@ -64,6 +64,18 @@ describe("InMemoryRateLimitStore", () => {
     expect(r.resetAt.getTime()).toBeGreaterThan(Date.now());
   });
 
+  it("does not expose the stored reset timestamp to callers", async () => {
+    const store = new InMemoryRateLimitStore();
+    const first = await store.hit("key", 60_000, 5);
+    const storedResetAt = first.resetAt.getTime();
+
+    first.resetAt.setTime(0);
+    const second = await store.hit("key", 60_000, 5);
+
+    expect(second.count).toBe(2);
+    expect(second.resetAt.getTime()).toBe(storedResetAt);
+  });
+
   it("counts concurrent hits without dropping increments", async () => {
     const store = new InMemoryRateLimitStore();
     const results = await Promise.all(

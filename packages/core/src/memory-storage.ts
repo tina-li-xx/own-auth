@@ -1,6 +1,10 @@
 import type { AuthStorage } from "./storage.js";
 import { MemoryIdentityStorage } from "./memory-identity-storage.js";
-import { cloneStored as clone, updateStoredEntity } from "./memory-storage-helpers.js";
+import {
+  cloneStored as clone,
+  findStored,
+  updateStoredEntity
+} from "./memory-storage-helpers.js";
 import type {
   Account,
   ApiKey,
@@ -51,23 +55,11 @@ export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthSt
   }
 
   async getUserByEmail(email: string): Promise<User | null> {
-    for (const user of this.users.values()) {
-      if (user.email === email) {
-        return clone(user);
-      }
-    }
-
-    return null;
+    return findStored(this.users, (user) => user.email === email);
   }
 
   async getUserByPhone(phone: string): Promise<User | null> {
-    for (const user of this.users.values()) {
-      if (user.phone === phone) {
-        return clone(user);
-      }
-    }
-
-    return null;
+    return findStored(this.users, (user) => user.phone === phone);
   }
 
   async createUserAndAccount(user: User, account: Account): Promise<Account> {
@@ -93,13 +85,7 @@ export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthSt
   }
 
   async getSessionByTokenHash(tokenHash: string): Promise<Session | null> {
-    for (const session of this.sessions.values()) {
-      if (session.tokenHash === tokenHash) {
-        return clone(session);
-      }
-    }
-
-    return null;
+    return findStored(this.sessions, (session) => session.tokenHash === tokenHash);
   }
 
   async updateSession(id: string, patch: Partial<Session>): Promise<Session | null> {
@@ -118,13 +104,10 @@ export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthSt
   }
 
   async getTokenByHash(tokenHash: string, type?: TokenType): Promise<AuthToken | null> {
-    for (const token of this.tokens.values()) {
-      if (token.tokenHash === tokenHash && (!type || token.type === type)) {
-        return clone(token);
-      }
-    }
-
-    return null;
+    return findStored(
+      this.tokens,
+      (token) => token.tokenHash === tokenHash && (!type || token.type === type)
+    );
   }
 
   async consumeToken(
@@ -198,13 +181,7 @@ export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthSt
   }
 
   async getApiKeyByPrefix(keyPrefix: string): Promise<ApiKey | null> {
-    for (const apiKey of this.apiKeys.values()) {
-      if (apiKey.keyPrefix === keyPrefix) {
-        return clone(apiKey);
-      }
-    }
-
-    return null;
+    return findStored(this.apiKeys, (apiKey) => apiKey.keyPrefix === keyPrefix);
   }
 
   async updateApiKey(id: string, patch: Partial<ApiKey>): Promise<ApiKey | null> {
@@ -291,13 +268,7 @@ export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthSt
   }
 
   async getOrganisationBySlug(slug: string): Promise<Organisation | null> {
-    for (const organisation of this.organisations.values()) {
-      if (organisation.slug === slug) {
-        return clone(organisation);
-      }
-    }
-
-    return null;
+    return findStored(this.organisations, (organisation) => organisation.slug === slug);
   }
 
   async listOrganisationsByUserId(userId: string): Promise<Organisation[]> {
@@ -328,14 +299,11 @@ export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthSt
   async getOrganisationMember(
     organisationId: string,
     userId: string
-  ): Promise<OrganisationMember | null> {
-    for (const member of this.members.values()) {
-      if (member.organisationId === organisationId && member.userId === userId) {
-        return clone(member);
-      }
-    }
-
-    return null;
+  ): Promise<OrganisationMember<string> | null> {
+    return findStored(
+      this.members,
+      (member) => member.organisationId === organisationId && member.userId === userId
+    );
   }
 
   async getOrganisationMemberById(id: string): Promise<OrganisationMember<string> | null> {
@@ -377,11 +345,8 @@ export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthSt
     return invitation ? clone(invitation) : null;
   }
 
-  async getInvitationByTokenId(tokenId: string): Promise<Invitation | null> {
-    const invitation = [...this.invitations.values()].find(
-      (candidate) => candidate.tokenId === tokenId
-    );
-    return invitation ? clone(invitation) : null;
+  async getInvitationByTokenId(tokenId: string): Promise<Invitation<string> | null> {
+    return findStored(this.invitations, (invitation) => invitation.tokenId === tokenId);
   }
 
   async getPendingInvitationByOrganisationAndEmail(
