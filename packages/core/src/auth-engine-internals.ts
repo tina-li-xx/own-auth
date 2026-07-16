@@ -8,6 +8,7 @@ export {
   accountFor,
   assertUserEnabled,
   audit,
+  auditSignedIn,
   cloneMetadata,
   createSession,
   hasRemainingAuthenticationMethod,

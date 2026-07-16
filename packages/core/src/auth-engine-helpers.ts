@@ -40,6 +40,22 @@ export async function audit(
   });
 }
 
+export function auditSignedIn(
+  ctx: AuthEngineContext,
+  userId: string,
+  method: string,
+  request: RequestContext | undefined,
+  assuranceLevel: "aal1" | "aal2"
+): Promise<void> {
+  return audit(ctx, {
+    eventType: "user.signed_in",
+    actorUserId: userId,
+    targetUserId: userId,
+    context: request,
+    metadata: { method, assuranceLevel }
+  });
+}
+
 export async function createSession(
   ctx: AuthEngineContext,
   user: User,

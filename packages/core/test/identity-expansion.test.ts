@@ -10,6 +10,7 @@ import {
   type User
 } from "../src/index.js";
 import { deriveOAuthSecrets } from "../src/oauth-derivation.js";
+import { createStoredWebhookEvent } from "../src/webhook-events.js";
 import {
   createTotpCode,
   requireCompleteSignIn,
@@ -203,7 +204,19 @@ describe("identity expansion", () => {
     });
     expect(completed.session.assuranceLevel).toBe("aal2");
     expect(completed.session.authenticationMethods).toEqual(["password", "recovery_code"]);
-    const auditJson = JSON.stringify(await auth.storage.listAuditEvents());
+    const auditEvents = await auth.storage.listAuditEvents();
+    const recoveryCodeEvent = auditEvents.find(
+      (event) => event.eventType === "mfa.recovery_code_used"
+    );
+    expect(recoveryCodeEvent?.metadata).toEqual({ method: "recovery_code" });
+    const storedWebhookEvent = recoveryCodeEvent
+      ? createStoredWebhookEvent(recoveryCodeEvent)
+      : null;
+    expect(JSON.parse(storedWebhookEvent?.payload ?? "{}")).toMatchObject({
+      type: "mfa.recovery_code_used",
+      data: { details: { method: "recovery_code" } }
+    });
+    const auditJson = JSON.stringify(auditEvents);
     for (const secret of [magicToken, smsCode, state, oneTap.nonce, recoveryCodes[0] ?? ""]) {
       expect(auditJson).not.toContain(secret);
     }

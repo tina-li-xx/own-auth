@@ -17,6 +17,7 @@ import type {
 } from "./auth-engine-types.js";
 import {
   audit,
+  auditSignedIn,
   createSession,
   hash,
   markUserLoggedIn,
@@ -194,7 +195,8 @@ export async function completeMfaWithRecoveryCode(
     eventType: "mfa.recovery_code_used",
     actorUserId: challenge.userId,
     targetUserId: challenge.userId,
-    context: input.request
+    context: input.request,
+    metadata: { method: "recovery_code" }
   });
   return finishVerifiedMfa(ctx, challenge, "recovery_code", input.request);
 }
@@ -385,20 +387,4 @@ function createRecoveryCode(): string {
 
 function normalizeRecoveryCode(value: string): string {
   return value.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-}
-
-async function auditSignedIn(
-  ctx: AuthEngineContext,
-  userId: string,
-  method: string,
-  request: RequestContext | undefined,
-  assuranceLevel: "aal1" | "aal2"
-): Promise<void> {
-  await audit(ctx, {
-    eventType: "user.signed_in",
-    actorUserId: userId,
-    targetUserId: userId,
-    context: request,
-    metadata: { method, assuranceLevel }
-  });
 }

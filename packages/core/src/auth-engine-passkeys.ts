@@ -22,6 +22,7 @@ import type {
 } from "./auth-engine-types.js";
 import {
   audit,
+  auditSignedIn,
   createSession,
   hasRemainingAuthenticationMethod,
   hash,
@@ -214,13 +215,7 @@ export async function completePasskeyAuthentication(
 
   const activeUser = await markUserLoggedIn(ctx, user);
   const result = await createSession(ctx, activeUser, input.request, ["passkey"], "aal2");
-  await audit(ctx, {
-    eventType: "user.signed_in",
-    actorUserId: user.id,
-    targetUserId: user.id,
-    context: input.request,
-    metadata: { method: "passkey", assuranceLevel: "aal2" }
-  });
+  await auditSignedIn(ctx, user.id, "passkey", input.request, "aal2");
   return result;
 }
 
