@@ -22,10 +22,10 @@ import type {
 } from "../authorization-server-types.js";
 import { expectDatabaseValue } from "../database-row.js";
 import type { DatabaseRow } from "../database-types.js";
-import { D1StorageBase } from "./d1-storage-base.js";
+import { D1ProtectedResourceStorage } from "./d1-protected-resource-storage.js";
 import type { D1DatabaseLike } from "./d1-types.js";
 
-export class D1AuthorizationClientStorage extends D1StorageBase {
+export class D1AuthorizationClientStorage extends D1ProtectedResourceStorage {
   constructor(db: D1DatabaseLike) {
     super(db);
   }
@@ -241,22 +241,29 @@ export class D1AuthorizationClientStorage extends D1StorageBase {
 
   async getAuthorizationGrant(
     authorizationClientId: string,
-    userId: string
+    userId: string,
+    protectedResourceId: string | null
   ): Promise<AuthorizationGrant | null> {
     const row = await this.selectOne(
       `${authorizationGrantReturning} from own_auth_authorization_grants
-       where authorization_client_id = ?1 and user_id = ?2`,
-      [authorizationClientId, userId]
+       where authorization_client_id = ?1 and user_id = ?2
+         and protected_resource_id is ?3`,
+      [authorizationClientId, userId, protectedResourceId]
     );
     return row ? mapAuthorizationGrant(row) : null;
   }
 
   async upsertAuthorizationGrant(grant: AuthorizationGrant): Promise<AuthorizationGrant> {
+    const conflictTarget = grant.protectedResourceId === null
+      ? "(authorization_client_id, user_id) where protected_resource_id is null"
+      : "(authorization_client_id, user_id, protected_resource_id) " +
+        "where protected_resource_id is not null";
     const row = await this.prepare(
       `insert into own_auth_authorization_grants
-        (id, authorization_client_id, user_id, scopes, created_at, updated_at, revoked_at)
-       values (?1,?2,?3,?4,?5,?6,?7)
-       on conflict (authorization_client_id, user_id) do update set
+        (id, authorization_client_id, user_id, protected_resource_id,
+         scopes, created_at, updated_at, revoked_at)
+       values (?1,?2,?3,?4,?5,?6,?7,?8)
+       on conflict ${conflictTarget} do update set
          scopes = excluded.scopes,
          updated_at = excluded.updated_at,
          revoked_at = null
@@ -265,6 +272,7 @@ export class D1AuthorizationClientStorage extends D1StorageBase {
         grant.id,
         grant.authorizationClientId,
         grant.userId,
+        grant.protectedResourceId,
         grant.scopes,
         grant.createdAt,
         grant.updatedAt,

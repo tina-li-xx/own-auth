@@ -90,6 +90,7 @@ export function createOwnAuthAuthorizationServerHandler(
             codeVerifier: singleAuthorizationParameter(form, "code_verifier"),
             refreshToken: singleAuthorizationParameter(form, "refresh_token"),
             scope: singleAuthorizationParameter(form, "scope"),
+            resource: singleAuthorizationParameter(form, "resource"),
             request: await requestContext(request, options)
           };
           return protocolJson(await auth.authorizationServer.exchangeToken(input));

@@ -29,3 +29,13 @@ export function updateStoredEntity<T extends { id: string }>(
   store.set(id, updated);
   return cloneStored(updated);
 }
+
+export function updateStoredWhere<T extends { id: string }>(
+  store: Map<string, T>,
+  predicate: (value: T) => boolean,
+  patch: Partial<T>
+): void {
+  for (const [id, value] of store) {
+    if (predicate(value)) updateStoredEntity(store, id, patch);
+  }
+}

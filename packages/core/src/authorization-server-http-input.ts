@@ -32,7 +32,8 @@ export function parseAuthorizationRequest(
     claimsLocales: singleAuthorizationParameter(params, "claims_locales"),
     loginHint: singleAuthorizationParameter(params, "login_hint"),
     requestObject: singleAuthorizationParameter(params, "request"),
-    requestUri: singleAuthorizationParameter(params, "request_uri")
+    requestUri: singleAuthorizationParameter(params, "request_uri"),
+    resource: singleAuthorizationParameter(params, "resource")
   };
 }
 

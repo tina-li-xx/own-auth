@@ -23,6 +23,10 @@ import {
   issueAuthorizationCode
 } from "./authorization-server-interaction-rules.js";
 import { AuthorizationProtocolError } from "./authorization-server-protocol-error.js";
+import {
+  protectedResourceAllowsScopes,
+  resolveProtectedResource
+} from "./authorization-server-protected-resources.js";
 import type {
   AuthorizationClient,
   AuthorizationInteractionAction,
@@ -44,6 +48,7 @@ export async function startAuthorization(
   );
   const redirectUri = requireRegisteredRedirect(client, input.redirectUri);
   const state = optionalText(input.state, "state", 2_048);
+  const resource = await resolveRequestedResource(ctx, input.resource, redirectUri, state);
   if (input.responseType !== "code") {
     throw redirectError(
       "unsupported_response_type",
@@ -80,13 +85,14 @@ export async function startAuthorization(
     client,
     input,
     redirectUri,
-    state
+    state,
+    resource
   );
   const current = input.sessionToken
     ? await getCurrentSession(ctx, input.sessionToken)
     : null;
   const grant = current
-    ? await storage.getAuthorizationGrant(client.id, current.user.id)
+    ? await storage.getAuthorizationGrant(client.id, current.user.id, resource?.id ?? null)
     : null;
   const now = new Date();
   const action = interactionAction(request, current, grant, now, null);
@@ -95,13 +101,14 @@ export async function startAuthorization(
     assertSilentAuthorizationAllowed(action, redirectUri, state);
   }
   if (current && action === "continue" && grant) {
-    await auditAuthorizationStarted(ctx, client, current.user.id, input);
+    await auditAuthorizationStarted(ctx, client, resource?.id ?? null, current.user.id, input);
     return issueAuthorizationCode(
       ctx,
       client,
       current,
       grant,
       request,
+      resource,
       input.request
     );
   }
@@ -127,7 +134,13 @@ export async function startAuthorization(
     consumedAt: null,
     createdAt: now
   });
-  await auditAuthorizationStarted(ctx, client, current?.user.id ?? null, input);
+  await auditAuthorizationStarted(
+    ctx,
+    client,
+    resource?.id ?? null,
+    current?.user.id ?? null,
+    input
+  );
   const interactionUrl = new URL(config.interactionUrl);
   interactionUrl.searchParams.set("interaction", rawInteraction);
   return { redirectUrl: interactionUrl.toString() };
@@ -138,7 +151,8 @@ function buildStoredAuthorizationRequest(
   client: AuthorizationClient,
   input: AuthorizationRequestInput,
   redirectUri: string,
-  state: string | null
+  state: string | null,
+  resource: Awaited<ReturnType<typeof resolveProtectedResource>>
 ): StoredAuthorizationRequest {
   let scopes: string[];
   try {
@@ -153,6 +167,14 @@ function buildStoredAuthorizationRequest(
       );
     }
     throw error;
+  }
+  if (!protectedResourceAllowsScopes(resource, scopes)) {
+    throw redirectError(
+      "invalid_scope",
+      "Requested scope is not allowed for the protected resource",
+      redirectUri,
+      state
+    );
   }
 
   try {
@@ -175,7 +197,8 @@ function buildStoredAuthorizationRequest(
       display: optionalText(input.display, "display", 64),
       uiLocales: parseOptionalList(input.uiLocales, "ui_locales"),
       claimsLocales: parseOptionalList(input.claimsLocales, "claims_locales"),
-      loginHint: optionalText(input.loginHint, "login_hint", 320)
+      loginHint: optionalText(input.loginHint, "login_hint", 320),
+      resource: resource?.identifier ?? null
     };
   } catch (error) {
     if (error instanceof AuthError) {
@@ -280,6 +303,7 @@ async function enforceProtocolRateLimit(
 function auditAuthorizationStarted(
   ctx: AuthEngineContext,
   client: AuthorizationClient,
+  protectedResourceId: string | null,
   userId: string | null,
   input: AuthorizationRequestInput
 ): Promise<void> {
@@ -288,8 +312,35 @@ function auditAuthorizationStarted(
     actorUserId: userId,
     targetUserId: userId,
     context: input.request,
-    metadata: { authorizationClientId: client.id }
+    metadata: {
+      authorizationClientId: client.id,
+      ...(protectedResourceId ? { protectedResourceId } : {})
+    }
   });
+}
+
+async function resolveRequestedResource(
+  ctx: AuthEngineContext,
+  value: string | undefined,
+  redirectUri: string,
+  state: string | null
+) {
+  try {
+    return await resolveProtectedResource(ctx, value ?? null);
+  } catch (error) {
+    if (error instanceof AuthorizationProtocolError && error.code === "invalid_target") {
+      throw redirectError(
+        "invalid_target",
+        error.safeDescription,
+        redirectUri,
+        state
+      );
+    }
+    if (error instanceof AuthError) {
+      throw redirectError("invalid_target", error.safeMessage, redirectUri, state);
+    }
+    throw error;
+  }
 }
 
 function redirectError(

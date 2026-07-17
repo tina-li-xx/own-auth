@@ -1,29 +1,29 @@
 import type { AuthEngineContext } from "./auth-engine-context.js";
-import { audit, rateLimit, requireActiveUser } from "./auth-engine-helpers.js";
+import { audit, requireActiveUser } from "./auth-engine-helpers.js";
 import {
   authenticateAuthorizationClient,
   isActiveAuthorizationClient
 } from "./authorization-server-clients.js";
+import { createAuthorizationUserInfo } from "./authorization-server-claims.js";
+import { authorizationServerTokenPrefixes } from "./authorization-server-constants.js";
 import {
-  createAuthorizationUserInfo,
-  getOrCreateOidcSubject
-} from "./authorization-server-claims.js";
-import {
-  authorizationServerRateLimits,
-  authorizationServerRateLimitWindowMs,
-  authorizationServerTokenPrefixes
-} from "./authorization-server-constants.js";
-import {
-  epochSeconds,
   hashAuthorizationSecret,
+  normalizeProtectedResourceIdentifier,
+  requireAuthorizationProtocolToken,
   requireAuthorizationServer
 } from "./authorization-server-helpers.js";
+import {
+  authorizationTokenScopesAreActive,
+  isActiveProtectedResourceBinding,
+  resolveProtectedResource
+} from "./authorization-server-protected-resources.js";
 import { AuthorizationProtocolError } from "./authorization-server-protocol-error.js";
+import { rateLimitAuthorizationServerProtocol } from "./authorization-server-rate-limits.js";
 import type {
   AuthorizationAccessToken,
   AuthorizationClient,
   AuthorizationGrant,
-  AuthorizationIntrospectionResponse,
+  ProtectedResource,
   AuthorizationTokenActionInput,
   AuthorizationUserGrant,
   AuthorizationUserInfo,
@@ -40,7 +40,10 @@ export async function verifyAuthorizationAccessToken(
   ctx: AuthEngineContext,
   input: VerifyAuthorizationAccessTokenInput
 ): Promise<VerifiedAuthorizationAccessToken> {
-  const resolved = await resolveAccessToken(ctx, input.accessToken);
+  const expectedResource = input.resource === undefined
+    ? undefined
+    : normalizeVerificationResource(input.resource);
+  const resolved = await resolveAccessToken(ctx, input.accessToken, expectedResource);
   const requiredScopes = input.requiredScopes ?? [];
   if (
     !Array.isArray(requiredScopes) ||
@@ -58,6 +61,7 @@ export async function verifyAuthorizationAccessToken(
     client: resolved.client,
     grant: resolved.grant,
     userId: resolved.user.id,
+    resource: resolved.resource?.identifier ?? null,
     scopes: [...resolved.token.scopes],
     expiresAt: resolved.token.expiresAt
   };
@@ -67,7 +71,7 @@ export async function getAuthorizationUserInfo(
   ctx: AuthEngineContext,
   accessToken: string
 ): Promise<AuthorizationUserInfo> {
-  const resolved = await resolveAccessToken(ctx, accessToken);
+  const resolved = await resolveAccessToken(ctx, accessToken, null);
   if (!resolved.token.scopes.includes("openid")) {
     throw invalidAccessToken();
   }
@@ -78,9 +82,9 @@ export async function revokeAuthorizationProtocolToken(
   ctx: AuthEngineContext,
   input: AuthorizationTokenActionInput
 ): Promise<void> {
-  await rateLimitProtocolClient(ctx, "revocation", input);
+  await rateLimitAuthorizationServerProtocol(ctx, "revocation", input);
   const client = await authenticateAuthorizationClient(ctx, input);
-  const rawToken = requiredProtocolToken(input.token);
+  const rawToken = requireAuthorizationProtocolToken(input.token);
   const { storage } = requireAuthorizationServer(ctx);
   const tokenHash = hashAuthorizationSecret(ctx, rawToken);
   const [accessToken, refreshToken] = await Promise.all([
@@ -116,56 +120,6 @@ export async function revokeAuthorizationProtocolToken(
   }
 }
 
-export async function introspectAuthorizationToken(
-  ctx: AuthEngineContext,
-  input: AuthorizationTokenActionInput
-): Promise<AuthorizationIntrospectionResponse> {
-  await rateLimitProtocolClient(ctx, "introspection", input);
-  const client = await authenticateAuthorizationClient(ctx, input);
-  if (client.clientType !== "confidential") {
-    throw new AuthorizationProtocolError(
-      "unauthorized_client",
-      "Token introspection requires a confidential client",
-      { statusCode: 403 }
-    );
-  }
-  const rawToken = requiredProtocolToken(input.token);
-  const { storage } = requireAuthorizationServer(ctx);
-  const tokenHash = hashAuthorizationSecret(ctx, rawToken);
-  const [accessToken, refreshToken] = await Promise.all([
-    storage.getAuthorizationAccessTokenByHash(tokenHash),
-    storage.getAuthorizationRefreshTokenByHash(tokenHash)
-  ]);
-  const token = accessToken ?? refreshToken;
-  if (!token || token.authorizationClientId !== client.id) return { active: false };
-  const [grant, user] = await Promise.all([
-    storage.getAuthorizationGrant(client.id, token.userId),
-    ctx.storage.getUserById(token.userId)
-  ]);
-  if (
-    !grant ||
-    grant.id !== token.grantId ||
-    grant.revokedAt ||
-    token.revokedAt ||
-    isExpired(token.expiresAt) ||
-    !user ||
-    user.disabledAt ||
-    (refreshToken && Boolean(refreshToken.consumedAt))
-  ) {
-    return { active: false };
-  }
-  const subject = await getOrCreateOidcSubject(ctx, user.id);
-  return {
-    active: true,
-    scope: token.scopes.join(" "),
-    client_id: client.clientId,
-    ...(accessToken ? { token_type: "Bearer" as const } : {}),
-    exp: epochSeconds(token.expiresAt),
-    iat: epochSeconds(token.createdAt),
-    sub: subject.subject
-  };
-}
-
 export async function listAuthorizationUserGrants(
   ctx: AuthEngineContext,
   input: ListAuthorizationUserGrantsInput
@@ -177,10 +131,19 @@ export async function listAuthorizationUserGrants(
   const clients = await Promise.all(
     active.map((grant) => storage.getAuthorizationClientById(grant.authorizationClientId))
   );
+  const resources = await Promise.all(
+    active.map((grant) => grant.protectedResourceId
+      ? storage.getProtectedResourceById(grant.protectedResourceId)
+      : Promise.resolve(null))
+  );
   return active.flatMap((grant, index) => {
     const client = clients[index];
-    return isActiveAuthorizationClient(client)
-      ? [{ grant, client }]
+    const resource = resources[index] ?? null;
+    return isActiveAuthorizationClient(client) && isActiveProtectedResourceBinding(
+      grant.protectedResourceId,
+      resource
+    )
+      ? [{ grant, client, resource }]
       : [];
   });
 }
@@ -193,7 +156,14 @@ export async function revokeAuthorizationUserGrant(
   const { storage } = requireAuthorizationServer(ctx);
   const client = await storage.getAuthorizationClientByClientId(input.clientId);
   if (!client) return;
-  const grant = await storage.getAuthorizationGrant(client.id, input.actorUserId);
+  const resource = input.resource === undefined
+    ? null
+    : await resolveProtectedResource(ctx, input.resource);
+  const grant = await storage.getAuthorizationGrant(
+    client.id,
+    input.actorUserId,
+    resource?.id ?? null
+  );
   if (!grant || grant.revokedAt) return;
   await storage.revokeAuthorizationGrant(grant.id, new Date());
   await audit(ctx, {
@@ -204,6 +174,7 @@ export async function revokeAuthorizationUserGrant(
     metadata: {
       authorizationClientId: client.id,
       grantId: grant.id,
+      ...(resource ? { protectedResourceId: resource.id } : {}),
       reason: "user_revoked"
     }
   });
@@ -211,11 +182,13 @@ export async function revokeAuthorizationUserGrant(
 
 async function resolveAccessToken(
   ctx: AuthEngineContext,
-  rawToken: string
+  rawToken: string,
+  expectedResource: string | null | undefined
 ): Promise<{
   token: AuthorizationAccessToken;
   client: AuthorizationClient;
   grant: AuthorizationGrant;
+  resource: ProtectedResource | null;
   user: User;
 }> {
   if (
@@ -232,9 +205,16 @@ async function resolveAccessToken(
   if (!token || token.revokedAt || isExpired(token.expiresAt)) {
     throw invalidAccessToken();
   }
-  const [client, grant, user] = await Promise.all([
+  const [client, grant, resource, user] = await Promise.all([
     storage.getAuthorizationClientById(token.authorizationClientId),
-    storage.getAuthorizationGrant(token.authorizationClientId, token.userId),
+    storage.getAuthorizationGrant(
+      token.authorizationClientId,
+      token.userId,
+      token.protectedResourceId
+    ),
+    token.protectedResourceId
+      ? storage.getProtectedResourceById(token.protectedResourceId)
+      : Promise.resolve(null),
     ctx.storage.getUserById(token.userId)
   ]);
   if (
@@ -242,19 +222,38 @@ async function resolveAccessToken(
     !grant ||
     grant.id !== token.grantId ||
     grant.revokedAt ||
+    !isActiveProtectedResourceBinding(token.protectedResourceId, resource) ||
+    !resourceMatchesExpected(token.protectedResourceId, resource, expectedResource) ||
+    !authorizationTokenScopesAreActive(resource, grant.scopes, token.scopes) ||
     !user ||
     user.disabledAt
   ) {
     throw invalidAccessToken();
   }
-  return { token, client, grant, user };
+  return { token, client, grant, resource, user };
 }
 
-function requiredProtocolToken(value: string | undefined): string {
-  if (typeof value !== "string" || !value || value.length > 512) {
-    throw new AuthorizationProtocolError("invalid_request", "token is required");
+function resourceMatchesExpected(
+  protectedResourceId: string | null,
+  resource: ProtectedResource | null,
+  expectedResource: string | null | undefined
+): boolean {
+  if (protectedResourceId === null) {
+    return expectedResource === undefined || expectedResource === null;
   }
-  return value;
+  return typeof expectedResource === "string" && resource?.identifier === expectedResource;
+}
+
+function normalizeVerificationResource(value: string): string {
+  try {
+    return normalizeProtectedResourceIdentifier(value);
+  } catch {
+    throw new AuthError(
+      "validation_error",
+      "resource must identify a registered protected resource",
+      400
+    );
+  }
 }
 
 function invalidAccessToken(): AuthorizationProtocolError {
@@ -262,19 +261,5 @@ function invalidAccessToken(): AuthorizationProtocolError {
     "invalid_token",
     "The access token is invalid, expired, or revoked",
     { statusCode: 401 }
-  );
-}
-
-function rateLimitProtocolClient(
-  ctx: AuthEngineContext,
-  operation: "introspection" | "revocation",
-  input: AuthorizationTokenActionInput
-): Promise<void> {
-  return rateLimit(
-    ctx,
-    `authorization_server_${operation}`,
-    input.request?.ipAddress ?? input.clientId ?? "unknown",
-    authorizationServerRateLimits.protocol,
-    authorizationServerRateLimitWindowMs
   );
 }

@@ -33,6 +33,7 @@ export const authorizationServerPaths = Object.freeze({
 export const authorizationServerTokenPrefixes = Object.freeze({
   clientId: "oa_client_",
   clientSecret: "oa_cs_",
+  protectedResourceSecret: "oa_rs_",
   interaction: "oa_ix_",
   authorizationCode: "oa_ac_",
   accessToken: "oa_at_",

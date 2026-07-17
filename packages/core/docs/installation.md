@@ -83,6 +83,8 @@ This creates the tables Own Auth needs in your database:
 - `own_auth_authorization_access_tokens`
 - `own_auth_authorization_refresh_tokens`
 - `own_auth_oidc_subjects`
+- `own_auth_protected_resources`
+- `own_auth_protected_resource_secrets`
 
 All Own Auth tables are prefixed with `own_auth_` to avoid conflicts. Your existing application tables are not modified.
 

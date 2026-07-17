@@ -15,6 +15,7 @@ import type {
   AuthorizationInteractionAction,
   AuthorizationRedirectResult,
   AuthorizationRequestInput,
+  ProtectedResource,
   StoredAuthorizationRequest
 } from "./authorization-server-types.js";
 import { createId } from "./crypto.js";
@@ -27,6 +28,7 @@ export async function issueAuthorizationCode(
   current: CurrentSession,
   grant: AuthorizationGrant,
   request: StoredAuthorizationRequest,
+  resource: ProtectedResource | null,
   context: AuthorizationRequestInput["request"]
 ): Promise<AuthorizationRedirectResult> {
   const { config, storage } = requireAuthorizationServer(ctx);
@@ -42,6 +44,7 @@ export async function issueAuthorizationCode(
     grantId: grant.id,
     authorizationClientId: client.id,
     userId: current.user.id,
+    protectedResourceId: resource?.id ?? null,
     sessionId: current.session.id,
     redirectUri: request.redirectUri,
     scopes: [...request.scopes],
@@ -61,7 +64,8 @@ export async function issueAuthorizationCode(
     metadata: {
       authorizationClientId: client.id,
       grantId: grant.id,
-      scopes: request.scopes
+      scopes: request.scopes,
+      ...(resource ? { protectedResourceId: resource.id } : {})
     }
   });
   return {

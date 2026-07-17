@@ -11,12 +11,13 @@ This is different from Google, GitHub, or Apple sign-in. External provider sign-
 - Opaque access tokens
 - Rotating refresh tokens
 - Token revocation
-- Same-client token introspection
+- Client and protected-resource token introspection
+- Resource-bound access and refresh tokens
 - OpenID Connect userinfo
 - Discovery metadata and JWKS
 - Consent, reauthentication, account selection, and AAL2 step-up interactions
 
-Device authorization, protected-resource registration, DPoP, SAML, SCIM, and MCP authorization are not part of this release.
+Device authorization, DPoP, SAML, SCIM, and MCP authorization are not part of this release.
 
 ## Run The Migration
 
@@ -24,7 +25,7 @@ Device authorization, protected-resource registration, DPoP, SAML, SCIM, and MCP
 npx own-auth migrate
 ```
 
-Migration `011_authorization_server` adds authorization clients, secrets, interactions, grants, codes, access tokens, refresh tokens, and stable OpenID Connect subjects.
+Migration `011_authorization_server` adds authorization clients, secrets, interactions, grants, codes, access tokens, refresh tokens, and stable OpenID Connect subjects. Migration `012_protected_resources` adds registered resource servers, hashed resource secrets, and token audience bindings.
 
 ## Configuration
 
@@ -99,7 +100,7 @@ The handler serves:
 | `GET` | `/oauth/authorize` | Start authorization |
 | `POST` | `/oauth/token` | Exchange a code or rotate a refresh token |
 | `POST` | `/oauth/revoke` | Revoke an access token or refresh grant |
-| `POST` | `/oauth/introspect` | Inspect a confidential client's own tokens |
+| `POST` | `/oauth/introspect` | Inspect tokens owned by a confidential client or protected resource |
 | `GET` or `POST` | `/oauth/userinfo` | Return scoped OpenID Connect claims |
 | `GET` | `/oauth/jwks` | Publish signing keys |
 
@@ -197,18 +198,19 @@ The interaction token is hashed in storage and can finish only once.
 
 ## Verify Access Tokens
 
-Applications serving APIs can verify an Own Auth access token directly:
+An API using the same Own Auth instance can verify a resource-bound access token directly:
 
 ```ts
 const verified = await auth.authorizationServer.verifyAccessToken({
   accessToken,
+  resource: "https://api.example.com/",
   requiredScopes: ["documents:read"],
 });
 
 console.log(verified.userId);
 ```
 
-This is the resource-server integration for applications using the same Own Auth instance. Separate protected-resource registration is not implemented yet.
+APIs running separately use authenticated remote introspection through the lightweight `own-auth/protected-resource` export. See [Protected Resources](/docs/protected-resources) for registration, resource indicators, scope behavior, credential rotation, and the remote verification helper.
 
 ## Refresh Token Reuse
 
@@ -218,7 +220,7 @@ When two refresh requests race, one can rotate first. Reuse detection then revok
 
 ## Introspection Boundary
 
-Only confidential clients can call introspection. A client can inspect only access and refresh tokens issued to that same client.
+Confidential clients can inspect only access and refresh tokens issued to that client. Registered protected resources can inspect only access tokens whose resource matches their exact identifier.
 
 Tokens issued to another client return:
 
@@ -228,7 +230,7 @@ Tokens issued to another client return:
 }
 ```
 
-Broader resource-server introspection is intentionally deferred.
+Tokens for another client or protected resource return the same inactive response. Introspection does not reveal the token's real owner or audience.
 
 ## Signing Key Rotation
 

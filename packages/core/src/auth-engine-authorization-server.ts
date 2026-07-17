@@ -16,10 +16,17 @@ import {
   getAuthorizationServerJwks,
   getAuthorizationServerMetadata
 } from "./authorization-server-metadata.js";
+import { introspectAuthorizationToken } from "./authorization-server-introspection.js";
+import {
+  createProtectedResource,
+  listProtectedResources,
+  revokeProtectedResource,
+  rotateProtectedResourceSecret,
+  updateProtectedResource
+} from "./authorization-server-protected-resources.js";
 import { exchangeAuthorizationToken } from "./authorization-server-token-exchange.js";
 import {
   getAuthorizationUserInfo,
-  introspectAuthorizationToken,
   listAuthorizationUserGrants,
   revokeAuthorizationProtocolToken,
   revokeAuthorizationUserGrant,
@@ -38,15 +45,21 @@ import type {
   AuthorizationUserInfo,
   CompleteAuthorizationInteractionInput,
   CreatedAuthorizationClient,
+  CreatedProtectedResource,
   CreateAuthorizationClientInput,
+  CreateProtectedResourceInput,
   DenyAuthorizationInteractionInput,
   GetAuthorizationInteractionInput,
   ListAuthorizationUserGrantsInput,
   PublicAuthorizationInteraction,
+  ProtectedResource,
   RevokeAuthorizationClientInput,
+  RevokeProtectedResourceInput,
   RevokeAuthorizationUserGrantInput,
   RotateAuthorizationClientSecretInput,
+  RotateProtectedResourceSecretInput,
   UpdateAuthorizationClientInput,
+  UpdateProtectedResourceInput,
   VerifiedAuthorizationAccessToken,
   VerifyAuthorizationAccessTokenInput
 } from "./authorization-server-types.js";
@@ -93,6 +106,39 @@ export class OwnAuthAuthorizationServer {
   revokeClient(input: RevokeAuthorizationClientInput): Promise<AuthorizationClient> {
     return this.execute("authorizationServer.revokeClient", input, () =>
       revokeAuthorizationClient(this.ctx, input));
+  }
+
+  createProtectedResource(
+    input: CreateProtectedResourceInput
+  ): Promise<CreatedProtectedResource> {
+    return this.execute("authorizationServer.createProtectedResource", input, () =>
+      createProtectedResource(this.ctx, input));
+  }
+
+  listProtectedResources(): Promise<ProtectedResource[]> {
+    return this.execute("authorizationServer.listProtectedResources", undefined, () =>
+      listProtectedResources(this.ctx));
+  }
+
+  updateProtectedResource(
+    input: UpdateProtectedResourceInput
+  ): Promise<ProtectedResource> {
+    return this.execute("authorizationServer.updateProtectedResource", input, () =>
+      updateProtectedResource(this.ctx, input));
+  }
+
+  rotateProtectedResourceSecret(
+    input: RotateProtectedResourceSecretInput
+  ): Promise<string> {
+    return this.execute("authorizationServer.rotateProtectedResourceSecret", input, () =>
+      rotateProtectedResourceSecret(this.ctx, input));
+  }
+
+  revokeProtectedResource(
+    input: RevokeProtectedResourceInput
+  ): Promise<ProtectedResource> {
+    return this.execute("authorizationServer.revokeProtectedResource", input, () =>
+      revokeProtectedResource(this.ctx, input));
   }
 
   getInteraction(

@@ -302,11 +302,18 @@ const auth = createOwnAuth({
         privateKey: process.env.OWN_AUTH_SIGNING_PRIVATE_KEY!,
       },
     },
+    resourceIntrospectionRequestsPerMinute: 6_000,
+    failedIntrospectionAttemptsPerMinute: 30,
   },
 });
 ```
 
-The authorization server requires the shared encryption key ring and migration `011_authorization_server`. See [OAuth And OpenID Connect Authorization Server](/docs/authorization-server) for client registration, protocol routes, interaction pages, token verification, refresh rotation, and signing-key rotation.
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `resourceIntrospectionRequestsPerMinute` | `number` | `6000` | Authenticated introspection requests shared by every instance using one protected-resource identity. |
+| `failedIntrospectionAttemptsPerMinute` | `number` | `30` | Failed protected-resource authentication attempts allowed per IP address. |
+
+The authorization server requires the shared encryption key ring and migrations `011_authorization_server` and `012_protected_resources`. See [OAuth And OpenID Connect Authorization Server](/docs/authorization-server) for the provider flow and [Protected Resources](/docs/protected-resources) for resource registration and remote token verification.
 
 ### Encryption
 

@@ -45,6 +45,7 @@ export async function assertAuthorizationRefreshRace(
     id: grantId,
     authorizationClientId: clientRecordId,
     userId,
+    protectedResourceId: null,
     scopes: ["openid", "offline_access"],
     createdAt: now,
     updatedAt: now,
@@ -87,7 +88,7 @@ export async function assertAuthorizationRefreshRace(
   if (JSON.stringify(results.sort()) !== JSON.stringify(["reused", "rotated"])) {
     throw new Error("D1 authorization refresh race did not rotate once and detect reuse once");
   }
-  const grant = await authorization.getAuthorizationGrant(clientRecordId, userId);
+  const grant = await authorization.getAuthorizationGrant(clientRecordId, userId, null);
   const accessTokens = await Promise.all(attempts.map(({ access }) =>
     authorization.getAuthorizationAccessTokenByHash(access.tokenHash)
   ));
@@ -121,6 +122,7 @@ function accessToken(
     grantId,
     authorizationClientId,
     userId,
+    protectedResourceId: null,
     scopes: ["openid", "offline_access"],
     expiresAt,
     revokedAt: null,
@@ -145,6 +147,7 @@ function refreshToken(
     grantId,
     authorizationClientId,
     userId,
+    protectedResourceId: null,
     scopes: ["openid", "offline_access"],
     generation,
     replacedByTokenId: null,

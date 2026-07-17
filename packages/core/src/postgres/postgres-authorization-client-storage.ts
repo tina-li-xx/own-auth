@@ -20,10 +20,10 @@ import type {
   AuthorizationInteractionStatus
 } from "../authorization-server-types.js";
 import { expectOne } from "./postgres-row.js";
-import { PostgresStorageBase } from "./postgres-storage-base.js";
+import { PostgresProtectedResourceStorage } from "./postgres-protected-resource-storage.js";
 import type { PostgresQueryable, Row } from "./postgres-types.js";
 
-export class PostgresAuthorizationClientStorage extends PostgresStorageBase {
+export class PostgresAuthorizationClientStorage extends PostgresProtectedResourceStorage {
   constructor(db: PostgresQueryable) {
     super(db);
   }
@@ -257,22 +257,29 @@ export class PostgresAuthorizationClientStorage extends PostgresStorageBase {
 
   async getAuthorizationGrant(
     authorizationClientId: string,
-    userId: string
+    userId: string,
+    protectedResourceId: string | null
   ): Promise<AuthorizationGrant | null> {
     const row = await this.selectOne(
       `${authorizationGrantReturning} from own_auth_authorization_grants
-       where authorization_client_id = $1 and user_id = $2`,
-      [authorizationClientId, userId]
+       where authorization_client_id = $1 and user_id = $2
+         and protected_resource_id is not distinct from $3`,
+      [authorizationClientId, userId, protectedResourceId]
     );
     return row ? mapAuthorizationGrant(row) : null;
   }
 
   async upsertAuthorizationGrant(grant: AuthorizationGrant): Promise<AuthorizationGrant> {
+    const conflictTarget = grant.protectedResourceId === null
+      ? "(authorization_client_id, user_id) where protected_resource_id is null"
+      : "(authorization_client_id, user_id, protected_resource_id) " +
+        "where protected_resource_id is not null";
     const result = await this.db.query<Row>(
       `insert into own_auth_authorization_grants
-        (id, authorization_client_id, user_id, scopes, created_at, updated_at, revoked_at)
-       values ($1,$2,$3,$4,$5,$6,$7)
-       on conflict (authorization_client_id, user_id) do update set
+        (id, authorization_client_id, user_id, protected_resource_id,
+         scopes, created_at, updated_at, revoked_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
+       on conflict ${conflictTarget} do update set
          scopes = excluded.scopes,
          updated_at = excluded.updated_at,
          revoked_at = null
@@ -281,6 +288,7 @@ export class PostgresAuthorizationClientStorage extends PostgresStorageBase {
         grant.id,
         grant.authorizationClientId,
         grant.userId,
+        grant.protectedResourceId,
         grant.scopes,
         grant.createdAt,
         grant.updatedAt,

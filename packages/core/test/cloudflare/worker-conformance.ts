@@ -62,8 +62,10 @@ const storageMethods = new Set([
 const authorizationStorageMethods = new Set([
   "createAuthorizationClient",
   "createAuthorizationTokens",
+  "createProtectedResource",
   "getAuthorizationAccessTokenByHash",
   "getAuthorizationGrant",
+  "getProtectedResourceByIdentifier",
   "getAuthorizationRefreshTokenByHash",
   "rotateAuthorizationRefreshToken",
   "upsertAuthorizationGrant"
@@ -80,7 +82,8 @@ const expectedMigrations = [
   "008_webhooks",
   "009_custom_authorization",
   "010_administration",
-  "011_authorization_server"
+  "011_authorization_server",
+  "012_protected_resources"
 ];
 
 const expectedTables = [
@@ -105,6 +108,8 @@ const expectedTables = [
   "own_auth_organisations",
   "own_auth_passkeys",
   "own_auth_plugin_migrations",
+  "own_auth_protected_resource_secrets",
+  "own_auth_protected_resources",
   "own_auth_rate_limits",
   "own_auth_recovery_codes",
   "own_auth_sessions",

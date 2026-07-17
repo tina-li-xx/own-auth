@@ -21,6 +21,10 @@ import {
   interactionAction,
   issueAuthorizationCode
 } from "./authorization-server-interaction-rules.js";
+import {
+  protectedResourceAllowsScopes,
+  resolveProtectedResource
+} from "./authorization-server-protected-resources.js";
 import type {
   AuthorizationRedirectResult,
   CompleteAuthorizationInteractionInput,
@@ -48,7 +52,8 @@ export async function getAuthorizationInteraction(
   }
   const grant = await loaded.storage.getAuthorizationGrant(
     loaded.client.id,
-    current.user.id
+    current.user.id,
+    loaded.resource?.id ?? null
   );
   const action = interactionAction(
     loaded.request,
@@ -72,6 +77,9 @@ export async function getAuthorizationInteraction(
       name: loaded.client.name,
       applicationType: loaded.client.applicationType
     },
+    resource: loaded.resource
+      ? { identifier: loaded.resource.identifier, name: loaded.resource.name }
+      : null,
     scopes: scopeDetails(loaded.config, loaded.request.scopes),
     requiredAssuranceLevel: requiredLevel,
     expiresAt: loaded.interaction.expiresAt
@@ -101,7 +109,8 @@ export async function approveAuthorizationInteraction(
 
   const existingGrant = await loaded.storage.getAuthorizationGrant(
     loaded.client.id,
-    current.user.id
+    current.user.id,
+    loaded.resource?.id ?? null
   );
   const action = interactionAction(
     loaded.request,
@@ -129,6 +138,7 @@ export async function approveAuthorizationInteraction(
     id: existingGrant?.id ?? createId("ogrant"),
     authorizationClientId: loaded.client.id,
     userId: current.user.id,
+    protectedResourceId: loaded.resource?.id ?? null,
     scopes: [...new Set([...(existingGrant?.scopes ?? []), ...approvedScopes])],
     createdAt: existingGrant?.createdAt ?? now,
     updatedAt: now,
@@ -140,6 +150,7 @@ export async function approveAuthorizationInteraction(
     current,
     grant,
     { ...loaded.request, scopes: approvedScopes },
+    loaded.resource,
     input.request
   );
 }
@@ -169,7 +180,10 @@ export async function denyAuthorizationInteraction(
     actorUserId: current.user.id,
     targetUserId: current.user.id,
     context: input.request,
-    metadata: { authorizationClientId: loaded.client.id }
+    metadata: {
+      authorizationClientId: loaded.client.id,
+      ...(loaded.resource ? { protectedResourceId: loaded.resource.id } : {})
+    }
   });
   return {
     redirectUrl: authorizationRedirectUrl(loaded.request.redirectUri, {
@@ -204,7 +218,11 @@ async function loadInteraction(
     throw invalidInteraction();
   }
   const request = await decryptAuthorizationRequest(ctx, interaction);
-  return { client, config, interaction, request, storage };
+  const resource = await resolveProtectedResource(ctx, request.resource ?? null);
+  if (!protectedResourceAllowsScopes(resource, request.scopes)) {
+    throw invalidInteraction();
+  }
+  return { client, config, interaction, request, resource, storage };
 }
 
 async function requireInteractionSession(
@@ -224,6 +242,7 @@ function unauthenticatedInteraction(
   return {
     action: "sign_in",
     client: null,
+    resource: null,
     scopes: [],
     requiredAssuranceLevel: null,
     expiresAt

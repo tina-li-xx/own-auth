@@ -9,7 +9,8 @@ export const coreMigrationFiles = [
   "008_webhooks.sql",
   "009_custom_authorization.sql",
   "010_administration.sql",
-  "011_authorization_server.sql"
+  "011_authorization_server.sql",
+  "012_protected_resources.sql"
 ] as const;
 
 export const initialMigration = coreMigrationFiles[0];
@@ -40,6 +41,8 @@ export const databaseTables = {
   webhookAttempts: "own_auth_webhook_attempts",
   authorizationClients: "own_auth_authorization_clients",
   authorizationClientSecrets: "own_auth_authorization_client_secrets",
+  protectedResources: "own_auth_protected_resources",
+  protectedResourceSecrets: "own_auth_protected_resource_secrets",
   authorizationInteractions: "own_auth_authorization_interactions",
   authorizationGrants: "own_auth_authorization_grants",
   authorizationCodes: "own_auth_authorization_codes",

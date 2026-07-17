@@ -91,6 +91,146 @@ describeWithDatabase("PostgresAuthStorage integration", () => {
       }
     }
   });
+
+  it("invalidates only tokens that carry removed protected-resource scopes", async () => {
+    const storage = new PostgresAuthStorage(client);
+    const authorization = storage.authorizationServerStorage;
+    const suffix = crypto.randomUUID();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 60_000);
+    const userId = `usr_${suffix}`;
+    const clientId = `ocli_${suffix}`;
+    const resourceId = `opres_${suffix}`;
+    const grantId = `ogrant_${suffix}`;
+    const readTokenHash = `read_${suffix}`;
+    const broadTokenHash = `broad_${suffix}`;
+    const refreshTokenHash = `refresh_${suffix}`;
+
+    await storage.createUser({
+      id: userId,
+      email: `${suffix}@example.com`,
+      emailVerifiedAt: now,
+      phone: null,
+      phoneVerifiedAt: null,
+      passwordHash: null,
+      name: null,
+      imageUrl: null,
+      disabledAt: null,
+      metadata: {},
+      createdAt: now,
+      updatedAt: now,
+      lastLoginAt: null
+    });
+    await authorization.createAuthorizationClient({
+      id: clientId,
+      clientId: `oa_client_${suffix}`,
+      name: "Protected resource client",
+      clientType: "public",
+      applicationType: "web",
+      tokenEndpointAuthMethod: "none",
+      redirectUris: ["https://client.example.com/callback"],
+      allowedScopes: ["documents:read", "documents:write", "offline_access"],
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      revokedAt: null
+    }, null);
+    await authorization.createProtectedResource({
+      id: resourceId,
+      identifier: `https://api-${suffix}.example.com/`,
+      name: "Documents API",
+      allowedScopes: ["documents:read", "documents:write", "offline_access"],
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      revokedAt: null
+    }, {
+      id: `oprsec_${suffix}`,
+      protectedResourceId: resourceId,
+      prefix: `oa_rs_${suffix}`,
+      secretHash: `secret_hash_${suffix}`,
+      createdAt: now,
+      expiresAt: null,
+      revokedAt: null
+    });
+    await authorization.upsertAuthorizationGrant({
+      id: grantId,
+      authorizationClientId: clientId,
+      userId,
+      protectedResourceId: resourceId,
+      scopes: ["documents:read", "documents:write", "offline_access"],
+      createdAt: now,
+      updatedAt: now,
+      revokedAt: null
+    });
+    await authorization.createAuthorizationTokens({
+      id: `oat_read_${suffix}`,
+      tokenHash: readTokenHash,
+      prefix: `oa_at_read_${suffix}`,
+      grantId,
+      authorizationClientId: clientId,
+      userId,
+      protectedResourceId: resourceId,
+      scopes: ["documents:read"],
+      expiresAt,
+      revokedAt: null,
+      createdAt: now
+    }, null);
+    await authorization.createAuthorizationTokens({
+      id: `oat_broad_${suffix}`,
+      tokenHash: broadTokenHash,
+      prefix: `oa_at_broad_${suffix}`,
+      grantId,
+      authorizationClientId: clientId,
+      userId,
+      protectedResourceId: resourceId,
+      scopes: ["documents:read", "documents:write"],
+      expiresAt,
+      revokedAt: null,
+      createdAt: now
+    }, {
+      id: `ort_${suffix}`,
+      tokenHash: refreshTokenHash,
+      prefix: `oa_rt_${suffix}`,
+      grantId,
+      authorizationClientId: clientId,
+      userId,
+      protectedResourceId: resourceId,
+      scopes: ["documents:read", "documents:write", "offline_access"],
+      generation: 0,
+      replacedByTokenId: null,
+      expiresAt,
+      consumedAt: null,
+      revokedAt: null,
+      createdAt: now
+    });
+
+    await authorization.updateProtectedResource(resourceId, {
+      allowedScopes: ["documents:read"],
+      updatedAt: new Date()
+    });
+
+    await expect(authorization.getAuthorizationGrant(clientId, userId, resourceId))
+      .resolves.toMatchObject({ scopes: ["documents:read"], revokedAt: null });
+    await expect(authorization.getAuthorizationAccessTokenByHash(readTokenHash))
+      .resolves.toMatchObject({ revokedAt: null });
+    await expect(authorization.getAuthorizationAccessTokenByHash(broadTokenHash))
+      .resolves.toMatchObject({ revokedAt: expect.any(Date) });
+    await expect(authorization.getAuthorizationRefreshTokenByHash(refreshTokenHash))
+      .resolves.toMatchObject({ revokedAt: expect.any(Date) });
+
+    await authorization.updateProtectedResource(resourceId, {
+      allowedScopes: ["documents:read", "documents:write", "offline_access"],
+      updatedAt: new Date()
+    });
+    await expect(authorization.getAuthorizationAccessTokenByHash(broadTokenHash))
+      .resolves.toMatchObject({ revokedAt: expect.any(Date) });
+
+    await authorization.revokeProtectedResource(resourceId, new Date());
+    await expect(authorization.getProtectedResourceByIdentifier(
+      `https://api-${suffix}.example.com/`
+    )).resolves.toMatchObject({ status: "revoked", revokedAt: expect.any(Date) });
+  });
 });
 
 async function inspectPostgres(

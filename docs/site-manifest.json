@@ -198,10 +198,17 @@
         },
         {
           "title": "OAuth And OpenID Connect Server",
-          "description": "Let other applications authorize users through Own Auth with PKCE, OpenID Connect, rotating refresh tokens, revocation, introspection, userinfo, discovery, and JWKS.",
+          "description": "Let other applications authorize users through Own Auth with PKCE, OpenID Connect, rotating refresh tokens, revocation, userinfo, discovery, and JWKS.",
           "href": "/docs/authorization-server",
           "slug": ["authorization-server"],
           "source": "docs/authorization-server.md"
+        },
+        {
+          "title": "Protected Resources",
+          "description": "Bind OAuth access tokens to one API and verify them locally or through authenticated remote introspection.",
+          "href": "/docs/protected-resources",
+          "slug": ["protected-resources"],
+          "source": "docs/protected-resources.md"
         },
         {
           "title": "TypeScript Client",

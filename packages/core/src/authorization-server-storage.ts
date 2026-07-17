@@ -8,7 +8,9 @@ import type {
   AuthorizationInteraction,
   AuthorizationRefreshToken,
   AuthorizationInteractionStatus,
-  OidcSubject
+  OidcSubject,
+  ProtectedResource,
+  ProtectedResourceSecret
 } from "./authorization-server-types.js";
 
 export interface RotateAuthorizationRefreshTokenInput {
@@ -47,6 +49,31 @@ export interface AuthorizationServerStorage {
   ): Promise<AuthorizationClientSecret | null>;
   revokeAuthorizationClient(id: string, revokedAt: Date): Promise<AuthorizationClient | null>;
 
+  createProtectedResource(
+    resource: ProtectedResource,
+    secret: ProtectedResourceSecret
+  ): Promise<ProtectedResource>;
+  getProtectedResourceById(id: string): Promise<ProtectedResource | null>;
+  getProtectedResourceByIdentifier(identifier: string): Promise<ProtectedResource | null>;
+  listProtectedResources(): Promise<ProtectedResource[]>;
+  updateProtectedResource(
+    id: string,
+    patch: Partial<ProtectedResource>
+  ): Promise<ProtectedResource | null>;
+  replaceProtectedResourceSecret(
+    protectedResourceId: string,
+    secret: ProtectedResourceSecret,
+    revokedAt: Date
+  ): Promise<ProtectedResourceSecret>;
+  getProtectedResourceSecretByPrefix(
+    protectedResourceId: string,
+    prefix: string
+  ): Promise<ProtectedResourceSecret | null>;
+  revokeProtectedResource(
+    id: string,
+    revokedAt: Date
+  ): Promise<ProtectedResource | null>;
+
   createAuthorizationInteraction(
     interaction: AuthorizationInteraction
   ): Promise<AuthorizationInteraction>;
@@ -68,7 +95,8 @@ export interface AuthorizationServerStorage {
 
   getAuthorizationGrant(
     authorizationClientId: string,
-    userId: string
+    userId: string,
+    protectedResourceId: string | null
   ): Promise<AuthorizationGrant | null>;
   upsertAuthorizationGrant(grant: AuthorizationGrant): Promise<AuthorizationGrant>;
   listAuthorizationGrantsByUserId(userId: string): Promise<AuthorizationGrant[]>;
@@ -80,6 +108,7 @@ export interface AuthorizationServerStorage {
     authorizationClientId: string,
     redirectUri: string,
     codeChallenge: string,
+    resourceIdentifier: string | null,
     consumedAt: Date
   ): Promise<AuthorizationCode | null>;
 
@@ -124,6 +153,14 @@ export function isAuthorizationServerCapableStorage(
     "replaceAuthorizationClientSecret",
     "getAuthorizationClientSecretByPrefix",
     "revokeAuthorizationClient",
+    "createProtectedResource",
+    "getProtectedResourceById",
+    "getProtectedResourceByIdentifier",
+    "listProtectedResources",
+    "updateProtectedResource",
+    "replaceProtectedResourceSecret",
+    "getProtectedResourceSecretByPrefix",
+    "revokeProtectedResource",
     "createAuthorizationInteraction",
     "getAuthorizationInteractionByHash",
     "bindAuthorizationInteractionToUser",

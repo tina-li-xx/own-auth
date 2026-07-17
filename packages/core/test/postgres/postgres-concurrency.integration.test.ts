@@ -110,6 +110,7 @@ describeWithDatabase("Postgres concurrency integration", () => {
         id: grantId,
         authorizationClientId: clientId,
         userId,
+        protectedResourceId: null,
         scopes: ["openid", "offline_access"],
         createdAt: now,
         updatedAt: now,
@@ -151,7 +152,7 @@ describeWithDatabase("Postgres concurrency integration", () => {
 
       expect(results.sort()).toEqual(["reused", "rotated"]);
       await expect(
-        storage[0].authorizationServerStorage.getAuthorizationGrant(clientId, userId)
+        storage[0].authorizationServerStorage.getAuthorizationGrant(clientId, userId, null)
       ).resolves.toMatchObject({ revokedAt: expect.any(Date) });
       const accessTokens = await Promise.all(attempts.map(({ access }) =>
         storage[0].authorizationServerStorage.getAuthorizationAccessTokenByHash(
@@ -269,6 +270,7 @@ function accessToken(
     grantId,
     authorizationClientId,
     userId,
+    protectedResourceId: null,
     scopes: ["openid", "offline_access"],
     expiresAt,
     revokedAt: null,
@@ -292,6 +294,7 @@ function refreshToken(
     grantId,
     authorizationClientId,
     userId,
+    protectedResourceId: null,
     scopes: ["openid", "offline_access"],
     generation,
     replacedByTokenId: null,

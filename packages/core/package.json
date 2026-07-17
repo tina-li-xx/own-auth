@@ -68,6 +68,10 @@
       "types": "./dist/authorization-server-http.d.ts",
       "default": "./dist/authorization-server-http.js"
     },
+    "./protected-resource": {
+      "types": "./dist/protected-resource.d.ts",
+      "default": "./dist/protected-resource.js"
+    },
     "./react": {
       "types": "./dist/react.d.ts",
       "default": "./dist/react.js"
@@ -95,6 +99,7 @@
     "./migrations/009_custom_authorization.sql": "./migrations/009_custom_authorization.sql",
     "./migrations/010_administration.sql": "./migrations/010_administration.sql",
     "./migrations/011_authorization_server.sql": "./migrations/011_authorization_server.sql",
+    "./migrations/012_protected_resources.sql": "./migrations/012_protected_resources.sql",
     "./migrations/d1/*.sql": "./migrations/d1/*.sql",
     "./docs/installation.md": "./docs/installation.md",
     "./docs/cloudflare-d1.md": "./docs/cloudflare-d1.md",

@@ -11,6 +11,9 @@ import type {
   AuthorizationInteractionStatus,
   AuthorizationRefreshToken,
   OidcSubject,
+  ProtectedResource,
+  ProtectedResourceSecret,
+  ProtectedResourceStatus,
   TokenEndpointAuthMethod
 } from "./authorization-server-types.js";
 import {
@@ -56,6 +59,33 @@ export function mapAuthorizationClientSecret(
   };
 }
 
+export function mapProtectedResource(row: DatabaseRow): ProtectedResource {
+  return {
+    id: stringValue(row.id),
+    identifier: stringValue(row.identifier),
+    name: stringValue(row.name),
+    allowedScopes: stringArray(row.allowed_scopes),
+    status: stringValue(row.status) as ProtectedResourceStatus,
+    createdAt: dateValue(row.created_at),
+    updatedAt: dateValue(row.updated_at),
+    revokedAt: nullableDate(row.revoked_at)
+  };
+}
+
+export function mapProtectedResourceSecret(
+  row: DatabaseRow
+): ProtectedResourceSecret {
+  return {
+    id: stringValue(row.id),
+    protectedResourceId: stringValue(row.protected_resource_id),
+    prefix: stringValue(row.prefix),
+    secretHash: stringValue(row.secret_hash),
+    createdAt: dateValue(row.created_at),
+    expiresAt: nullableDate(row.expires_at),
+    revokedAt: nullableDate(row.revoked_at)
+  };
+}
+
 export function mapAuthorizationInteraction(
   row: DatabaseRow
 ): AuthorizationInteraction {
@@ -79,6 +109,7 @@ export function mapAuthorizationGrant(row: DatabaseRow): AuthorizationGrant {
     id: stringValue(row.id),
     authorizationClientId: stringValue(row.authorization_client_id),
     userId: stringValue(row.user_id),
+    protectedResourceId: nullableString(row.protected_resource_id),
     scopes: stringArray(row.scopes),
     createdAt: dateValue(row.created_at),
     updatedAt: dateValue(row.updated_at),
@@ -93,6 +124,7 @@ export function mapAuthorizationCode(row: DatabaseRow): AuthorizationCode {
     grantId: stringValue(row.grant_id),
     authorizationClientId: stringValue(row.authorization_client_id),
     userId: stringValue(row.user_id),
+    protectedResourceId: nullableString(row.protected_resource_id),
     sessionId: stringValue(row.session_id),
     redirectUri: stringValue(row.redirect_uri),
     scopes: stringArray(row.scopes),
@@ -116,6 +148,7 @@ export function mapAuthorizationAccessToken(
     grantId: stringValue(row.grant_id),
     authorizationClientId: stringValue(row.authorization_client_id),
     userId: stringValue(row.user_id),
+    protectedResourceId: nullableString(row.protected_resource_id),
     scopes: stringArray(row.scopes),
     expiresAt: dateValue(row.expires_at),
     revokedAt: nullableDate(row.revoked_at),
@@ -133,6 +166,7 @@ export function mapAuthorizationRefreshToken(
     grantId: stringValue(row.grant_id),
     authorizationClientId: stringValue(row.authorization_client_id),
     userId: stringValue(row.user_id),
+    protectedResourceId: nullableString(row.protected_resource_id),
     scopes: stringArray(row.scopes),
     generation: numberValue(row.generation),
     replacedByTokenId: nullableString(row.replaced_by_token_id),

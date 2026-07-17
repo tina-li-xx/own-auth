@@ -4,6 +4,7 @@ import {
   type AuthorizationInteractionAction,
   type TokenEndpointAuthMethod
 } from "../../src/index.js";
+import { createOwnAuthProtectedResource } from "../../src/protected-resource.js";
 
 export const authWithAuthorizationServer = createOwnAuth({
   storage: new InMemoryAuthStorage(),
@@ -36,7 +37,20 @@ authWithAuthorizationServer.authorizationServer.createClient({
 
 authWithAuthorizationServer.authorizationServer.verifyAccessToken({
   accessToken: "oa_at_example",
-  requiredScopes: ["documents:read"]
+  requiredScopes: ["documents:read"],
+  resource: "https://api.example.com/"
+});
+
+authWithAuthorizationServer.authorizationServer.createProtectedResource({
+  identifier: "https://api.example.com/",
+  name: "Example API",
+  allowedScopes: ["documents:read"]
+});
+
+export const protectedResource = createOwnAuthProtectedResource({
+  introspectionUrl: "https://auth.example.com/oauth/introspect",
+  resource: "https://api.example.com/",
+  resourceSecret: "oa_rs_example_secret"
 });
 
 export const clientAuthMethod: TokenEndpointAuthMethod = "client_secret_basic";

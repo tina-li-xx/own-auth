@@ -5,6 +5,7 @@ export type AuthorizationProtocolErrorCode =
   | "invalid_grant"
   | "invalid_request"
   | "invalid_scope"
+  | "invalid_target"
   | "invalid_token"
   | "interaction_required"
   | "login_required"

@@ -43,6 +43,8 @@ export interface AuthorizationServerRuntimeConfig {
   authorizationCodeTtlMs: number;
   accessTokenTtlMs: number;
   refreshTokenTtlMs: number;
+  resourceIntrospectionRequestsPerMinute: number;
+  failedIntrospectionAttemptsPerMinute: number;
   signer: AuthorizationServerSigner;
 }
 
@@ -73,6 +75,14 @@ export function normalizeAuthorizationServerOptions(
     refreshTokenTtlMs: positiveInteger(
       options.refreshTokenTtlMs ?? 30 * day,
       "authorizationServer.refreshTokenTtlMs"
+    ),
+    resourceIntrospectionRequestsPerMinute: positiveInteger(
+      options.resourceIntrospectionRequestsPerMinute ?? 6_000,
+      "authorizationServer.resourceIntrospectionRequestsPerMinute"
+    ),
+    failedIntrospectionAttemptsPerMinute: positiveInteger(
+      options.failedIntrospectionAttemptsPerMinute ?? 30,
+      "authorizationServer.failedIntrospectionAttemptsPerMinute"
     ),
     signer: new AuthorizationServerSigner({
       current: options.signingKeys.current,

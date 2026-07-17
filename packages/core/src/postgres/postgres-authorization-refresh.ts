@@ -53,16 +53,16 @@ export async function rotatePostgresAuthorizationRefreshToken(
      ), inserted_refresh as (
        insert into own_auth_authorization_refresh_tokens
          (id, token_hash, prefix, grant_id, authorization_client_id, user_id,
-          scopes, generation, replaced_by_token_id, expires_at, consumed_at,
+          protected_resource_id, scopes, generation, replaced_by_token_id, expires_at, consumed_at,
           revoked_at, created_at)
-       select $5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17
+       select $5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18
        where exists (select 1 from consumed)
        returning id
      ), inserted_access as (
        insert into own_auth_authorization_access_tokens
          (id, token_hash, prefix, grant_id, authorization_client_id,
-          user_id, scopes, expires_at, revoked_at, created_at)
-       select $18,$19,$20,$21,$22,$23,$24,$25,$26,$27
+          user_id, protected_resource_id, scopes, expires_at, revoked_at, created_at)
+       select $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29
        where exists (select 1 from consumed)
      )
      select case

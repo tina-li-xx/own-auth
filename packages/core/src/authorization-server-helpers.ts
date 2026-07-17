@@ -15,6 +15,8 @@ import { hashSecret, randomBase64Url } from "./crypto.js";
 import { encodeBase64Url } from "./encoding.js";
 import { requireEncryptionKeyRing } from "./encryption.js";
 import { AuthError } from "./errors.js";
+import { AuthorizationProtocolError } from "./authorization-server-protocol-error.js";
+import { normalizeProtectedResourceUrl } from "./protected-resource-url.js";
 import type { SessionAssuranceLevel } from "./types.js";
 import {
   isLocalHostname,
@@ -28,6 +30,10 @@ const codeChallengePattern = /^[A-Za-z0-9_-]{43}$/;
 const codeVerifierPattern = /^[A-Za-z0-9._~-]{43,128}$/;
 const clientSecretPattern = new RegExp(
   `^(${authorizationServerTokenPrefixes.clientSecret}[A-Za-z0-9_-]{8})_` +
+  "[A-Za-z0-9_-]{43}$"
+);
+const protectedResourceSecretPattern = new RegExp(
+  `^(${authorizationServerTokenPrefixes.protectedResourceSecret}[A-Za-z0-9_-]{8})_` +
   "[A-Za-z0-9_-]{43}$"
 );
 
@@ -68,6 +74,42 @@ export function createClientSecret(): {
 
 export function extractClientSecretPrefix(rawSecret: string): string | null {
   return clientSecretPattern.exec(rawSecret)?.[1] ?? null;
+}
+
+export function createProtectedResourceSecret(): {
+  raw: string;
+  prefix: string;
+} {
+  const prefix =
+    `${authorizationServerTokenPrefixes.protectedResourceSecret}${randomBase64Url(6)}`;
+  return {
+    raw: `${prefix}_${randomBase64Url(32)}`,
+    prefix
+  };
+}
+
+export function extractProtectedResourceSecretPrefix(rawSecret: string): string | null {
+  return protectedResourceSecretPattern.exec(rawSecret)?.[1] ?? null;
+}
+
+export function requireAuthorizationProtocolToken(value: string | undefined): string {
+  if (typeof value !== "string" || !value || value.length > 512) {
+    throw new AuthorizationProtocolError("invalid_request", "token is required");
+  }
+  return value;
+}
+
+export function normalizeProtectedResourceIdentifier(value: string): string {
+  const normalized = normalizeProtectedResourceUrl(
+    value,
+    process.env.NODE_ENV !== "production"
+  );
+  if (!normalized) {
+    throw validationError(
+      "Protected resource identifiers require HTTPS or a local development URL without a query or fragment"
+    );
+  }
+  return normalized;
 }
 
 export function createInteractionToken(): string {

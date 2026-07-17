@@ -21,7 +21,9 @@ Own Auth applies built-in rate limits to sensitive authentication entry points. 
 | Google One Tap verify | IP address, when available | 30 | 10 minutes |
 | Authorization-server start | IP address, when available | 60 | 10 minutes |
 | Authorization-server interaction completion | User ID | 30 | 10 minutes |
-| Authorization-server token, revocation, and introspection endpoints | IP address, otherwise client ID | 120 | 10 minutes |
+| Authorization-server token, revocation, and client introspection endpoints | IP address, otherwise client ID | 120 | 10 minutes |
+| Protected-resource introspection | Protected-resource identity | 6,000 | 1 minute |
+| Failed protected-resource authentication | IP address, when available | 30 | 1 minute |
 | API-key creation | User or organisation owner | 20 | 1 hour |
 | Organisation invite | Organisation ID | 10 | 1 hour |
 
@@ -69,7 +71,9 @@ const auth = createOwnAuth({
 
 ## Configuration
 
-The built-in core operation limits and windows are not configurable. Plugins may declare their own namespaced endpoint rate limits, but cannot replace or weaken core limits.
+Most built-in core operation limits and windows are not configurable. Protected-resource operators can size remote introspection for their traffic with `authorizationServer.resourceIntrospectionRequestsPerMinute` and `authorizationServer.failedIntrospectionAttemptsPerMinute`. The authenticated limit is shared by every server instance using the same protected-resource identity. The failed-authentication limit applies only when the authorization-server handler receives an IP address through `getRequestContext`.
+
+Plugins may declare their own namespaced endpoint rate limits, but cannot replace or weaken core limits.
 
 ## Next step
 

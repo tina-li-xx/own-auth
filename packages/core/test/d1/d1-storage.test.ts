@@ -243,6 +243,34 @@ describe("D1 persistence", () => {
     );
   });
 
+  it("removes retired scopes without revoking tokens that keep valid scopes", async () => {
+    const database = new RecordingD1();
+    const storage = new D1AuthStorage(database).authorizationServerStorage;
+    database.queue([{
+      id: "opres_1",
+      identifier: "https://api.example.com/",
+      name: "Example API",
+      allowed_scopes: '["documents:read"]',
+      status: "active",
+      created_at: 1_752_580_800_000,
+      updated_at: 1_752_581_100_000,
+      revoked_at: null
+    }]);
+    database.queue([]);
+    database.queue([]);
+    database.queue([]);
+
+    await storage.updateProtectedResource("opres_1", {
+      allowedScopes: ["documents:read"],
+      updatedAt: new Date(1_752_581_100_000)
+    });
+
+    expect(database.calls[1]?.sql).toContain("set scopes =");
+    expect(database.calls[1]?.sql).not.toContain("set revoked_at");
+    expect(database.calls[2]?.sql).toContain("access_tokens set revoked_at");
+    expect(database.calls[3]?.sql).toContain("refresh_tokens set revoked_at");
+  });
+
   it("maps D1 identity collisions to typed Own Auth errors", async () => {
     const database = new RecordingD1();
     const storage = new D1AuthStorage(database);
@@ -398,6 +426,7 @@ function authorizationAccessToken() {
     grantId: "ogrant_1",
     authorizationClientId: "ocli_1",
     userId: "usr_1",
+    protectedResourceId: null,
     scopes: ["openid", "offline_access"],
     expiresAt: new Date("2026-07-15T13:00:00.000Z"),
     revokedAt: null,
@@ -413,6 +442,7 @@ function authorizationRefreshToken() {
     grantId: "ogrant_1",
     authorizationClientId: "ocli_1",
     userId: "usr_1",
+    protectedResourceId: null,
     scopes: ["openid", "offline_access"],
     generation: 1,
     replacedByTokenId: null,

@@ -1,12 +1,8 @@
 import type { AuthEngineContext } from "./auth-engine-context.js";
-import { audit, rateLimit } from "./auth-engine-helpers.js";
+import { audit } from "./auth-engine-helpers.js";
 import { authenticateAuthorizationClient } from "./authorization-server-clients.js";
 import { createAuthorizationIdToken } from "./authorization-server-claims.js";
-import {
-  authorizationServerRateLimits,
-  authorizationServerRateLimitWindowMs,
-  authorizationServerTokenPrefixes
-} from "./authorization-server-constants.js";
+import { authorizationServerTokenPrefixes } from "./authorization-server-constants.js";
 import {
   authorizationTokenPrefix,
   calculateCodeChallenge,
@@ -14,13 +10,20 @@ import {
   createRefreshToken,
   decryptAuthorizationNonce,
   hashAuthorizationSecret,
+  normalizeProtectedResourceIdentifier,
   requireAuthorizationServer
 } from "./authorization-server-helpers.js";
+import {
+  authorizationTokenScopesAreActive,
+  isActiveProtectedResource
+} from "./authorization-server-protected-resources.js";
 import { AuthorizationProtocolError } from "./authorization-server-protocol-error.js";
+import { rateLimitAuthorizationServerProtocol } from "./authorization-server-rate-limits.js";
 import type {
   AuthorizationAccessToken,
   AuthorizationClient,
   AuthorizationRefreshToken,
+  ProtectedResource,
   AuthorizationTokenRequestInput,
   AuthorizationTokenResponse
 } from "./authorization-server-types.js";
@@ -32,13 +35,7 @@ export async function exchangeAuthorizationToken(
   ctx: AuthEngineContext,
   input: AuthorizationTokenRequestInput
 ): Promise<AuthorizationTokenResponse> {
-  await rateLimit(
-    ctx,
-    "authorization_server_token",
-    input.request?.ipAddress ?? input.clientId ?? "unknown",
-    authorizationServerRateLimits.protocol,
-    authorizationServerRateLimitWindowMs
-  );
+  await rateLimitAuthorizationServerProtocol(ctx, "token", input);
   const client = await authenticateAuthorizationClient(ctx, input);
   if (!input.grantType) {
     throw new AuthorizationProtocolError("invalid_request", "grant_type is required");
@@ -68,20 +65,27 @@ async function exchangeAuthorizationCode(
   );
   const redirectUri = requiredText(input.redirectUri, "redirect_uri");
   const codeVerifier = requiredText(input.codeVerifier, "code_verifier");
+  const requestedResource = optionalResource(input.resource);
   const codeChallenge = await calculateCodeChallenge(codeVerifier);
   const code = await storage.consumeAuthorizationCode(
     hashAuthorizationSecret(ctx, rawCode),
     client.id,
     redirectUri,
     codeChallenge,
+    requestedResource,
     new Date()
   );
   if (!code) throw invalidGrant();
 
-  const [grant, user, sessions] = await Promise.all([
-    storage.getAuthorizationGrant(client.id, code.userId),
+  const [grant, user, sessions, resource] = await Promise.all([
+    storage.getAuthorizationGrant(
+      client.id,
+      code.userId,
+      code.protectedResourceId
+    ),
     ctx.storage.getUserById(code.userId),
-    ctx.storage.listSessionsByUserId(code.userId)
+    ctx.storage.listSessionsByUserId(code.userId),
+    loadTokenResource(ctx, code.protectedResourceId, requestedResource)
   ]);
   const session = sessions.find((candidate) => candidate.id === code.sessionId) ?? null;
   if (
@@ -90,12 +94,21 @@ async function exchangeAuthorizationCode(
     grant.revokedAt ||
     !user ||
     user.disabledAt ||
-    !usableSession(session)
+    !usableSession(session) ||
+    !authorizationTokenScopesAreActive(resource, grant?.scopes ?? [], code.scopes)
   ) {
     throw invalidGrant();
   }
 
-  const issued = createTokenPair(ctx, client, grant.id, user, code.scopes, 0);
+  const issued = createTokenPair(
+    ctx,
+    client,
+    grant.id,
+    user,
+    code.protectedResourceId,
+    code.scopes,
+    0
+  );
   const nonce = code.nonceCiphertext && code.nonceNonce && code.encryptionKeyId
     ? await decryptAuthorizationNonce(ctx, {
         id: code.id,
@@ -125,7 +138,8 @@ async function exchangeAuthorizationCode(
     metadata: {
       authorizationClientId: client.id,
       grantId: grant.id,
-      scopes: code.scopes
+      scopes: code.scopes,
+      ...(resource ? { protectedResourceId: resource.id } : {})
     }
   });
   return tokenResponse(
@@ -149,6 +163,7 @@ async function exchangeRefreshToken(
     authorizationServerTokenPrefixes.refreshToken
   );
   const tokenHash = hashAuthorizationSecret(ctx, rawRefreshToken);
+  const requestedResource = optionalResource(input.resource);
   const current = await storage.getAuthorizationRefreshTokenByHash(tokenHash);
   if (
     !current ||
@@ -158,16 +173,22 @@ async function exchangeRefreshToken(
   ) {
     throw invalidGrant();
   }
-  const [grant, user] = await Promise.all([
-    storage.getAuthorizationGrant(client.id, current.userId),
-    ctx.storage.getUserById(current.userId)
+  const [grant, user, resource] = await Promise.all([
+    storage.getAuthorizationGrant(
+      client.id,
+      current.userId,
+      current.protectedResourceId
+    ),
+    ctx.storage.getUserById(current.userId),
+    loadTokenResource(ctx, current.protectedResourceId, requestedResource)
   ]);
   if (
     !grant ||
     grant.id !== current.grantId ||
     grant.revokedAt ||
     !user ||
-    user.disabledAt
+    user.disabledAt ||
+    !authorizationTokenScopesAreActive(resource, grant?.scopes ?? [], current.scopes)
   ) {
     throw invalidGrant();
   }
@@ -177,6 +198,7 @@ async function exchangeRefreshToken(
     client,
     current.grantId,
     user,
+    current.protectedResourceId,
     scopes,
     current.generation + 1,
     true
@@ -224,7 +246,8 @@ async function exchangeRefreshToken(
     metadata: {
       authorizationClientId: client.id,
       grantId: current.grantId,
-      scopes
+      scopes,
+      ...(resource ? { protectedResourceId: resource.id } : {})
     }
   });
   return tokenResponse(
@@ -240,6 +263,7 @@ function createTokenPair(
   client: AuthorizationClient,
   grantId: string,
   user: User,
+  protectedResourceId: string | null,
   scopes: string[],
   refreshGeneration: number,
   forceRefresh = false
@@ -257,6 +281,7 @@ function createTokenPair(
     grantId,
     authorizationClientId: client.id,
     userId: user.id,
+    protectedResourceId,
     scopes: [...scopes],
     expiresAt: new Date(now.getTime() + config.accessTokenTtlMs),
     revokedAt: null,
@@ -277,6 +302,7 @@ function createTokenPair(
         grantId,
         authorizationClientId: client.id,
         userId: user.id,
+        protectedResourceId,
         scopes: [...scopes],
         generation: refreshGeneration,
         replacedByTokenId: null,
@@ -356,5 +382,42 @@ function invalidGrant(): AuthorizationProtocolError {
   return new AuthorizationProtocolError(
     "invalid_grant",
     "The authorization grant is invalid, expired, revoked, or already used"
+  );
+}
+
+function optionalResource(value: string | undefined): string | null {
+  if (value === undefined) return null;
+  try {
+    return normalizeProtectedResourceIdentifier(value);
+  } catch {
+    throw new AuthorizationProtocolError(
+      "invalid_target",
+      "resource must identify a registered protected resource"
+    );
+  }
+}
+
+async function loadTokenResource(
+  ctx: AuthEngineContext,
+  protectedResourceId: string | null,
+  requestedIdentifier: string | null
+): Promise<ProtectedResource | null> {
+  if (protectedResourceId === null) {
+    if (requestedIdentifier !== null) throw invalidTarget();
+    return null;
+  }
+  const resource = await requireAuthorizationServer(ctx).storage
+    .getProtectedResourceById(protectedResourceId);
+  if (!isActiveProtectedResource(resource)) throw invalidGrant();
+  if (requestedIdentifier !== null && requestedIdentifier !== resource.identifier) {
+    throw invalidTarget();
+  }
+  return resource;
+}
+
+function invalidTarget(): AuthorizationProtocolError {
+  return new AuthorizationProtocolError(
+    "invalid_target",
+    "The protected resource does not match the authorization grant"
   );
 }

@@ -72,11 +72,13 @@ Popup callbacks post only completion state to the exact stored opener origin. OA
 
 The optional authorization server requires authorization code with PKCE S256. Redirect URIs match the client's registered value exactly.
 
-Interaction handles, authorization codes, access tokens, refresh tokens, and client secrets are random and stored only as peppered hashes. Authorization requests and OIDC nonces are encrypted with authenticated metadata.
+Interaction handles, authorization codes, access tokens, refresh tokens, client secrets, and protected-resource secrets are random and stored only as peppered hashes. Authorization requests and OIDC nonces are encrypted with authenticated metadata.
 
 Refresh tokens rotate on every use. Reuse revokes the complete grant family, including an access or refresh token created by a concurrent winning request.
 
 ID tokens use RS256 and publish only public key material through JWKS. OIDC subjects are random, stable per user, deleted with the user, and never reassigned.
+
+Resource-bound tokens carry one immutable resource identity. A resource can introspect only access tokens issued for that identity. Removing an allowed scope fully invalidates tokens carrying that scope instead of returning them with reduced authority.
 
 Unauthenticated interaction reads do not reveal the client or requested scopes. `prompt=select_account` always reaches the interaction page, while `prompt=none` fails instead of showing UI.
 
@@ -122,7 +124,7 @@ The exception is sign-up. `signUpEmailPassword` throws `email_already_exists` wh
 
 ## Token pepper
 
-The token pepper (`OWN_AUTH_TOKEN_PEPPER`) adds a secret component to token, session, API-key, OAuth client-secret, and authorization-server token hashing. It serves as a defense-in-depth layer:
+The token pepper (`OWN_AUTH_TOKEN_PEPPER`) adds a secret component to token, session, API-key, OAuth client-secret, protected-resource-secret, and authorization-server token hashing. It serves as a defense-in-depth layer:
 
 - Without the pepper, an attacker with database access could attempt offline brute-force attacks against stored hashes.
 - With the pepper, the attacker also needs the pepper value, which is stored in the environment rather than the database.

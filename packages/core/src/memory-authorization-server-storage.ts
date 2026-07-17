@@ -17,10 +17,14 @@ import type {
 import {
   cloneStored,
   findStored,
-  updateStoredEntity
+  updateStoredEntity,
+  updateStoredWhere
 } from "./memory-storage-helpers.js";
+import { MemoryProtectedResourceStorage } from "./memory-protected-resource-storage.js";
 
-export class MemoryAuthorizationServerStorage implements AuthorizationServerStorage {
+export class MemoryAuthorizationServerStorage
+  extends MemoryProtectedResourceStorage
+  implements AuthorizationServerStorage {
   private readonly clients = new Map<string, AuthorizationClient>();
   private readonly secrets = new Map<string, AuthorizationClientSecret>();
   private readonly interactions = new Map<string, AuthorizationInteraction>();
@@ -72,11 +76,12 @@ export class MemoryAuthorizationServerStorage implements AuthorizationServerStor
     secret: AuthorizationClientSecret,
     revokedAt: Date
   ): Promise<AuthorizationClientSecret> {
-    for (const [id, existing] of this.secrets) {
-      if (existing.authorizationClientId === authorizationClientId && !existing.revokedAt) {
-        updateStoredEntity(this.secrets, id, { revokedAt });
-      }
-    }
+    updateStoredWhere(
+      this.secrets,
+      (existing) =>
+        existing.authorizationClientId === authorizationClientId && !existing.revokedAt,
+      { revokedAt }
+    );
     this.secrets.set(secret.id, cloneStored(secret));
     return cloneStored(secret);
   }
@@ -102,11 +107,11 @@ export class MemoryAuthorizationServerStorage implements AuthorizationServerStor
   ): Promise<AuthorizationClient | null> {
     const client = this.clients.get(id);
     if (!client) return null;
-    for (const [secretId, secret] of this.secrets) {
-      if (secret.authorizationClientId === id && !secret.revokedAt) {
-        updateStoredEntity(this.secrets, secretId, { revokedAt });
-      }
-    }
+    updateStoredWhere(
+      this.secrets,
+      (secret) => secret.authorizationClientId === id && !secret.revokedAt,
+      { revokedAt }
+    );
     for (const grant of this.grants.values()) {
       if (grant.authorizationClientId === id) this.revokeGrantFamily(grant.id, revokedAt);
     }
@@ -155,13 +160,15 @@ export class MemoryAuthorizationServerStorage implements AuthorizationServerStor
 
   async getAuthorizationGrant(
     authorizationClientId: string,
-    userId: string
+    userId: string,
+    protectedResourceId: string | null
   ): Promise<AuthorizationGrant | null> {
     return findStored(
       this.grants,
       (grant) =>
         grant.authorizationClientId === authorizationClientId &&
-        grant.userId === userId
+        grant.userId === userId &&
+        grant.protectedResourceId === protectedResourceId
     );
   }
 
@@ -170,7 +177,8 @@ export class MemoryAuthorizationServerStorage implements AuthorizationServerStor
       this.grants,
       (candidate) =>
         candidate.authorizationClientId === grant.authorizationClientId &&
-        candidate.userId === grant.userId
+        candidate.userId === grant.userId &&
+        candidate.protectedResourceId === grant.protectedResourceId
     );
     if (existing) {
       const updated = updateStoredEntity(this.grants, existing.id, {
@@ -211,14 +219,22 @@ export class MemoryAuthorizationServerStorage implements AuthorizationServerStor
     authorizationClientId: string,
     redirectUri: string,
     codeChallenge: string,
+    resourceIdentifier: string | null,
     consumedAt: Date
   ): Promise<AuthorizationCode | null> {
+    const requestedResource = resourceIdentifier === null
+      ? null
+      : this.findProtectedResourceByIdentifier(resourceIdentifier);
     const code = [...this.codes.values()].find(
       (candidate) =>
         candidate.codeHash === codeHash &&
         candidate.authorizationClientId === authorizationClientId &&
         candidate.redirectUri === redirectUri &&
         candidate.codeChallenge === codeChallenge &&
+        (resourceIdentifier === null ||
+          (requestedResource?.status === "active" &&
+            !requestedResource.revokedAt &&
+            candidate.protectedResourceId === requestedResource.id)) &&
         !candidate.consumedAt &&
         candidate.expiresAt.getTime() > consumedAt.getTime()
     );
@@ -337,14 +353,51 @@ export class MemoryAuthorizationServerStorage implements AuthorizationServerStor
 
   private revokeGrantFamily(grantId: string, revokedAt: Date): void {
     updateStoredEntity(this.grants, grantId, { revokedAt, updatedAt: revokedAt });
-    for (const [id, token] of this.accessTokens) {
-      if (token.grantId === grantId && !token.revokedAt) {
-        updateStoredEntity(this.accessTokens, id, { revokedAt });
+    updateStoredWhere(
+      this.accessTokens,
+      (token) => token.grantId === grantId && !token.revokedAt,
+      { revokedAt }
+    );
+    updateStoredWhere(
+      this.refreshTokens,
+      (token) => token.grantId === grantId && !token.revokedAt,
+      { revokedAt }
+    );
+  }
+
+  protected override onProtectedResourceScopesChanged(
+    protectedResourceId: string,
+    allowedScopes: readonly string[],
+    changedAt: Date
+  ): void {
+    for (const [grantId, grant] of this.grants) {
+      if (
+        grant.protectedResourceId === protectedResourceId &&
+        !grant.revokedAt &&
+        grant.scopes.some((scope) => !allowedScopes.includes(scope))
+      ) {
+        updateStoredEntity(this.grants, grantId, {
+          scopes: grant.scopes.filter((scope) => allowedScopes.includes(scope)),
+          updatedAt: changedAt
+        });
       }
     }
-    for (const [id, token] of this.refreshTokens) {
-      if (token.grantId === grantId && !token.revokedAt) {
-        updateStoredEntity(this.refreshTokens, id, { revokedAt });
+    const carriesRemovedScope = (
+      token: AuthorizationAccessToken | AuthorizationRefreshToken
+    ) => token.protectedResourceId === protectedResourceId &&
+      !token.revokedAt &&
+      token.scopes.some((scope) => !allowedScopes.includes(scope));
+    updateStoredWhere(this.accessTokens, carriesRemovedScope, { revokedAt: changedAt });
+    updateStoredWhere(this.refreshTokens, carriesRemovedScope, { revokedAt: changedAt });
+  }
+
+  protected override onProtectedResourceRevoked(
+    protectedResourceId: string,
+    revokedAt: Date
+  ): void {
+    for (const grant of this.grants.values()) {
+      if (grant.protectedResourceId === protectedResourceId) {
+        this.revokeGrantFamily(grant.id, revokedAt);
       }
     }
   }

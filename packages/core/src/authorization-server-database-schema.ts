@@ -6,7 +6,9 @@ import type {
   AuthorizationGrant,
   AuthorizationInteraction,
   AuthorizationRefreshToken,
-  OidcSubject
+  OidcSubject,
+  ProtectedResource,
+  ProtectedResourceSecret
 } from "./authorization-server-types.js";
 import {
   databaseColumnList,
@@ -38,6 +40,27 @@ export const authorizationClientSecretColumns: ColumnMap<AuthorizationClientSecr
   revokedAt: "revoked_at"
 };
 
+export const protectedResourceColumns: ColumnMap<ProtectedResource> = {
+  id: "id",
+  identifier: "identifier",
+  name: "name",
+  allowedScopes: "allowed_scopes",
+  status: "status",
+  createdAt: "created_at",
+  updatedAt: "updated_at",
+  revokedAt: "revoked_at"
+};
+
+export const protectedResourceSecretColumns: ColumnMap<ProtectedResourceSecret> = {
+  id: "id",
+  protectedResourceId: "protected_resource_id",
+  prefix: "prefix",
+  secretHash: "secret_hash",
+  createdAt: "created_at",
+  expiresAt: "expires_at",
+  revokedAt: "revoked_at"
+};
+
 export const authorizationInteractionColumns: ColumnMap<AuthorizationInteraction> = {
   id: "id",
   interactionHash: "interaction_hash",
@@ -56,6 +79,7 @@ export const authorizationGrantColumns: ColumnMap<AuthorizationGrant> = {
   id: "id",
   authorizationClientId: "authorization_client_id",
   userId: "user_id",
+  protectedResourceId: "protected_resource_id",
   scopes: "scopes",
   createdAt: "created_at",
   updatedAt: "updated_at",
@@ -68,6 +92,7 @@ export const authorizationCodeColumns: ColumnMap<AuthorizationCode> = {
   grantId: "grant_id",
   authorizationClientId: "authorization_client_id",
   userId: "user_id",
+  protectedResourceId: "protected_resource_id",
   sessionId: "session_id",
   redirectUri: "redirect_uri",
   scopes: "scopes",
@@ -87,6 +112,7 @@ export const authorizationAccessTokenColumns: ColumnMap<AuthorizationAccessToken
   grantId: "grant_id",
   authorizationClientId: "authorization_client_id",
   userId: "user_id",
+  protectedResourceId: "protected_resource_id",
   scopes: "scopes",
   expiresAt: "expires_at",
   revokedAt: "revoked_at",
@@ -100,6 +126,7 @@ export const authorizationRefreshTokenColumns: ColumnMap<AuthorizationRefreshTok
   grantId: "grant_id",
   authorizationClientId: "authorization_client_id",
   userId: "user_id",
+  protectedResourceId: "protected_resource_id",
   scopes: "scopes",
   generation: "generation",
   replacedByTokenId: "replaced_by_token_id",
@@ -119,6 +146,9 @@ export const oidcSubjectColumns: ColumnMap<OidcSubject> = {
 export const authorizationClientReturning = databaseColumnList(authorizationClientColumns);
 export const authorizationClientSecretReturning =
   databaseColumnList(authorizationClientSecretColumns);
+export const protectedResourceReturning = databaseColumnList(protectedResourceColumns);
+export const protectedResourceSecretReturning =
+  databaseColumnList(protectedResourceSecretColumns);
 export const authorizationInteractionReturning =
   databaseColumnList(authorizationInteractionColumns);
 export const authorizationGrantReturning = databaseColumnList(authorizationGrantColumns);

@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- Custom storage adapters that enable the authorization server must implement the protected-resource storage methods added to `AuthorizationServerStorage`.
+
+### Added
+
+- Registered OAuth protected resources with one-time hashed secrets, exact resource indicators, remote token introspection, secret rotation, and permanent identifier reservation.
+- Lightweight resource-server verification and RFC 6750 Bearer challenge helpers through `own-auth/protected-resource`.
+- Migration `012_protected_resources` for Postgres and Cloudflare D1.
+
+### Security
+
+- Access and refresh tokens are bound to at most one protected resource and cannot gain or switch audiences during code exchange or refresh.
+- Removing a resource scope fully invalidates tokens carrying that scope while preserving tokens whose scopes remain a valid subset.
+- Protected-resource introspection is limited per resource identity, and failed resource authentication is limited per IP address.
+
 ## 0.3.3
 
 ### Added

@@ -54,15 +54,29 @@ export class D1AuthorizationServerStorage
     authorizationClientId: string,
     redirectUri: string,
     codeChallenge: string,
+    resourceIdentifier: string | null,
     consumedAt: Date
   ): Promise<AuthorizationCode | null> {
     const row = await this.prepare(
-      `update own_auth_authorization_codes set consumed_at = ?5
+      `update own_auth_authorization_codes set consumed_at = ?6
        where code_hash = ?1 and authorization_client_id = ?2
          and redirect_uri = ?3 and code_challenge = ?4
-         and consumed_at is null and expires_at > ?5
+         and (
+           ?5 is null or protected_resource_id = (
+             select id from own_auth_protected_resources
+             where identifier = ?5 and status = 'active' and revoked_at is null
+           )
+         )
+         and consumed_at is null and expires_at > ?6
        returning ${authorizationCodeReturning}`,
-      [codeHash, authorizationClientId, redirectUri, codeChallenge, consumedAt]
+      [
+        codeHash,
+        authorizationClientId,
+        redirectUri,
+        codeChallenge,
+        resourceIdentifier,
+        consumedAt
+      ]
     ).first<DatabaseRow>();
     return row ? mapAuthorizationCode(row) : null;
   }
@@ -146,9 +160,9 @@ export class D1AuthorizationServerStorage
       this.prepare(
         `insert into own_auth_authorization_refresh_tokens
           (id, token_hash, prefix, grant_id, authorization_client_id, user_id,
-           scopes, generation, replaced_by_token_id, expires_at, consumed_at,
+           protected_resource_id, scopes, generation, replaced_by_token_id, expires_at, consumed_at,
            revoked_at, created_at)
-         select ?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16
+         select ?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17
          from own_auth_authorization_refresh_tokens current_token
          where current_token.token_hash = ?1
            and current_token.authorization_client_id = ?2
@@ -164,13 +178,13 @@ export class D1AuthorizationServerStorage
       this.prepare(
         `insert into own_auth_authorization_access_tokens
           (id, token_hash, prefix, grant_id, authorization_client_id,
-           user_id, scopes, expires_at, revoked_at, created_at)
-         select ?4,?5,?6,?7,?8,?9,?10,?11,?12,?13
+           user_id, protected_resource_id, scopes, expires_at, revoked_at, created_at)
+         select ?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14
          from own_auth_authorization_refresh_tokens current_token
          where current_token.token_hash = ?1
            and current_token.authorization_client_id = ?2
            and current_token.consumed_at = ?3
-           and current_token.replaced_by_token_id = ?14`,
+           and current_token.replaced_by_token_id = ?15`,
         [
           input.tokenHash,
           input.authorizationClientId,

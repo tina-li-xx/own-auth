@@ -3,6 +3,7 @@ import type { JsonRecord, RequestContext, SessionAssuranceLevel } from "./types.
 export type AuthorizationClientType = "public" | "confidential";
 export type AuthorizationApplicationType = "web" | "native";
 export type AuthorizationClientStatus = "active" | "revoked";
+export type ProtectedResourceStatus = "active" | "revoked";
 export type TokenEndpointAuthMethod =
   | "none"
   | "client_secret_basic"
@@ -41,6 +42,8 @@ export interface AuthorizationServerOptions {
   authorizationCodeTtlMs?: number;
   accessTokenTtlMs?: number;
   refreshTokenTtlMs?: number;
+  resourceIntrospectionRequestsPerMinute?: number;
+  failedIntrospectionAttemptsPerMinute?: number;
 }
 
 export interface AuthorizationClient {
@@ -61,6 +64,27 @@ export interface AuthorizationClient {
 export interface AuthorizationClientSecret {
   id: string;
   authorizationClientId: string;
+  prefix: string;
+  secretHash: string;
+  createdAt: Date;
+  expiresAt: Date | null;
+  revokedAt: Date | null;
+}
+
+export interface ProtectedResource {
+  id: string;
+  identifier: string;
+  name: string;
+  allowedScopes: string[];
+  status: ProtectedResourceStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  revokedAt: Date | null;
+}
+
+export interface ProtectedResourceSecret {
+  id: string;
+  protectedResourceId: string;
   prefix: string;
   secretHash: string;
   createdAt: Date;
@@ -95,12 +119,14 @@ export interface StoredAuthorizationRequest {
   uiLocales: string[];
   claimsLocales: string[];
   loginHint: string | null;
+  resource: string | null;
 }
 
 export interface AuthorizationGrant {
   id: string;
   authorizationClientId: string;
   userId: string;
+  protectedResourceId: string | null;
   scopes: string[];
   createdAt: Date;
   updatedAt: Date;
@@ -113,6 +139,7 @@ export interface AuthorizationCode {
   grantId: string;
   authorizationClientId: string;
   userId: string;
+  protectedResourceId: string | null;
   sessionId: string;
   redirectUri: string;
   scopes: string[];
@@ -132,6 +159,7 @@ export interface AuthorizationAccessToken {
   grantId: string;
   authorizationClientId: string;
   userId: string;
+  protectedResourceId: string | null;
   scopes: string[];
   expiresAt: Date;
   revokedAt: Date | null;
@@ -145,6 +173,7 @@ export interface AuthorizationRefreshToken {
   grantId: string;
   authorizationClientId: string;
   userId: string;
+  protectedResourceId: string | null;
   scopes: string[];
   generation: number;
   replacedByTokenId: string | null;
@@ -175,6 +204,40 @@ export interface CreateAuthorizationClientInput {
 export interface CreatedAuthorizationClient {
   client: AuthorizationClient;
   clientSecret: string | null;
+}
+
+export interface CreateProtectedResourceInput {
+  identifier: string;
+  name: string;
+  allowedScopes: string[];
+  actorUserId?: string;
+  request?: RequestContext;
+}
+
+export interface CreatedProtectedResource {
+  resource: ProtectedResource;
+  resourceSecret: string;
+}
+
+export interface UpdateProtectedResourceInput {
+  identifier: string;
+  name?: string;
+  allowedScopes?: string[];
+  actorUserId?: string;
+  request?: RequestContext;
+}
+
+export interface RotateProtectedResourceSecretInput {
+  identifier: string;
+  expiresAt?: Date;
+  actorUserId?: string;
+  request?: RequestContext;
+}
+
+export interface RevokeProtectedResourceInput {
+  identifier: string;
+  actorUserId?: string;
+  request?: RequestContext;
 }
 
 export interface UpdateAuthorizationClientInput {
@@ -215,6 +278,7 @@ export type AuthorizationInteractionAction =
 export interface PublicAuthorizationInteraction {
   action: AuthorizationInteractionAction;
   client: Pick<AuthorizationClient, "clientId" | "name" | "applicationType"> | null;
+  resource: Pick<ProtectedResource, "identifier" | "name"> | null;
   scopes: Array<{ name: string; label: string; description: string | null }>;
   requiredAssuranceLevel: SessionAssuranceLevel | null;
   expiresAt: Date;
@@ -240,12 +304,14 @@ export interface AuthorizationRedirectResult {
 export interface VerifyAuthorizationAccessTokenInput {
   accessToken: string;
   requiredScopes?: string[];
+  resource?: string;
 }
 
 export interface VerifiedAuthorizationAccessToken {
   client: AuthorizationClient;
   grant: AuthorizationGrant;
   userId: string;
+  resource: string | null;
   scopes: string[];
   expiresAt: Date;
 }
@@ -253,6 +319,7 @@ export interface VerifiedAuthorizationAccessToken {
 export interface AuthorizationUserGrant {
   grant: AuthorizationGrant;
   client: AuthorizationClient;
+  resource: ProtectedResource | null;
 }
 
 export interface ListAuthorizationUserGrantsInput {
@@ -262,6 +329,7 @@ export interface ListAuthorizationUserGrantsInput {
 export interface RevokeAuthorizationUserGrantInput {
   actorUserId: string;
   clientId: string;
+  resource?: string;
   request?: RequestContext;
 }
 
@@ -290,6 +358,7 @@ export interface AuthorizationRequestInput {
   loginHint?: string;
   requestObject?: string;
   requestUri?: string;
+  resource?: string;
   sessionToken?: string | null;
   request?: RequestContext;
 }
@@ -304,6 +373,7 @@ export interface AuthorizationTokenRequestInput {
   codeVerifier?: string;
   refreshToken?: string;
   scope?: string;
+  resource?: string;
   request?: RequestContext;
 }
 
@@ -333,6 +403,7 @@ export interface AuthorizationIntrospectionResponse extends JsonRecord {
   exp?: number;
   iat?: number;
   sub?: string;
+  aud?: string;
 }
 
 export interface AuthorizationUserInfo extends JsonRecord {

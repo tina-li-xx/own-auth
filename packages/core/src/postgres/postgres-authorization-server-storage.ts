@@ -51,16 +51,30 @@ export class PostgresAuthorizationServerStorage
     authorizationClientId: string,
     redirectUri: string,
     codeChallenge: string,
+    resourceIdentifier: string | null,
     consumedAt: Date
   ): Promise<AuthorizationCode | null> {
     const result = await this.db.query<Row>(
       `update own_auth_authorization_codes
-       set consumed_at = $5
+       set consumed_at = $6
        where code_hash = $1 and authorization_client_id = $2
          and redirect_uri = $3 and code_challenge = $4
-         and consumed_at is null and expires_at > $5
+         and (
+           $5::text is null or protected_resource_id = (
+             select id from own_auth_protected_resources
+             where identifier = $5 and status = 'active' and revoked_at is null
+           )
+         )
+         and consumed_at is null and expires_at > $6
        returning ${authorizationCodeReturning}`,
-      [codeHash, authorizationClientId, redirectUri, codeChallenge, consumedAt]
+      [
+        codeHash,
+        authorizationClientId,
+        redirectUri,
+        codeChallenge,
+        resourceIdentifier,
+        consumedAt
+      ]
     );
     return result.rows[0] ? mapAuthorizationCode(result.rows[0]) : null;
   }
@@ -82,14 +96,14 @@ export class PostgresAuthorizationServerStorage
       `with access_token as (
          insert into own_auth_authorization_access_tokens
            (id, token_hash, prefix, grant_id, authorization_client_id,
-            user_id, scopes, expires_at, revoked_at, created_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+            user_id, protected_resource_id, scopes, expires_at, revoked_at, created_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        )
        insert into own_auth_authorization_refresh_tokens
          (id, token_hash, prefix, grant_id, authorization_client_id, user_id,
-          scopes, generation, replaced_by_token_id, expires_at, consumed_at,
+          protected_resource_id, scopes, generation, replaced_by_token_id, expires_at, consumed_at,
           revoked_at, created_at)
-       values ($11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+       values ($12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
       [
         ...authorizationAccessTokenValues(accessToken),
         ...authorizationRefreshTokenValues(refreshToken)
