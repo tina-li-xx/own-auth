@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.3
+
 ### Added
 
 - Optional OAuth 2.1 and OpenID Connect authorization-server support through `auth.authorizationServer` and the separate `own-auth/authorization-server` protocol handler.
