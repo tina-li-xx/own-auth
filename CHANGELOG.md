@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.4
+
 ### Breaking changes
 
 - Custom storage adapters that enable the authorization server must implement the protected-resource storage methods added to `AuthorizationServerStorage`.
