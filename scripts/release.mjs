@@ -83,10 +83,6 @@ export async function tagCurrentRelease(runtime, verification = verificationDefa
 }
 
 export function loadReleasePlan(runtime, channel) {
-  const rootPackage = parseJson(
-    runtime.readText(resolve(rootDir, "package.json")),
-    "package.json"
-  );
   const corePackage = parseJson(
     runtime.readText(resolve(packageDir, "package.json")),
     "packages/core/package.json"
@@ -95,8 +91,7 @@ export function loadReleasePlan(runtime, channel) {
   return validateReleaseFiles({
     changelog: runtime.readText(resolve(rootDir, "CHANGELOG.md")),
     packageName: corePackage.name,
-    packageVersion: corePackage.version,
-    rootVersion: rootPackage.version
+    packageVersion: corePackage.version
   }, channel);
 }
 

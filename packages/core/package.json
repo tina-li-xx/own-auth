@@ -2,7 +2,7 @@
   "name": "own-auth",
   "version": "0.3.3",
   "type": "module",
-  "description": "Framework-independent TypeScript auth engine with Postgres and Cloudflare D1 storage.",
+  "description": "Framework-independent TypeScript authentication that keeps auth data under your control.",
   "license": "MIT",
   "author": "Tina Li",
   "repository": {

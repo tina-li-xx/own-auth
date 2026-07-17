@@ -58,14 +58,9 @@ export function inferReleasePlan(version) {
   );
 }
 
-export function validateReleaseFiles({ changelog, packageName, packageVersion, rootVersion }, channel) {
+export function validateReleaseFiles({ changelog, packageName, packageVersion }, channel) {
   if (packageName !== "own-auth") {
     throw new Error(`Expected package name own-auth; received ${packageName}`);
-  }
-  if (rootVersion !== packageVersion) {
-    throw new Error(
-      `Workspace version ${rootVersion} does not match own-auth version ${packageVersion}`
-    );
   }
 
   const plan = channel

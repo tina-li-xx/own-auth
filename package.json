@@ -1,31 +1,7 @@
 {
   "name": "own-auth-workspace",
-  "version": "0.3.3",
   "private": true,
-  "description": "Vendor-neutral authentication platform for framework-independent auth, sessions, API keys, and organisations.",
   "type": "module",
-  "license": "MIT",
-  "author": "Tina Li",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/own-auth/own-auth.git"
-  },
-  "bugs": {
-    "url": "https://github.com/own-auth/own-auth/issues"
-  },
-  "homepage": "https://own-auth.com",
-  "keywords": [
-    "auth",
-    "authentication",
-    "cloudflare",
-    "d1",
-    "postgres",
-    "sessions",
-    "api-keys",
-    "organisations",
-    "backend",
-    "typescript"
-  ],
   "packageManager": "pnpm@10.0.0",
   "engines": {
     "node": ">=20.0.0"

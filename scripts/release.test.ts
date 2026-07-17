@@ -41,19 +41,11 @@ describe("release policy", () => {
       .toThrow("next releases require a version like 0.4.0-next.0");
   });
 
-  it("requires matching workspace versions and a changelog section", () => {
-    expect(() => validateReleaseFiles({
-      changelog: "## 0.3.0\n",
-      packageName: "own-auth",
-      packageVersion: "0.3.0",
-      rootVersion: "0.2.0"
-    }, "stable")).toThrow("Workspace version 0.2.0 does not match own-auth version 0.3.0");
-
+  it("requires a changelog section for the published package version", () => {
     expect(() => validateReleaseFiles({
       changelog: "## 0.2.0\n",
       packageName: "own-auth",
-      packageVersion: "0.3.0",
-      rootVersion: "0.3.0"
+      packageVersion: "0.3.0"
     }, "stable")).toThrow("CHANGELOG.md is missing ## 0.3.0");
   });
 });
@@ -315,9 +307,6 @@ function createFakeRuntime(options: FakeRuntimeOptions = {}) {
     readText(path: string) {
       if (path.endsWith("/packages/core/package.json")) {
         return JSON.stringify({ name: "own-auth", version: packageVersion });
-      }
-      if (path.endsWith("/package.json")) {
-        return JSON.stringify({ version: packageVersion });
       }
       if (path.endsWith("/CHANGELOG.md")) {
         return `# Changelog\n\n## ${baseVersion}\n`;
