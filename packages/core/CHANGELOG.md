@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.6
+
 ### Added
 
 - RFC 8628 device authorization through `POST /oauth/device/authorize`, the existing OAuth token endpoint, application-owned verification-page SDK methods, and the portable `own-auth/device-authorization` client.
