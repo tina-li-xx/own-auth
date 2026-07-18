@@ -1,4 +1,5 @@
 const blockedPackages = [
+  "@node-saml/node-saml",
   "@simplewebauthn",
   "jose",
   "oauth4webapi",

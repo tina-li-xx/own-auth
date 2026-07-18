@@ -25,6 +25,8 @@ import type {
 } from "./types.js";
 import { MemoryWebhookStorage } from "./memory-webhook-storage.js";
 import { MemoryAuthorizationServerStorage } from "./memory-authorization-server-storage.js";
+import { MemorySamlStorage } from "./memory-saml-storage.js";
+import { MemoryScimStorage } from "./memory-scim-storage.js";
 
 function isUsableSmsOtp(otp: SmsOtp, at: Date): boolean {
   return (
@@ -35,17 +37,28 @@ function isUsableSmsOtp(otp: SmsOtp, at: Date): boolean {
 }
 
 export class InMemoryAuthStorage extends MemoryIdentityStorage implements AuthStorage {
-  private readonly users = new Map<string, User>();
+  protected readonly users = new Map<string, User>();
   private readonly sessions = new Map<string, Session>();
   private readonly tokens = new Map<string, AuthToken>();
   private readonly smsOtps = new Map<string, SmsOtp>();
   private readonly apiKeys = new Map<string, ApiKey>();
   private readonly organisations = new Map<string, Organisation>();
-  private readonly members = new Map<string, OrganisationMember<string>>();
+  protected readonly members = new Map<string, OrganisationMember<string>>();
   private readonly invitations = new Map<string, Invitation<string>>();
-  private readonly auditEvents = new Map<string, AuditEvent>();
+  protected readonly auditEvents = new Map<string, AuditEvent>();
   readonly webhookStorage = new MemoryWebhookStorage(this.auditEvents);
   readonly authorizationServerStorage = new MemoryAuthorizationServerStorage();
+  readonly samlStorage = new MemorySamlStorage({
+    users: this.users,
+    accounts: this.accounts,
+    members: this.members,
+    auditEvents: this.auditEvents
+  });
+  readonly scimStorage = new MemoryScimStorage({
+    users: this.users,
+    members: this.members,
+    auditEvents: this.auditEvents
+  });
 
   async createUser(user: User): Promise<User> {
     this.users.set(user.id, clone(user));

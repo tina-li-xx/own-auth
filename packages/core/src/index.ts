@@ -1,6 +1,8 @@
 export { OwnAuth } from "./auth-engine.js";
 export { createOwnAuth } from "./create-own-auth.js";
 export { OwnAuthAuthorizationServer } from "./auth-engine-authorization-server.js";
+export { OwnAuthSaml } from "./auth-engine-saml.js";
+export { OwnAuthScim } from "./auth-engine-scim.js";
 export {
   createOwnAuthAuthorizationServerHandler,
   createOwnAuthAuthorizationServerOpenApiDocument
@@ -191,6 +193,59 @@ export type {
   VerifySmsOtpInput,
   VerifyTokenInput
 } from "./auth-engine-types.js";
+export type {
+  CreateSamlConnectionInput,
+  CreateSamlLinkUrlInput,
+  CreateSamlSignInUrlInput,
+  ListSamlConnectionsInput,
+  PublicSamlConnection,
+  SamlAccountLinking,
+  SamlAssertionReplay,
+  SamlAttributeMapping,
+  SamlAuthorizationUrl,
+  SamlConnection,
+  SamlCompletionResult,
+  SamlConnectionAccessInput,
+  SamlMetadataInput,
+  SamlProvider,
+  SamlRequestSigningInput,
+  SamlTransaction,
+  UnlinkSamlIdentityInput,
+  UpdateSamlConnectionInput
+} from "./saml-types.js";
+export { isSamlCapableStorage } from "./saml-storage.js";
+export type {
+  ConsumeSamlResponseInput,
+  SamlCapableStorage,
+  SamlIdentityCommit,
+  SamlStorage
+} from "./saml-storage.js";
+export type {
+  CreateScimConnectionInput,
+  CreatedScimToken,
+  CreateScimTokenInput,
+  LinkScimUserInput,
+  ListScimConnectionsInput,
+  PublicScimConnection,
+  RestoreScimUserInput,
+  RevokeScimTokenInput,
+  ScimAccountLinking,
+  ScimConnection,
+  ScimConnectionAccessInput,
+  ScimOptions,
+  ScimToken,
+  ScimTokenDetails,
+  ScimUser,
+  ScimUserAttributes,
+  ScimUserFilter,
+  ScimUserPage,
+  UpdateScimConnectionInput
+} from "./scim-types.js";
+export { isScimCapableStorage } from "./scim-storage.js";
+export type {
+  ScimCapableStorage,
+  ScimStorage
+} from "./scim-storage.js";
 export { AuthError, toAuthError } from "./errors.js";
 export type { AuthErrorCode } from "./errors.js";
 export { EncryptionKeyRing, createEncryptionKeyRing } from "./encryption.js";
@@ -296,6 +351,7 @@ export type {
 export type {
   Account,
   AccountProvider,
+  SamlAccountProvider,
   ApiKey,
   ApiKeyDetails,
   ApiKeyStatus,

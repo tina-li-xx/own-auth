@@ -68,6 +68,32 @@ Explicit provider linking is the default. A matching verified email does not sil
 
 Popup callbacks post only completion state to the exact stored opener origin. OAuth codes, provider tokens, session tokens, and MFA challenge tokens never enter `postMessage`.
 
+## SAML SSO
+
+SAML transactions store only peppered, purpose-separated hashes of the request ID and relay state. The assertion consumer service atomically claims both the transaction and a hashed assertion ID before creating an identity, membership, MFA challenge, or session. A concurrent or repeated response therefore cannot complete twice.
+
+Every response requires a valid response-level or assertion-level signature from a certificate configured on that organisation's connection. Own Auth checks the issuer, audience, destination, recipient, request ID, time window, stable subject, XML namespaces, and unique XML IDs. SHA-1 signatures and digests are rejected.
+
+SAML subjects are stored as a domain-separated hash scoped to the connection key. Raw SAML responses, assertions, `NameID` values, relay state, request IDs, signing keys, and certificates are excluded from audit metadata.
+
+Explicit account linking is the default. JIT provisioning can create only a configured non-owner membership and does not trust role or group assertions from the identity provider. A removed member is not silently re-added.
+
+See [SAML SSO](/docs/saml) for setup and the supported protocol scope.
+
+## SCIM provisioning
+
+SCIM bearer tokens are random, shown once, and stored only as peppered, purpose-separated hashes. Tokens are scoped to one SCIM connection and are rejected when expired, revoked, or when the connection or organisation is disabled.
+
+SCIM resources belong to one organisation. Provisioning can create or link a global user and can create, suspend, reactivate, or remove only that organisation's membership. SCIM never deletes or globally disables the user account and never grants the owner role.
+
+User names are trimmed, NFC-normalized, and lowercased into an explicit lookup column. Active normalized emails are unique within a connection. Tombstones permanently reserve `externalId` and normalized `userName`, while an owner-only restore operation checks every identity and membership conflict before reactivating the original record.
+
+Every resource mutation uses an atomic integer version update. Conditional requests use weak ETags such as `W/"3"`. A stale version cannot overwrite a concurrent update.
+
+When a SCIM connection is paired with SAML, email verification happens only after the normal signed SAML response checks pass and one active SCIM resource matches the exact normalized email. The email update is conditional and its audit event is written only once.
+
+See [SCIM Provisioning](/docs/scim) for setup and the supported protocol scope.
+
 ## OAuth and OpenID Connect authorization server
 
 The optional authorization server requires authorization code with PKCE S256. Redirect URIs match the client's registered value exactly.
@@ -94,7 +120,7 @@ Pass `actorUserId` from the authenticated session. Own Auth performs the organis
 
 ## Rate limiting
 
-Sensitive authentication entry points have built-in rate-limit buckets. OAuth and One Tap IP limits are applied when request IP context is available. MFA challenges and SMS codes also enforce per-credential attempt limits. See [Rate limiting](/docs/rate-limiting) for the full table.
+Sensitive authentication entry points have built-in rate-limit buckets. OAuth, One Tap, SAML, and failed SCIM authentication limits use request IP context when available. Authenticated SCIM traffic is limited per connection. MFA challenges and SMS codes also enforce per-credential attempt limits. See [Rate limiting](/docs/rate-limiting) for the full table.
 
 Rate limiting protects against brute-force attacks, credential stuffing, SMS pumping, and abuse of email-sending endpoints.
 
@@ -126,7 +152,7 @@ The exception is sign-up. `signUpEmailPassword` throws `email_already_exists` wh
 
 ## Token pepper
 
-The token pepper (`OWN_AUTH_TOKEN_PEPPER`) adds a secret component to token, session, API-key, OAuth client-secret, protected-resource-secret, and authorization-server token hashing. It serves as a defense-in-depth layer:
+The token pepper (`OWN_AUTH_TOKEN_PEPPER`) adds a secret component to token, session, API-key, OAuth client-secret, protected-resource-secret, authorization-server token, SAML transaction and identity, and SCIM bearer-token hashing. It serves as a defense-in-depth layer:
 
 - Without the pepper, an attacker with database access could attempt offline brute-force attacks against stored hashes.
 - With the pepper, the attacker also needs the pepper value, which is stored in the environment rather than the database.
@@ -141,7 +167,7 @@ If the pepper may have been compromised, rotate it. Changing the pepper is equiv
 
 ## Encryption key ring
 
-TOTP secrets, optional provider refresh credentials, and authorization-server request state use AES-256-GCM with a new 96-bit nonce and authenticated record metadata. HKDF-SHA256 derives separate keys for `own-auth:totp:v1`, `own-auth:oauth-refresh:v1`, and `own-auth:authorization-request:v1`, so ciphertext from one purpose cannot be used as another.
+TOTP secrets, optional provider refresh credentials, authorization-server request state, and optional SAML request-signing private keys use AES-256-GCM with a new 96-bit nonce and authenticated record metadata. HKDF-SHA256 derives separate keys for `own-auth:totp:v1`, `own-auth:oauth-refresh:v1`, `own-auth:authorization-request:v1`, and `own-auth:saml-request-signing:v1`, so ciphertext from one purpose cannot be used as another.
 
 The current key encrypts and decrypts. Previous keys decrypt only, and successful reads rotate old ciphertext to the current key. Unknown key IDs fail closed with `encryption_key_unavailable`.
 
@@ -189,6 +215,7 @@ Own Auth does not:
 - [ ] The encryption key ring is configured and backed up before enabling TOTP or provider offline access.
 - [ ] OAuth callback URLs exactly match the URLs registered with each provider.
 - [ ] Passkey RP ID and expected origins exactly match the deployed application.
+- [ ] SCIM bearer tokens are stored only by the intended identity provider and revoked when replaced.
 - [ ] Every configured webhook endpoint has a unique secret of at least 32 bytes.
 - [ ] A worker or scheduled job runs `processWebhookDeliveries` when webhooks are enabled.
 - [ ] Webhook receivers verify exact request bytes and claim event IDs atomically.

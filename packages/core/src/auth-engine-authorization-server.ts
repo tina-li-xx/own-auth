@@ -66,17 +66,12 @@ import type {
   VerifiedAuthorizationAccessToken,
   VerifyAuthorizationAccessTokenInput
 } from "./authorization-server-types.js";
-
-type AuthorizationServerOperationRunner = <Result>(
-  operation: string,
-  input: unknown,
-  work: () => Promise<Result>
-) => Promise<Result>;
+import type { AuthOperationRunner } from "./auth-operation-runner.js";
 
 export class OwnAuthAuthorizationServer {
   constructor(
     private readonly ctx: AuthEngineContext,
-    private readonly execute: AuthorizationServerOperationRunner
+    private readonly execute: AuthOperationRunner
   ) {}
 
   /** @internal Used by createOwnAuthAuthorizationServerHandler. */

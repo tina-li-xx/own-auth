@@ -141,6 +141,13 @@ export interface OwnAuthEndpointInputMap {
   prepareGoogleOneTap: undefined;
   signInGoogleOneTap: { credential: string; nonce: string };
   unlinkOAuthProvider: { provider: ExternalAccountProvider; providerAccountId: string };
+  samlStart: {
+    connectionId: string;
+    intent?: "sign_in" | "link";
+    destination?: string;
+  };
+  samlAcs: { SAMLResponse: string; RelayState: string };
+  samlMetadata: { connectionId: string };
   completeMfaTotp: { code: string };
   completeMfaRecovery: { code: string };
   beginTotpEnrollment: undefined;
@@ -191,6 +198,9 @@ export interface OwnAuthEndpointOutputMap {
   prepareGoogleOneTap: { nonce: string; expiresAt: string };
   signInGoogleOneTap: SignInPayload;
   unlinkOAuthProvider: { success: true };
+  samlStart: { url: string; expiresAt: string };
+  samlAcs: { status: "complete" | "mfa_required" | "linked" };
+  samlMetadata: string;
   completeMfaTotp: AuthSessionPayload;
   completeMfaRecovery: AuthSessionPayload;
   beginTotpEnrollment: { factorId: string; secret: string; uri: string };
@@ -238,9 +248,9 @@ export interface OwnAuthEndpointDefinition {
   readonly request?: JsonSchema;
   readonly requestTransport?: "json" | "query" | "form";
   readonly response: JsonSchema;
-  readonly responseKind?: "json" | "oauth_callback";
+  readonly responseKind?: "json" | "oauth_callback" | "saml_callback" | "xml";
   readonly errors: readonly OwnAuthHttpErrorCode[];
   readonly session: "none" | "optional" | "required" | "create" | "clear";
-  readonly csrf?: "default" | "oauth_state";
-  readonly feature?: "administration";
+  readonly csrf?: "default" | "oauth_state" | "saml_state";
+  readonly feature?: "administration" | "saml";
 }

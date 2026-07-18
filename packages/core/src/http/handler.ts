@@ -2,6 +2,7 @@ import type { OwnAuth } from "../auth-engine.js";
 import { AuthError } from "../errors.js";
 import type { RequestContext } from "../types.js";
 import { OAuthCallbackError } from "../oauth-types.js";
+import { SamlCallbackError } from "../saml-callback-error.js";
 import { OwnAuthPluginError } from "../plugin-definition.js";
 import {
   getOwnAuthEndpointsForPath,
@@ -22,6 +23,7 @@ import { assertCsrfSafe } from "./csrf.js";
 import { OwnAuthHttpError } from "./errors.js";
 import { executeEndpoint, type EndpointExecution } from "./execution.js";
 import { createOAuthCallbackResponse } from "./oauth-response.js";
+import { createSamlCallbackResponse } from "./saml-response.js";
 import { pluginInputContract, readEndpointInput } from "./request-input.js";
 import { getOwnAuthRoutePath, normalizeOwnAuthBasePath } from "./routing.js";
 import { traceHttpEndpoint } from "../telemetry.js";
@@ -87,7 +89,7 @@ export function createOwnAuthHandler(
       async () => {
         const sessionCredential = readSessionToken(request, options.cookie);
         try {
-          if (endpoint.csrf !== "oauth_state") {
+          if (endpoint.csrf !== "oauth_state" && endpoint.csrf !== "saml_state") {
             assertCsrfSafe(
               request,
               sessionCredential.source === "cookie",
@@ -118,6 +120,13 @@ export function createOwnAuthHandler(
           if (endpoint.responseKind === "oauth_callback") {
             return createOAuthCallbackResponse(execution, requestUrl, headers);
           }
+          if (endpoint.responseKind === "saml_callback") {
+            return createSamlCallbackResponse(execution, requestUrl, headers);
+          }
+          if (endpoint.responseKind === "xml") {
+            headers.set("content-type", "application/samlmetadata+xml; charset=utf-8");
+            return new Response(execution.body as string, { status: 200, headers });
+          }
           return new Response(JSON.stringify(execution.body), { status: 200, headers });
         } catch (error) {
           return handleRequestError(
@@ -125,7 +134,8 @@ export function createOwnAuthHandler(
             request,
             requestUrl,
             options,
-            endpoint.responseKind === "oauth_callback"
+            endpoint.responseKind === "oauth_callback",
+            endpoint.responseKind === "saml_callback"
           );
         }
       }
@@ -135,9 +145,11 @@ export function createOwnAuthHandler(
 
 function endpointIsEnabled(
   auth: OwnAuth<string, string>,
-  feature: "administration" | undefined
+  feature: "administration" | "saml" | undefined
 ): boolean {
-  return feature !== "administration" || auth.isAdministrationConfigured();
+  if (feature === "administration") return auth.isAdministrationConfigured();
+  if (feature === "saml") return auth.saml.isConfigured();
+  return true;
 }
 
 async function handlePluginEndpoint(
@@ -182,7 +194,8 @@ async function handleRequestError(
   request: Request,
   requestUrl: URL,
   options: OwnAuthHandlerOptions,
-  oauthCallback: boolean
+  oauthCallback: boolean,
+  samlCallback = false
 ): Promise<Response> {
   if (oauthCallback && error instanceof OAuthCallbackError) {
     if (error.statusCode >= 500) await reportError(options.onError, error, request);
@@ -193,6 +206,24 @@ async function handleRequestError(
           error: { code: error.code, message: error.safeMessage }
         },
         oauthCallback: error.callback
+      },
+      requestUrl,
+      responseHeaders()
+    );
+  }
+
+  if (samlCallback && error instanceof SamlCallbackError) {
+    await reportError(options.onError, error, request);
+    const code = error.code === "saml_signature_algorithm_unsupported"
+      ? "saml_response_invalid"
+      : error.code;
+    return createSamlCallbackResponse(
+      {
+        body: {
+          status: "failure",
+          error: { code, message: "SAML sign-in failed" }
+        },
+        samlCallback: { destination: error.destination }
       },
       requestUrl,
       responseHeaders()

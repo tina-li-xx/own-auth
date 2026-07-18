@@ -44,6 +44,16 @@ import {
   type DpopStorage,
   type AuthorizationServerStorage
 } from "./authorization-server-storage.js";
+import type { SamlProvider } from "./saml-types.js";
+import {
+  isSamlCapableStorage,
+  type SamlStorage
+} from "./saml-storage.js";
+import {
+  isScimCapableStorage,
+  type ScimStorage
+} from "./scim-storage.js";
+import type { ScimRuntimeConfig } from "./scim-types.js";
 
 export interface AuthEngineContext {
   storage: AuthStorage;
@@ -77,6 +87,10 @@ export interface AuthEngineContext {
   authorizationServer: AuthorizationServerRuntimeConfig | null;
   authorizationServerStorage: AuthorizationServerStorage | null;
   dpopStorage: DpopStorage | null;
+  saml: SamlProvider | null;
+  samlStorage: SamlStorage | null;
+  scim: ScimRuntimeConfig | null;
+  scimStorage: ScimStorage | null;
   authorization: AuthorizationRegistry;
   closePersistence(): Promise<void>;
 }
@@ -139,6 +153,26 @@ export function createAuthEngineContext(options: OwnAuthOptions = {}): AuthEngin
   if (authorizationServer && !encryption) {
     throw new Error("OAuth/OIDC authorization-server support requires encryption configuration");
   }
+  const saml = options.saml ?? null;
+  const samlStorage = saml && isSamlCapableStorage(persistence.storage)
+    ? persistence.storage.samlStorage
+    : null;
+  if (saml && !samlStorage) {
+    throw new Error(
+      "SAML requires storage that supports SamlCapableStorage. " +
+      "The configured storage adapter does not implement samlStorage."
+    );
+  }
+  const scim = normalizeScimOptions(options.scim);
+  const scimStorage = scim && isScimCapableStorage(persistence.storage)
+    ? persistence.storage.scimStorage
+    : null;
+  if (scim && !scimStorage) {
+    throw new Error(
+      "SCIM requires storage that supports ScimCapableStorage. " +
+      "The configured storage adapter does not implement scimStorage."
+    );
+  }
 
   return {
     storage: persistence.storage,
@@ -172,9 +206,34 @@ export function createAuthEngineContext(options: OwnAuthOptions = {}): AuthEngin
     authorizationServer,
     authorizationServerStorage,
     dpopStorage,
+    saml,
+    samlStorage,
+    scim,
+    scimStorage,
     authorization: createAuthorizationRegistry(options.authorization),
     closePersistence: persistence.close
   };
+}
+
+function normalizeScimOptions(
+  options: OwnAuthOptions["scim"]
+): ScimRuntimeConfig | null {
+  if (!options) return null;
+  return Object.freeze({
+    requestLimit: positiveInteger(options.requestLimit ?? 1_200, "scim.requestLimit"),
+    requestWindowMs: positiveInteger(
+      options.requestWindowMs ?? minute,
+      "scim.requestWindowMs"
+    ),
+    failedAuthLimit: positiveInteger(
+      options.failedAuthLimit ?? 30,
+      "scim.failedAuthLimit"
+    ),
+    failedAuthWindowMs: positiveInteger(
+      options.failedAuthWindowMs ?? minute,
+      "scim.failedAuthWindowMs"
+    )
+  });
 }
 
 function normalizeAdministrationOptions(

@@ -33,6 +33,9 @@ import * as users from "./auth-engine-users.js";
 import * as webhookOperations from "./auth-engine-webhooks.js";
 import { OwnAuthAdministration } from "./auth-engine-administration.js";
 import { OwnAuthAuthorizationServer } from "./auth-engine-authorization-server.js";
+import { OwnAuthSaml } from "./auth-engine-saml.js";
+import { OwnAuthScim } from "./auth-engine-scim.js";
+import type { AuthOperationRunner } from "./auth-operation-runner.js";
 import { OwnAuthPluginRuntime, type RegisteredPluginEndpoint } from "./plugin-runtime.js";
 import type { CallOwnAuthPluginMethodOptions, OwnAuthPluginDefinition } from "./plugin-types.js";
 import type {
@@ -122,6 +125,8 @@ export class OwnAuth<CustomRole extends string = never, CustomPermission extends
   readonly rateLimitStore: RateLimitStore;
   readonly admin: OwnAuthAdministration;
   readonly authorizationServer: OwnAuthAuthorizationServer;
+  readonly saml: OwnAuthSaml;
+  readonly scim: OwnAuthScim;
   private readonly ctx: AuthEngineContext;
   private readonly pluginRuntime: OwnAuthPluginRuntime;
   private closed = false;
@@ -137,12 +142,11 @@ export class OwnAuth<CustomRole extends string = never, CustomPermission extends
       () => this as unknown as OwnAuth<string, string>,
       options.pluginRuntime
     );
-    this.admin = new OwnAuthAdministration(this.ctx, (operation, input, work) =>
-      this.executeCore(operation, input, work));
-    this.authorizationServer = new OwnAuthAuthorizationServer(this.ctx, (operation, input, work) =>
-      this.executeCore(operation, input, work));
+    this.admin = new OwnAuthAdministration(this.ctx, this.executeCore);
+    this.authorizationServer = new OwnAuthAuthorizationServer(this.ctx, this.executeCore);
+    this.saml = new OwnAuthSaml(this.ctx, this.executeCore);
+    this.scim = new OwnAuthScim(this.ctx, this.executeCore);
   }
-
   get plugins(): readonly OwnAuthPluginDefinition[] { return this.pluginRuntime.definitions; }
   get pluginContractFingerprint(): string { return this.pluginRuntime.fingerprint; }
   /** @internal Used by createOwnAuthHandler. */
@@ -192,11 +196,7 @@ export class OwnAuth<CustomRole extends string = never, CustomPermission extends
       tracePluginOperation({ pluginId, operation, kind }, work)
     );
   }
-  private executeCore<Result>(
-    operation: string,
-    input: unknown,
-    work: () => Promise<Result>
-  ): Promise<Result> {
+  private readonly executeCore: AuthOperationRunner = (operation, input, work) => {
     return this.runWhileOpen(() =>
       traceAuthOperation(
         operation,
@@ -208,14 +208,13 @@ export class OwnAuth<CustomRole extends string = never, CustomPermission extends
         )
       )
     );
-  }
+  };
   private runWhileOpen<Result>(work: () => Promise<Result>): Promise<Result> {
     if (this.closed) {
       return Promise.reject(createAuthClosedError());
     }
     return work();
   }
-
   createUser(input: CreateUserInput): Promise<User> {
     return this.executeCore("createUser", input, () => users.createUser(this.ctx, input));
   }
@@ -486,7 +485,6 @@ export class OwnAuth<CustomRole extends string = never, CustomPermission extends
     return this.executeCore("cleanupWebhookDeliveries", input, () =>
       webhookOperations.cleanupWebhookDeliveries(this.ctx, input));
   }
-
   close(): Promise<void> {
     if (this.closePromise) {
       return this.closePromise;

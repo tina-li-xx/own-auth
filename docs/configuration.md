@@ -22,6 +22,7 @@ Own Auth reads `DATABASE_URL` from the environment. That is enough to get starte
 
 ```ts
 import { createOwnAuth, defineOwnAuthAuthorization } from "own-auth";
+import { createSaml } from "own-auth/saml";
 
 const appUrl = "https://app.example.com";
 const authorization = defineOwnAuthAuthorization({
@@ -86,6 +87,12 @@ export const auth = createOwnAuth({
       },
     },
   },
+
+  // Organisation-scoped SAML 2.0 sign-in
+  saml: createSaml(),
+
+  // Organisation-scoped SCIM 2.0 provisioning
+  scim: {},
 
   // Shared encryption for TOTP and optional OAuth refresh credentials
   encryption: {
@@ -280,6 +287,54 @@ Configure Google, GitHub, and Apple under `oauth.providers`. Each provider needs
 
 See [OAuth And External Providers](/docs/external-providers) for provider-specific setup and account-linking behavior.
 
+### SAML SSO
+
+SAML is disabled unless the separate provider is added to the auth instance:
+
+```ts
+import { createOwnAuth } from "own-auth";
+import { createSaml } from "own-auth/saml";
+
+export const auth = createOwnAuth({
+  baseUrl: "https://auth.example.com",
+  tokenPepper: process.env.OWN_AUTH_TOKEN_PEPPER,
+  saml: createSaml(),
+});
+```
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `basePath` | `string` | `/api/auth` | Path containing the SAML start, callback, and metadata routes. It must match the HTTP handler base path. |
+| `clockSkewMs` | `number` | `120000` | Allowed difference between the identity provider and application clocks. |
+| `responseTtlMs` | `number` | `300000` | Maximum lifetime of a SAML authentication transaction. |
+| `maxResponseBytes` | `number` | `65536` | Maximum decoded SAML response size. |
+
+Connections are managed through `auth.saml`. Only organisation owners can create, read, update, enable, or disable them. Request signing is optional and requires the shared `encryption` key ring because Own Auth encrypts the signing private key.
+
+See [SAML SSO](/docs/saml) for identity-provider setup, account linking, JIT membership provisioning, request signing, HTTP routes, and security behavior.
+
+### SCIM provisioning
+
+SCIM is disabled unless the `scim` option is present:
+
+```ts
+export const auth = createOwnAuth({
+  tokenPepper: process.env.OWN_AUTH_TOKEN_PEPPER,
+  scim: {},
+});
+```
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `requestLimit` | `number` | `1200` | Authenticated SCIM requests allowed per connection in one window. |
+| `requestWindowMs` | `number` | `60000` | Authenticated request window. |
+| `failedAuthLimit` | `number` | `30` | Failed bearer-token attempts allowed per IP address when IP context is available. |
+| `failedAuthWindowMs` | `number` | `60000` | Failed-authentication window. |
+
+Connections and bearer tokens are managed through `auth.scim`. Only organisation owners can manage them. Mount the separate handler from `own-auth/scim` at `/scim/v2/*`.
+
+See [SCIM Provisioning](/docs/scim) for the supported User lifecycle, account-linking rules, optional SAML pairing, restoration, and protocol endpoints.
+
 ### OAuth and OpenID Connect authorization server
 
 `authorizationServer` makes the application an OAuth 2.1 and OpenID Connect provider for other applications. It is separate from `oauth`, which signs users into the application with Google, GitHub, or Apple.
@@ -323,7 +378,7 @@ The current authorization-server schema requires migrations `011_authorization_s
 
 ### Encryption
 
-The shared encryption key ring protects TOTP secrets, optional external-provider refresh credentials, and OAuth authorization-server request state.
+The shared encryption key ring protects TOTP secrets, optional external-provider refresh credentials, OAuth authorization-server request state, and optional SAML request-signing keys.
 
 ```ts
 const auth = createOwnAuth({

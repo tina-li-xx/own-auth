@@ -10,6 +10,7 @@ export {
   audit,
   auditSignedIn,
   cloneMetadata,
+  createAuditEvent,
   createSession,
   hasRemainingAuthenticationMethod,
   markUserLoggedIn,

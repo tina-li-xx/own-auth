@@ -81,6 +81,30 @@ const result = await signInWithGoogleOneTap(authClient, {
 });
 ```
 
+## SAML SSO
+
+The application chooses the organisation's configured connection and starts sign-in:
+
+```ts
+await authClient.signInWithSaml({
+  connectionId: "samlc_...",
+  destination: "/dashboard",
+});
+```
+
+`signInWithSaml` requests the identity-provider URL from the Own Auth handler and navigates the current page to it. The identity provider posts the signed response back to the handler, which sets the session or MFA cookie before returning to the validated destination.
+
+An existing signed-in user can deliberately link a SAML identity:
+
+```ts
+await authClient.linkSaml({
+  connectionId: "samlc_...",
+  destination: "/account/security",
+});
+```
+
+Connection creation and management remain server-only under `auth.saml`. See [SAML SSO](/docs/saml).
+
 ## Multi-factor authentication
 
 The handler keeps the pending challenge in its temporary HttpOnly cookie. Complete it with a TOTP or recovery code:
@@ -210,6 +234,8 @@ The client includes:
 - `unlinkOAuthProvider`
 - `prepareGoogleOneTap`
 - `signInWithGoogleOneTap`
+- `signInWithSaml`
+- `linkSaml`
 - `completeMfaWithTotp`
 - `completeMfaWithRecoveryCode`
 - `beginTotpEnrollment`

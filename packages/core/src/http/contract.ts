@@ -81,6 +81,19 @@ const oauthErrors = [
   "oauth_verified_email_required",
   "rate_limited"
 ] as const;
+const samlErrors = [
+  "saml_connection_not_found",
+  "saml_connection_disabled",
+  "saml_transaction_invalid",
+  "saml_response_invalid",
+  "saml_signature_algorithm_unsupported",
+  "saml_identity_conflict",
+  "saml_verified_email_required",
+  "saml_membership_required",
+  "account_linking_required",
+  "authentication_method_required",
+  "rate_limited"
+] as const;
 const mfaErrors = [
   "mfa_challenge_invalid",
   "mfa_code_invalid",
@@ -223,6 +236,48 @@ const ownAuthEndpointSpecs = {
     response: successSchema,
     errors: ["invalid_session", "authentication_method_required", "invalid_credentials"],
     session: "required"
+  }),
+  samlStart: endpoint("POST", "/saml/start", "Start SAML sign-in", {
+    request: objectSchema({
+      connectionId: stringSchema(),
+      intent: { type: "string", enum: ["sign_in", "link"] },
+      destination: stringSchema("uri-reference")
+    }, ["connectionId"]),
+    response: objectSchema(
+      { url: stringSchema("uri"), expiresAt: stringSchema("date-time") },
+      ["url", "expiresAt"]
+    ),
+    errors: [
+      "saml_connection_not_found",
+      "saml_connection_disabled",
+      "redirect_not_allowed",
+      "invalid_session",
+      "rate_limited"
+    ],
+    session: "optional",
+    feature: "saml"
+  }),
+  samlAcs: endpoint("POST", "/saml/acs", "Complete SAML sign-in", {
+    request: objectSchema(
+      { SAMLResponse: stringSchema(), RelayState: stringSchema() },
+      ["SAMLResponse", "RelayState"]
+    ),
+    requestTransport: "form",
+    response: oauthCallbackSchema,
+    responseKind: "saml_callback",
+    errors: samlErrors,
+    session: "create",
+    csrf: "saml_state",
+    feature: "saml"
+  }),
+  samlMetadata: endpoint("GET", "/saml/metadata", "Get SAML service-provider metadata", {
+    request: objectSchema({ connectionId: stringSchema() }, ["connectionId"]),
+    requestTransport: "query",
+    response: { type: "string" },
+    responseKind: "xml",
+    errors: ["saml_connection_not_found", "saml_connection_disabled"],
+    session: "none",
+    feature: "saml"
   }),
   completeMfaTotp: endpoint("POST", "/mfa/totp/complete", "Complete MFA with TOTP", {
     request: objectSchema({ code: stringSchema() }, ["code"]), response: authSessionSchema,

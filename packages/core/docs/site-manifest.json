@@ -81,6 +81,13 @@
           "source": "docs/external-providers.md"
         },
         {
+          "title": "SAML SSO",
+          "description": "Add organisation-scoped SAML 2.0 sign-in with service-provider metadata, explicit identity linking, JIT membership provisioning, and replay protection.",
+          "href": "/docs/saml",
+          "slug": ["saml"],
+          "source": "docs/saml.md"
+        },
+        {
           "title": "Multi-Factor Authentication",
           "description": "Add TOTP authenticator apps, one-time recovery codes, and pending MFA challenges without creating a session after only one factor.",
           "href": "/docs/mfa",
@@ -138,6 +145,13 @@
           "href": "/docs/organisations/invites",
           "slug": ["organisations", "invites"],
           "source": "docs/organisations/invites.md"
+        },
+        {
+          "title": "SCIM Provisioning",
+          "description": "Provision organisation users and memberships through SCIM 2.0 without giving the identity provider control of global user accounts.",
+          "href": "/docs/scim",
+          "slug": ["scim"],
+          "source": "docs/scim.md"
         }
       ]
     },

@@ -199,6 +199,99 @@ describeWithDatabase("Postgres concurrency integration", () => {
       second.release();
     }
   });
+
+  it("consumes a SAML response exactly once across separate connections", async () => {
+    const [first, second] = await database.connectPair();
+    const storage = [
+      new PostgresAuthStorage(first),
+      new PostgresAuthStorage(second)
+    ] as const;
+    const id = crypto.randomUUID();
+    const now = new Date();
+    const userId = `usr_saml_${id}`;
+    const organisationId = `org_saml_${id}`;
+    const connectionId = `samlc_${id}`;
+
+    try {
+      await storage[0].createUser({
+        id: userId,
+        email: `saml-race-${id}@example.com`,
+        emailVerifiedAt: now,
+        phone: null,
+        phoneVerifiedAt: null,
+        passwordHash: null,
+        name: null,
+        imageUrl: null,
+        disabledAt: null,
+        metadata: {},
+        createdAt: now,
+        updatedAt: now,
+        lastLoginAt: null
+      });
+      await storage[0].createOrganisation({
+        id: organisationId,
+        name: "SAML race",
+        slug: `saml-race-${id}`,
+        ownerUserId: userId,
+        metadata: {},
+        createdAt: now,
+        updatedAt: now,
+        disabledAt: null
+      });
+      await storage[0].samlStorage.createConnection({
+        id: connectionId,
+        organisationId,
+        key: `saml_${id}`,
+        name: "Race identity",
+        idpEntityId: `https://idp.example.com/${id}`,
+        ssoUrl: "https://idp.example.com/sso",
+        idpCertificates: ["certificate"],
+        attributeMapping: { email: "email" },
+        accountLinking: "explicit",
+        jitProvisioningEnabled: false,
+        jitDefaultRole: "member",
+        requestSigningCertificate: null,
+        requestSigningKeyCiphertext: null,
+        requestSigningKeyNonce: null,
+        requestSigningEncryptionKeyId: null,
+        disabledAt: null,
+        createdAt: now,
+        updatedAt: now
+      });
+      await storage[0].samlStorage.createTransaction({
+        id: `samt_${id}`,
+        connectionId,
+        requestIdHash: `request_${id}`,
+        relayStateHash: `relay_${id}`,
+        intent: "sign_in",
+        userId: null,
+        destination: null,
+        expiresAt: new Date(now.getTime() + 300_000),
+        consumedAt: null,
+        createdAt: now
+      });
+      const input = {
+        relayStateHash: `relay_${id}`,
+        requestIdHash: `request_${id}`,
+        assertion: {
+          assertionHash: `assertion_${id}`,
+          connectionId,
+          consumedAt: now,
+          expiresAt: new Date(now.getTime() + 420_000)
+        },
+        consumedAt: now
+      };
+
+      const results = await Promise.all([
+        storage[0].samlStorage.consumeResponse(input),
+        storage[1].samlStorage.consumeResponse(input)
+      ]);
+      expect(results.filter(Boolean)).toHaveLength(1);
+    } finally {
+      first.release();
+      second.release();
+    }
+  });
 });
 
 type Auth = ReturnType<typeof createOwnAuth>;

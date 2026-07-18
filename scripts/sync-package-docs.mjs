@@ -83,13 +83,12 @@ function publicApiSnapshot() {
   const authorizationServer = sourceFile(
     "packages/core/src/auth-engine-authorization-server.ts"
   );
+  const saml = sourceFile("packages/core/src/auth-engine-saml.ts");
+  const scim = sourceFile("packages/core/src/auth-engine-scim.ts");
   const options = sourceFile("packages/core/src/auth-engine-options.ts");
   const errors = sourceFile("packages/core/src/errors.ts");
   const exportedValues = [];
   const exportedTypes = [];
-  const methods = [];
-  const administrationMethods = [];
-  const authorizationServerMethods = [];
   const optionNames = [];
   const errorCodes = [];
 
@@ -106,59 +105,6 @@ function publicApiSnapshot() {
         ? exportedTypes
         : exportedValues;
       target.push(element.name.text);
-    }
-  }
-
-  for (const statement of authEngine.statements) {
-    if (!ts.isClassDeclaration(statement) || statement.name?.text !== "OwnAuth") {
-      continue;
-    }
-    for (const member of statement.members) {
-      const isPrivate = member.modifiers?.some(
-        (modifier) => modifier.kind === ts.SyntaxKind.PrivateKeyword
-      );
-      if (
-        ts.isMethodDeclaration(member) &&
-        !isPrivate &&
-        !hasInternalTag(member) &&
-        member.name &&
-        ts.isIdentifier(member.name)
-      ) {
-        methods.push(member.name.text);
-      }
-    }
-  }
-
-  for (const statement of administration.statements) {
-    if (
-      !ts.isClassDeclaration(statement) ||
-      statement.name?.text !== "OwnAuthAdministration"
-    ) {
-      continue;
-    }
-    for (const member of statement.members) {
-      if (ts.isMethodDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
-        administrationMethods.push(member.name.text);
-      }
-    }
-  }
-
-  for (const statement of authorizationServer.statements) {
-    if (
-      !ts.isClassDeclaration(statement) ||
-      statement.name?.text !== "OwnAuthAuthorizationServer"
-    ) {
-      continue;
-    }
-    for (const member of statement.members) {
-      if (
-        ts.isMethodDeclaration(member) &&
-        member.name &&
-        ts.isIdentifier(member.name) &&
-        !hasInternalTag(member)
-      ) {
-        authorizationServerMethods.push(member.name.text);
-      }
     }
   }
 
@@ -190,14 +136,49 @@ function publicApiSnapshot() {
   return {
     errorCodes: errorCodes.sort(),
     exports: exportedValues.sort(),
-    methods: methods.sort(),
+    methods: classMethodNames(authEngine, "OwnAuth", {
+      excludeInternal: true,
+      excludePrivate: true
+    }),
     namespaces: {
-      admin: administrationMethods.sort(),
-      authorizationServer: authorizationServerMethods.sort()
+      admin: classMethodNames(administration, "OwnAuthAdministration"),
+      authorizationServer: classMethodNames(
+        authorizationServer,
+        "OwnAuthAuthorizationServer",
+        { excludeInternal: true }
+      ),
+      saml: classMethodNames(saml, "OwnAuthSaml", { excludeInternal: true }),
+      scim: classMethodNames(scim, "OwnAuthScim", { excludeInternal: true })
     },
     options: optionNames.sort(),
     typeExports: exportedTypes.sort()
   };
+}
+
+function classMethodNames(
+  file,
+  className,
+  { excludeInternal = false, excludePrivate = false } = {}
+) {
+  const methods = [];
+  for (const statement of file.statements) {
+    if (!ts.isClassDeclaration(statement) || statement.name?.text !== className) continue;
+    for (const member of statement.members) {
+      const isPrivate = member.modifiers?.some(
+        (modifier) => modifier.kind === ts.SyntaxKind.PrivateKeyword
+      );
+      if (
+        ts.isMethodDeclaration(member) &&
+        member.name &&
+        ts.isIdentifier(member.name) &&
+        (!excludePrivate || !isPrivate) &&
+        (!excludeInternal || !hasInternalTag(member))
+      ) {
+        methods.push(member.name.text);
+      }
+    }
+  }
+  return methods.sort();
 }
 
 function hasInternalTag(node) {

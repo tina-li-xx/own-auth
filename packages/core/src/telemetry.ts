@@ -76,6 +76,8 @@ const rateLimitBuckets = new Set([
   "one-tap-verify",
   "organisation-invite",
   "password-reset",
+  "saml-acs",
+  "saml-start",
   "signin",
   "signup"
 ]);

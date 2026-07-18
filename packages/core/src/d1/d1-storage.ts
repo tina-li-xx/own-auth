@@ -61,10 +61,14 @@ import { rethrowD1IdentityError } from "./d1-errors.js";
 import { D1IdentityStorage } from "./d1-identity-storage.js";
 import type { D1DatabaseLike } from "./d1-types.js";
 import { D1WebhookStorage } from "./d1-webhook-storage.js";
+import { D1SamlStorage } from "./d1-saml-storage.js";
+import { D1ScimStorage } from "./d1-scim-storage.js";
 
 export class D1AuthStorage extends D1IdentityStorage implements AuthStorage {
   readonly authorizationServerStorage = new D1AuthorizationServerStorage(this.db);
   readonly webhookStorage = new D1WebhookStorage(this.db);
+  readonly samlStorage = new D1SamlStorage(this.db);
+  readonly scimStorage = new D1ScimStorage(this.db);
   async createUser(user: User): Promise<User> {
     try {
       return mapUser(await this.insertOne("own_auth_users", userColumns, user, userReturning));

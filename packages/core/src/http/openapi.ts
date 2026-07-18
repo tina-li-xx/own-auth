@@ -135,6 +135,30 @@ function responsesFor(endpoint: OwnAuthEndpointDefinition): Record<string, unkno
     addBodyTransportErrors(responses, endpoint);
     return responses;
   }
+  if (endpoint.responseKind === "saml_callback") {
+    const responses: Record<string, unknown> = {
+      "302": {
+        description: "SAML callback redirect",
+        headers: { location: { schema: { type: "string", format: "uri" } } }
+      },
+      "400": errorOpenApiResponse("Invalid SAML callback request"),
+      "401": errorOpenApiResponse("Invalid SAML response"),
+      "429": errorOpenApiResponse("Rate limit exceeded"),
+      "500": errorOpenApiResponse("Internal error")
+    };
+    addBodyTransportErrors(responses, endpoint);
+    return responses;
+  }
+  if (endpoint.responseKind === "xml") {
+    return {
+      "200": {
+        description: "SAML service-provider metadata",
+        content: { "application/samlmetadata+xml": { schema: endpoint.response } }
+      },
+      "404": errorOpenApiResponse("SAML connection not found"),
+      "500": errorOpenApiResponse("Internal error")
+    };
+  }
   const responses: Record<string, unknown> = {
     "200": {
       description: "Successful response",

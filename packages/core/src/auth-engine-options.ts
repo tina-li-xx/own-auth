@@ -12,6 +12,8 @@ import type { WebhookOptions } from "./webhook-types.js";
 import type { AnyOwnAuthAuthorizationDefinition } from "./authorization.js";
 import type { AdministrationOptions } from "./administration.js";
 import type { AuthorizationServerOptions } from "./authorization-server-types.js";
+import type { SamlProvider } from "./saml-types.js";
+import type { ScimOptions } from "./scim-types.js";
 
 export const minute = 60 * 1000;
 export const hour = 60 * minute;
@@ -64,6 +66,8 @@ export interface OwnAuthOptions<
   webhooks?: WebhookOptions;
   administration?: AdministrationOptions;
   authorizationServer?: AuthorizationServerOptions;
+  saml?: SamlProvider;
+  scim?: ScimOptions;
   authorization?: Authorization;
   plugins?: readonly OwnAuthPluginDefinition[];
   pluginRuntime?: OwnAuthPluginRuntimeOptions;

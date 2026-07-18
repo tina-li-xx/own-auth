@@ -19,6 +19,10 @@ Own Auth applies built-in rate limits to sensitive authentication entry points. 
 | OAuth callback | IP address, when available | 30 | 10 minutes |
 | Google One Tap prepare | IP address, when available | 20 | 10 minutes |
 | Google One Tap verify | IP address, when available | 30 | 10 minutes |
+| SAML start | IP address and connection, when available | 20 | 10 minutes |
+| SAML callback | IP address and connection, when available | 30 | 10 minutes |
+| SCIM request | SCIM connection | 1,200 | 1 minute |
+| Failed SCIM authentication | IP address, when available | 30 | 1 minute |
 | Authorization-server start | IP address, when available | 60 | 10 minutes |
 | Authorization-server interaction completion | User ID | 30 | 10 minutes |
 | Authorization-server token, revocation, and client introspection endpoints | IP address, otherwise client ID | 120 | 10 minutes |
@@ -71,7 +75,7 @@ const auth = createOwnAuth({
 
 ## Configuration
 
-Most built-in core operation limits and windows are not configurable. Protected-resource operators can size remote introspection for their traffic with `authorizationServer.resourceIntrospectionRequestsPerMinute` and `authorizationServer.failedIntrospectionAttemptsPerMinute`. The authenticated limit is shared by every server instance using the same protected-resource identity. The failed-authentication limit applies only when the authorization-server handler receives an IP address through `getRequestContext`.
+Most built-in core operation limits and windows are not configurable. Protected-resource operators can size remote introspection for their traffic with `authorizationServer.resourceIntrospectionRequestsPerMinute` and `authorizationServer.failedIntrospectionAttemptsPerMinute`. SCIM operators can configure `scim.requestLimit`, `scim.requestWindowMs`, `scim.failedAuthLimit`, and `scim.failedAuthWindowMs`. Authenticated SCIM traffic shares one limit per connection. Failed SCIM authentication is limited only when the handler receives a trusted IP address through `getRequestContext`.
 
 Plugins may declare their own namespaced endpoint rate limits, but cannot replace or weaken core limits.
 

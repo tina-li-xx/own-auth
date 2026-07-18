@@ -23,6 +23,33 @@ export const POST = authHandler;
 
 The auth engine remains framework-independent. The handler only translates HTTP requests into existing Own Auth methods.
 
+## Protocol Handlers
+
+The application auth API, OAuth and OpenID Connect server, and SCIM server use separate handlers because they have different authentication, content-type, and error contracts.
+
+```ts handlers.ts
+import { createOwnAuthAuthorizationServerHandler } from "own-auth/authorization-server";
+import { createOwnAuthHandler } from "own-auth/http";
+import { createOwnAuthScimHandler } from "own-auth/scim";
+
+import { auth } from "./auth";
+
+export const authHandler = createOwnAuthHandler(auth);
+export const authorizationServerHandler =
+  createOwnAuthAuthorizationServerHandler(auth);
+export const scimHandler = createOwnAuthScimHandler(auth);
+```
+
+Mount only the optional protocol handlers configured by the application:
+
+| Handler | Default mount |
+|---|---|
+| `authHandler` | `/api/auth/*` |
+| `authorizationServerHandler` | `/oauth/*` and `/.well-known/*` as documented by the authorization server |
+| `scimHandler` | `/scim/v2/*` |
+
+These handlers share the same `auth` instance and storage. They do not call one another.
+
 ## Endpoints
 
 | Method | Path | Operation |
@@ -49,6 +76,9 @@ The auth engine remains framework-independent. The handler only translates HTTP 
 | `POST` | `/api/auth/oauth/google/one-tap/prepare` | Create a Google One Tap nonce transaction |
 | `POST` | `/api/auth/oauth/google/one-tap/verify` | Verify a Google One Tap credential |
 | `POST` | `/api/auth/oauth/unlink` | Unlink a provider from the current user |
+| `POST` | `/api/auth/saml/start` | Start SAML sign-in or identity linking and return the identity-provider URL |
+| `POST` | `/api/auth/saml/acs` | Complete a SAML form-post callback |
+| `GET` | `/api/auth/saml/metadata?connectionId=...` | Return service-provider metadata for one connection |
 | `POST` | `/api/auth/mfa/totp/complete` | Complete MFA with TOTP |
 | `POST` | `/api/auth/mfa/recovery/complete` | Complete MFA with a recovery code |
 | `POST` | `/api/auth/mfa/totp/enroll` | Begin TOTP enrollment |
@@ -87,7 +117,7 @@ Do not copy an arbitrary `X-Forwarded-For` value directly. Resolve the address t
 
 ## Sessions
 
-Completed signup, signin, magic-link verification, phone login, OAuth, One Tap, and passkey authentication set an `HttpOnly` session cookie. The JSON response never contains the raw session token, password hash, or session-token hash.
+Completed signup, signin, magic-link verification, phone login, OAuth, One Tap, SAML, and passkey authentication set an `HttpOnly` session cookie. The JSON response never contains the raw session token, password hash, or session-token hash.
 
 The default cookie is:
 
@@ -129,6 +159,43 @@ Google and GitHub use GET callbacks. Apple supports GET and its required `applic
 Redirect callbacks set the session or MFA cookie and return to the transaction's validated destination. Popup callbacks post only `complete`, `mfa_required`, `linked`, or `failure` to the exact stored opener origin. They never post OAuth codes, provider tokens, session tokens, or MFA challenge tokens.
 
 Provider and account-resolution failures are returned through the popup message or redirect query parameters. Direct callback HTTP errors are reserved for malformed or rate-limited requests.
+
+## SAML callbacks
+
+SAML is available only when the auth instance uses `createSaml` from `own-auth/saml`. `POST /saml/start` returns an identity-provider URL instead of redirecting automatically, so server code and the TypeScript client can choose when navigation happens.
+
+The assertion consumer service accepts only `application/x-www-form-urlencoded` POST bodies and always limits them to 64 KiB. It validates the SAML transaction before setting a session or temporary MFA cookie. The response then redirects to the transaction's validated destination with only `own_auth_status` and, on failure, a generic `own_auth_error` value. Raw SAML responses, relay state, subjects, session tokens, and MFA challenge tokens are never placed in the redirect URL.
+
+Service-provider metadata is connection-specific. Give the identity provider the exact metadata URL returned for that connection:
+
+```text
+https://auth.example.com/api/auth/saml/metadata?connectionId=samlc_...
+```
+
+See [SAML SSO](/docs/saml) for setup and connection behavior.
+
+## SCIM Handler
+
+SCIM is available only when the auth instance includes `scim: {}`. The separate handler from `own-auth/scim` authenticates requests with a connection-scoped SCIM bearer token instead of an application session.
+
+```ts
+import { createOwnAuthScimHandler } from "own-auth/scim";
+
+export const scimHandler = createOwnAuthScimHandler(auth, {
+  getRequestContext(request) {
+    return {
+      ipAddress: getTrustedClientIp(request),
+      userAgent: request.headers.get("user-agent") ?? undefined,
+    };
+  },
+});
+```
+
+The handler supports SCIM User discovery, creation, listing, filtering, reads, replacement, PATCH updates, and deletion under `/scim/v2`. Request bodies must use `application/scim+json` and are limited to 256 KiB by default.
+
+SCIM errors use the RFC 7644 error shape rather than the application auth error shape. Generate its separate OpenAPI document with `createOwnAuthScimOpenApiDocument`.
+
+See [SCIM Provisioning](/docs/scim) for setup, endpoints, ETags, lifecycle behavior, and security rules.
 
 ## CSRF protection
 
@@ -182,6 +249,16 @@ const openapi = createOwnAuthOpenApiDocument({
   title: "My App Auth API",
   version: "1.0.0",
   serverUrl: "https://api.example.com",
+});
+```
+
+Generate the SCIM document separately:
+
+```ts
+import { createOwnAuthScimOpenApiDocument } from "own-auth/scim";
+
+const scimOpenApi = createOwnAuthScimOpenApiDocument({
+  title: "My App SCIM API",
 });
 ```
 

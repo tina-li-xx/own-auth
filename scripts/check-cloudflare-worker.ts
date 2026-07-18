@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RateLimitStore } from "../packages/core/src/rate-limit.js";
 import type { AuthStorage } from "../packages/core/src/storage.js";
+import type { ScimStorage } from "../packages/core/src/scim-storage.js";
 import type {
   AuthorizationServerStorage,
   DpopStorage
@@ -33,6 +34,8 @@ import {
 import {
   assertAuthorizationRefreshRace
 } from "./authorization-server-conformance.js";
+import { assertScimVersionRace } from "./scim-worker-conformance.js";
+import { assertSamlResponseRace } from "./saml-worker-conformance.js";
 
 const root = new URL("..", import.meta.url);
 const config = "packages/core/test/cloudflare/wrangler.jsonc";
@@ -41,7 +44,6 @@ const port = 18_787;
 const persistenceDirectory = await mkdtemp(join(tmpdir(), "own-auth-d1-"));
 let worker: ChildProcess | undefined;
 const workerOutput: string[] = [];
-
 try {
   await assertCustomAuthorizationD1Migration({
     persistenceDirectory,
@@ -55,6 +57,8 @@ try {
   const origin = `http://127.0.0.1:${port}`;
   await assertWebhookVerifier(origin);
   await assertChecks(await postAction(`${origin}/conformance/dpop-crypto`), "DPoP Web Crypto");
+  await assertChecks(await postAction(`${origin}/conformance/saml-engine`), "SAML engine");
+  await assertChecks(await postAction(`${origin}/conformance/scim-engine`), "SCIM engine");
   await assertChecks(await postAction(`${origin}/conformance/schema`), "D1 schema");
   await assertChecks(await postAction(`${origin}/conformance/webhook-flow`), "D1 webhook flow");
   await assertAuthorizationRefreshRace(
@@ -63,6 +67,20 @@ try {
   );
   await assertDpopReplayRace(
     createRemoteProxy<DpopStorage>(origin, "authorization-storage")
+  );
+  await assertSamlResponseRace(
+    createRemoteProxy<AuthStorage>(origin, "storage"),
+    [
+      createRemoteProxy<SamlStorage>(origin, "saml-storage"),
+      createRemoteProxy<SamlStorage>(origin, "saml-storage")
+    ]
+  );
+  await assertScimVersionRace(
+    createRemoteProxy<AuthStorage>(origin, "storage"),
+    [
+      createRemoteProxy<ScimStorage>(origin, "scim-storage"),
+      createRemoteProxy<ScimStorage>(origin, "scim-storage")
+    ]
   );
 
   for (const testCase of atomicAdapterCases) {
@@ -99,7 +117,7 @@ try {
 
   console.log(
     `Cloudflare D1 passed ${atomicAdapterCases.length} atomic cases, ` +
-    `${authConcurrencyCases.length} auth races, DPoP, webhook, lifecycle, migration, ` +
+    `${authConcurrencyCases.length} auth races, DPoP, SAML, SCIM, webhook, lifecycle, migration, ` +
     "secret, and close checks."
   );
 } catch (error) {
@@ -160,7 +178,8 @@ async function assertDpopReplayRace(storage: DpopStorage): Promise<void> {
 
 function createRemoteProxy<T extends object>(
   origin: string,
-  resource: "auth" | "storage" | "rate-limit" | "authorization-storage",
+  resource: "auth" | "storage" | "rate-limit" | "authorization-storage" |
+    "saml-storage" | "scim-storage",
   options?: ConformanceRpcRequest["options"]
 ): T {
   return new Proxy({}, {

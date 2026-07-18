@@ -19,6 +19,29 @@ Audit logs record who performed an authentication action, who or what it affecte
 | `oauth.credential_stored` | An encrypted provider refresh credential is stored. |
 | `oauth.credential_refreshed` | A provider access token is refreshed server-side. |
 | `oauth.credential_revoked` | Provider offline access is revoked and the local credential is deleted. |
+| `saml.connection_created` | An organisation owner creates a SAML connection. |
+| `saml.connection_updated` | An organisation owner changes a SAML connection. |
+| `saml.connection_disabled` | An organisation owner disables a SAML connection. |
+| `saml.connection_enabled` | An organisation owner enables a SAML connection. |
+| `saml.started` | SAML sign-in or identity linking starts. |
+| `saml.signed_in` | A SAML response resolves an identity and completes its first factor. |
+| `saml.failed` | A SAML response fails protocol, identity, or membership validation. |
+| `saml.identity_linked` | A SAML identity is linked to a user. |
+| `saml.identity_unlinked` | A SAML identity is unlinked from a user. |
+| `saml.member_provisioned` | SAML JIT provisioning creates an organisation membership. |
+| `scim.connection_created` | An organisation owner creates a SCIM connection. |
+| `scim.connection_updated` | An organisation owner changes a SCIM connection. |
+| `scim.connection_disabled` | An organisation owner disables a SCIM connection. |
+| `scim.connection_enabled` | An organisation owner enables a SCIM connection. |
+| `scim.token_created` | An organisation owner creates a SCIM bearer token. |
+| `scim.token_revoked` | An organisation owner revokes a SCIM bearer token. |
+| `scim.user_created` | SCIM creates an organisation-scoped user resource. |
+| `scim.user_linked` | A SCIM resource deliberately or automatically links to an existing user. |
+| `scim.user_updated` | SCIM changes supported User attributes. |
+| `scim.user_suspended` | SCIM sets a User resource inactive and suspends its membership. |
+| `scim.user_reactivated` | SCIM reactivates a suspended membership. |
+| `scim.user_deleted` | SCIM removes organisation access and creates a tombstone. |
+| `scim.user_restored` | An organisation owner explicitly restores a tombstoned SCIM resource. |
 | `authorization_server.client_created` | An OAuth client is registered. |
 | `authorization_server.client_updated` | An OAuth client's safe configuration changes. |
 | `authorization_server.client_secret_rotated` | A confidential client receives a replacement secret. |
@@ -186,6 +209,12 @@ Metadata depends on the event:
 | `external_provider.linked` | `{ provider: "google" }` |
 | `oauth.started` | `{ provider: "google", intent: "sign_in", mode: "popup" }` |
 | `oauth.signed_in` | `{ provider: "google", mode: "redirect" }` |
+| `saml.started` | `{ connectionId: "samlc_...", intent: "sign_in" }` |
+| `saml.failed` | `{ connectionId: "samlc_...", error: "saml_response_invalid" }` |
+| `saml.member_provisioned` | `{ connectionId: "samlc_...", role: "member" }` |
+| `scim.user_created` | `{ connectionId: "scimc_...", scimUserId: "scimu_..." }` |
+| `scim.user_updated` | `{ connectionId: "scimc_...", scimUserId: "scimu_...", fields: ["displayName"] }` |
+| `scim.user_deleted` | `{ connectionId: "scimc_...", scimUserId: "scimu_..." }` |
 | `mfa.challenge_succeeded` | `{ method: "totp" }` |
 | `session.elevated` | `{ assuranceLevel: "aal2", method: "passkey" }` |
 | `passkey.registered` | `{ passkeyId: "psk_...", discoverable: true }` |
@@ -200,7 +229,7 @@ Metadata depends on the event:
 
 ## Secret handling
 
-Audit events do not contain raw OAuth state, One Tap nonces, provider credentials, access or refresh tokens, session tokens, MFA challenge tokens, TOTP secrets, recovery codes, SMS codes, passkey responses, or WebAuthn challenges. Plugin after-hooks receive secret-redacted results, and plugin audit metadata must also exclude secrets.
+Audit events do not contain raw OAuth state, One Tap nonces, provider credentials, access or refresh tokens, session tokens, MFA challenge tokens, TOTP secrets, recovery codes, SMS codes, passkey responses, WebAuthn challenges, SAML responses, assertions, subjects, request IDs, relay state, certificates, signing keys, or raw SCIM bearer tokens. Plugin after-hooks receive secret-redacted results, and plugin audit metadata must also exclude secrets.
 
 ## Retention
 

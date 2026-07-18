@@ -8,12 +8,25 @@
 - Lightweight Web Crypto proof helpers through `own-auth/dpop` and request-aware verification through `own-auth/protected-resource`.
 - A dedicated authorization-server OpenAPI document covering DPoP authorization parameters, proof headers, token types, and introspection confirmation claims.
 - Migration `013_dpop` for Postgres and Cloudflare D1.
+- Organisation-scoped SAML 2.0 service-provider support through the lazy `own-auth/saml` export and the `auth.saml` namespace.
+- SAML connection management, service-provider metadata, Redirect authentication requests, POST callbacks, explicit identity linking, optional verified-email linking, and non-owner JIT membership provisioning.
+- SAML start, assertion consumer service, and metadata routes in the framework-neutral HTTP handler, plus `signInWithSaml` and `linkSaml` in the TypeScript client.
+- Optional RSA-SHA256 authentication-request signing with the private key protected by the shared encryption key ring.
+- Migration `014_saml` for Postgres and Cloudflare D1.
+- Organisation-scoped SCIM 2.0 User provisioning through `auth.scim` and the separate framework-neutral `own-auth/scim` handler.
+- Owner-managed SCIM connections, one-time-visible hashed bearer tokens, explicit or verified-email account linking, SAML connection pairing, conditional ETags, tombstones, and explicit restoration.
+- Migration `015_scim` for Postgres and Cloudflare D1.
 
 ### Security
 
 - DPoP proofs verify ES256 signatures, public-key thumbprints, request methods, canonical URLs, access-token hashes, timestamps, and proof IDs before atomic replay consumption.
 - Replay storage contains only a peppered, domain-separated hash and retains it for the proof lifetime plus clock skew.
 - DPoP-bound refresh tokens cannot become unbound or switch keys, and a bound access token cannot be accepted through the Bearer-only verification path.
+- SAML responses require a trusted response or assertion signature and validate issuer, audience, destination, recipient, request ID, time bounds, XML namespaces, and unique XML IDs. SHA-1 signatures and digests are rejected.
+- SAML transaction and assertion replay records are atomically single-use. Request IDs, relay state, assertion IDs, and subjects are stored only as peppered, purpose-separated hashes.
+- SAML JIT provisioning cannot grant the owner role, ignores identity-provider role assertions, and does not restore a removed organisation member.
+- SCIM updates are connection-scoped, cannot grant the owner role, and never delete or disable a global user account. Tombstones reserve external IDs and normalized user names until an owner explicitly restores the original resource.
+- Paired SAML email verification requires one active exact SCIM email match and writes the verification audit event only on the first successful conditional update.
 
 ## 0.3.4
 

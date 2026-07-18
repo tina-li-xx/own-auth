@@ -7,6 +7,8 @@ import type {
   SessionResult,
   SignInResult
 } from "../auth-engine-types.js";
+import { completeSamlResponse } from "../saml-internals.js";
+import type { SamlCompletionResult } from "../saml-types.js";
 import type {
   AuthSessionPayload,
   OwnAuthEndpointId,
@@ -37,6 +39,7 @@ export interface EndpointExecution<Body = unknown> {
     interactionMode: "redirect" | "popup";
     openerOrigin: string | null;
   };
+  samlCallback?: { destination: string | null };
 }
 
 interface EndpointExecutionContext {
@@ -175,6 +178,35 @@ const endpointExecutors = {
     await auth.unlinkOAuthProvider({ ...input, actorUserId: current.user.id, request });
     return { body: { success: true } };
   },
+
+  samlStart: async ({ auth, sessionToken, request }, input) => {
+    const result = input.intent === "link"
+      ? await auth.saml.createLinkUrl({
+          connectionId: input.connectionId,
+          destination: input.destination,
+          actorUserId: (await auth.requireCurrentSession(
+            requireToken(sessionToken, "session")
+          )).user.id,
+          request
+        })
+      : await auth.saml.createSignInUrl({
+          connectionId: input.connectionId,
+          destination: input.destination,
+          request
+        });
+    return { body: { url: result.url, expiresAt: result.expiresAt.toISOString() } };
+  },
+
+  samlAcs: async ({ auth, request }, input) =>
+    samlExecution(await auth.saml[completeSamlResponse]({
+      samlResponse: input.SAMLResponse,
+      relayState: input.RelayState,
+      request
+    })),
+
+  samlMetadata: async ({ auth }, input) => ({
+    body: await auth.saml.getMetadata(input)
+  }),
 
   completeMfaTotp: async ({ auth, mfaChallengeToken, request }, input) =>
     completedMfaExecution(await auth.completeMfaWithTotp({
@@ -396,6 +428,16 @@ function oauthExecution(
     return { body: { status: "linked" }, oauthCallback: callback };
   }
   return { ...signInExecution(result), oauthCallback: callback };
+}
+
+function samlExecution(
+  result: SamlCompletionResult
+): EndpointExecution<OwnAuthEndpointOutputMap["samlAcs"]> {
+  const callback = { destination: result.destination };
+  if (result.status === "linked") {
+    return { body: { status: "linked" }, samlCallback: callback };
+  }
+  return { ...signInExecution(result), samlCallback: callback };
 }
 
 async function completeOAuth(

@@ -34,6 +34,11 @@ export type OAuthSignInInput = Omit<
   "openerOrigin"
 > & { popupTimeoutMs?: number };
 
+export type SamlSignInInput = Omit<
+  OwnAuthEndpointInputMap["samlStart"],
+  "intent"
+>;
+
 export interface OwnAuthClientOptions {
   baseURL?: string;
   fetch?: typeof globalThis.fetch;
@@ -264,6 +269,16 @@ export class OwnAuthClient {
     input: OwnAuthEndpointInputMap["unlinkOAuthProvider"]
   ): Promise<OwnAuthEndpointOutputMap["unlinkOAuthProvider"]> {
     return this.request("unlinkOAuthProvider", input);
+  }
+
+  async signInWithSaml(input: SamlSignInInput): Promise<void> {
+    const result = await this.request("samlStart", { ...input, intent: "sign_in" });
+    navigateBrowser(result.url);
+  }
+
+  async linkSaml(input: SamlSignInInput): Promise<void> {
+    const result = await this.request("samlStart", { ...input, intent: "link" });
+    navigateBrowser(result.url);
   }
 
   prepareGoogleOneTap(): Promise<OwnAuthEndpointOutputMap["prepareGoogleOneTap"]> {

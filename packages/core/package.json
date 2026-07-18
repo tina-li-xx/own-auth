@@ -76,6 +76,14 @@
       "types": "./dist/dpop.d.ts",
       "default": "./dist/dpop.js"
     },
+    "./saml": {
+      "types": "./dist/saml.d.ts",
+      "default": "./dist/saml.js"
+    },
+    "./scim": {
+      "types": "./dist/scim-http.d.ts",
+      "default": "./dist/scim-http.js"
+    },
     "./react": {
       "types": "./dist/react.d.ts",
       "default": "./dist/react.js"
@@ -105,9 +113,13 @@
     "./migrations/011_authorization_server.sql": "./migrations/011_authorization_server.sql",
     "./migrations/012_protected_resources.sql": "./migrations/012_protected_resources.sql",
     "./migrations/013_dpop.sql": "./migrations/013_dpop.sql",
+    "./migrations/014_saml.sql": "./migrations/014_saml.sql",
+    "./migrations/015_scim.sql": "./migrations/015_scim.sql",
     "./migrations/d1/*.sql": "./migrations/d1/*.sql",
     "./docs/installation.md": "./docs/installation.md",
     "./docs/cloudflare-d1.md": "./docs/cloudflare-d1.md",
+    "./docs/saml.md": "./docs/saml.md",
+    "./docs/scim.md": "./docs/scim.md",
     "./docs/security-model.md": "./docs/security-model.md"
   },
   "scripts": {
@@ -120,6 +132,7 @@
   },
   "dependencies": {
     "@noble/hashes": "^1.8.0",
+    "@node-saml/node-saml": "5.1.0",
     "@opentelemetry/api": "1.9.1",
     "@simplewebauthn/browser": "^13.3.0",
     "@simplewebauthn/server": "^13.3.2",

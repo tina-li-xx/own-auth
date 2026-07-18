@@ -2,7 +2,14 @@ export type JsonRecord = Record<string, unknown>;
 
 export type ExternalAccountProvider = "apple" | "github" | "google";
 
-export type AccountProvider = "password" | "magic_link" | "phone" | ExternalAccountProvider;
+export type SamlAccountProvider = `saml.${string}`;
+
+export type AccountProvider =
+  | "password"
+  | "magic_link"
+  | "phone"
+  | ExternalAccountProvider
+  | SamlAccountProvider;
 
 export type SessionAssuranceLevel = "aal1" | "aal2";
 
@@ -76,6 +83,29 @@ export const coreAuditEventTypes = [
   "passkey.authenticated",
   "passkey.renamed",
   "passkey.revoked",
+  "saml.connection_created",
+  "saml.connection_updated",
+  "saml.connection_disabled",
+  "saml.connection_enabled",
+  "saml.started",
+  "saml.signed_in",
+  "saml.failed",
+  "saml.identity_linked",
+  "saml.identity_unlinked",
+  "saml.member_provisioned",
+  "scim.connection_created",
+  "scim.connection_updated",
+  "scim.connection_disabled",
+  "scim.connection_enabled",
+  "scim.token_created",
+  "scim.token_revoked",
+  "scim.user_created",
+  "scim.user_linked",
+  "scim.user_updated",
+  "scim.user_suspended",
+  "scim.user_reactivated",
+  "scim.user_deleted",
+  "scim.user_restored",
   "session.created",
   "session.revoked",
   "session.revoked_other",

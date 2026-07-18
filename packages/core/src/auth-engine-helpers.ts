@@ -3,6 +3,7 @@ import { createId, randomBase64Url } from "./crypto.js";
 import { enforceRateLimit } from "./rate-limit.js";
 import type {
   Account,
+  AuditEvent,
   AuditEventType,
   JsonRecord,
   RequestContext,
@@ -21,6 +22,30 @@ export function requestContextFrom(input: unknown): RequestContext {
     : {};
 }
 
+export function createAuditEvent(input: {
+  eventType: AuditEventType;
+  actorUserId?: string | null;
+  targetUserId?: string | null;
+  organisationId?: string | null;
+  apiKeyId?: string | null;
+  request?: RequestContext;
+  metadata?: JsonRecord;
+  now?: Date;
+}): AuditEvent {
+  return {
+    id: createId("evt"),
+    eventType: input.eventType,
+    actorUserId: input.actorUserId ?? null,
+    targetUserId: input.targetUserId ?? null,
+    organisationId: input.organisationId ?? null,
+    apiKeyId: input.apiKeyId ?? null,
+    ipAddress: input.request?.ipAddress ?? null,
+    userAgent: input.request?.userAgent ?? null,
+    metadata: cloneMetadata(input.metadata),
+    createdAt: input.now ?? new Date()
+  };
+}
+
 export async function audit(
   ctx: AuthEngineContext,
   input: {
@@ -33,18 +58,15 @@ export async function audit(
     metadata?: JsonRecord;
   }
 ): Promise<void> {
-  await recordAuthEvent(ctx, {
-    id: createId("evt"),
+  await recordAuthEvent(ctx, createAuditEvent({
     eventType: input.eventType,
     actorUserId: input.actorUserId ?? null,
     targetUserId: input.targetUserId ?? null,
     organisationId: input.organisationId ?? null,
     apiKeyId: input.apiKeyId ?? null,
-    ipAddress: input.context?.ipAddress ?? null,
-    userAgent: input.context?.userAgent ?? null,
-    metadata: cloneMetadata(input.metadata),
-    createdAt: new Date()
-  });
+    request: input.context,
+    metadata: input.metadata
+  }));
 }
 
 export function auditSignedIn(
@@ -207,7 +229,9 @@ export async function hasRemainingAuthenticationMethod(
     user.email ||
     user.phone ||
     accounts.some(
-      (account) => account.id !== excluded.accountId && isExternalAccountProvider(account.provider)
+      (account) => account.id !== excluded.accountId && (
+        isExternalAccountProvider(account.provider) || account.provider.startsWith("saml.")
+      )
     ) ||
     passkeys.some((passkey) => passkey.id !== excluded.passkeyId)
   );

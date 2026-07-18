@@ -21,6 +21,7 @@ import { audit, rateLimit, requireActiveUser } from "./auth-engine-helpers.js";
 import { hash } from "./auth-engine-token-helpers.js";
 import { revokeAllSessionsForUser } from "./auth-engine-sessions.js";
 import { setUserDisabledState } from "./auth-engine-users.js";
+import type { AuthOperationRunner } from "./auth-operation-runner.js";
 
 const defaultPageLimit = 50;
 const maximumPageLimit = 100;
@@ -31,16 +32,10 @@ const administrationRateLimit = 120;
 const administrationRateWindowMs = 60_000;
 const cursorDomain = "own-auth:administration:cursor:v1";
 
-type AdministrationOperationRunner = <Result>(
-  operation: string,
-  input: unknown,
-  work: () => Promise<Result>
-) => Promise<Result>;
-
 export class OwnAuthAdministration {
   constructor(
     private readonly ctx: AuthEngineContext,
-    private readonly execute: AdministrationOperationRunner
+    private readonly execute: AuthOperationRunner
   ) {}
 
   listUsers(

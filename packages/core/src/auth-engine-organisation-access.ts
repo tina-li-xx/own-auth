@@ -56,6 +56,17 @@ export async function requireOrganisationAccess(
   return { organisation, member };
 }
 
+export async function requireOrganisationOwner(
+  ctx: AuthEngineContext,
+  organisationId: string,
+  userId: string
+): Promise<void> {
+  const { member } = await requireOrganisationAccess(ctx, organisationId, userId);
+  if (member.role !== "owner") {
+    throw new AuthError("permission_denied", "Organisation owner access is required", 403);
+  }
+}
+
 export async function requirePermission(
   ctx: AuthEngineContext,
   organisationId: string,

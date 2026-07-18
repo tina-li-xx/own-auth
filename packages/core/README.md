@@ -184,7 +184,7 @@ import { auth } from "./auth";
 export const authHandler = createOwnAuthHandler(auth);
 ```
 
-The handler provides signup, signin, sessions, signout, password flows, magic links, email verification, SMS verification, invitation acceptance, OAuth, MFA, and passkeys under `/api/auth`. It sets secure `HttpOnly` cookies, checks browser request origins, and returns one documented error format.
+The handler provides signup, signin, sessions, signout, password flows, magic links, email verification, SMS verification, invitation acceptance, OAuth, SAML SSO, MFA, and passkeys under `/api/auth`. It sets secure `HttpOnly` cookies, checks browser request origins, and returns one documented error format.
 
 Browser TypeScript can use the matching client:
 
@@ -214,6 +214,10 @@ You have basic email/password auth. Here is where to go next:
 **Auth methods**: Add passwordless login with [magic links](https://own-auth.com/docs/magic-links), or phone-based login with [SMS verification](https://own-auth.com/docs/phone-login).
 
 **OAuth**: Add Google, GitHub, or Apple through [OAuth and external providers](https://own-auth.com/docs/external-providers).
+
+**Enterprise SSO**: Connect an organisation identity provider through [SAML SSO](https://own-auth.com/docs/saml).
+
+**Enterprise provisioning**: Provision organisation users and memberships through [SCIM](https://own-auth.com/docs/scim).
 
 **MFA and passkeys**: Add [TOTP and recovery codes](https://own-auth.com/docs/mfa), or use [passkeys](https://own-auth.com/docs/passkeys) for sign-in and MFA.
 
@@ -430,6 +434,41 @@ const result = await auth.signInWithVerifiedExternalIdentity({
 Own Auth resolves the linked provider account, applies the configured account-linking policy, and either creates a session or returns `mfa_required`.
 
 `signInWithVerifiedExternalIdentity` does not verify a provider token. Only call it after a trusted provider adapter has verified the token signature, issuer, audience, expiry, and nonce where required. See [External providers](https://github.com/own-auth/own-auth/blob/main/docs/external-providers.md).
+
+## SAML SSO
+
+Enable organisation-scoped SAML 2.0 sign-in through the separate protocol export:
+
+```ts
+import { createOwnAuth } from "own-auth";
+import { createSaml } from "own-auth/saml";
+
+export const auth = createOwnAuth({
+  baseUrl: "https://auth.example.com",
+  tokenPepper: process.env.OWN_AUTH_TOKEN_PEPPER,
+  saml: createSaml(),
+});
+```
+
+Run `npx own-auth migrate`, create a connection through `auth.saml.createConnection`, and give the identity provider the generated metadata URL. See [SAML SSO](https://github.com/own-auth/own-auth/blob/main/docs/saml.md) for connection management, identity linking, JIT provisioning, request signing, and the HTTP flow.
+
+## SCIM Provisioning
+
+Enable organisation-scoped SCIM 2.0 provisioning and mount its separate protocol handler:
+
+```ts
+import { createOwnAuth } from "own-auth";
+import { createOwnAuthScimHandler } from "own-auth/scim";
+
+export const auth = createOwnAuth({
+  tokenPepper: process.env.OWN_AUTH_TOKEN_PEPPER,
+  scim: {},
+});
+
+export const scimHandler = createOwnAuthScimHandler(auth);
+```
+
+Organisation owners create connections and one-time-visible bearer tokens through `auth.scim`. SCIM creates and updates organisation memberships without deleting or disabling the global Own Auth user account. See [SCIM Provisioning](https://github.com/own-auth/own-auth/blob/main/docs/scim.md) for connection setup, account linking, SAML pairing, restoration, and the supported protocol surface.
 
 ## OAuth And OpenID Connect Authorization Server
 
@@ -749,6 +788,8 @@ See [Observability](https://github.com/own-auth/own-auth/blob/main/docs/observab
 | **Sessions** | `getCurrentSession` `requireCurrentSession` `signOut` `revokeSession` `revokeAllSessions` `listSessions` |
 | **Magic Links** | `requestMagicLink` `verifyMagicLink` |
 | **OAuth** | `createOAuthAuthorizationUrl` `completeOAuthSignIn` `linkOAuthProvider` `unlinkOAuthProvider` `prepareGoogleOneTap` `signInWithGoogleOneTap` `signInWithVerifiedExternalIdentity` |
+| **SAML** | `auth.saml.createConnection` `auth.saml.getConnection` `auth.saml.listConnections` `auth.saml.updateConnection` `auth.saml.disableConnection` `auth.saml.enableConnection` `auth.saml.createSignInUrl` `auth.saml.createLinkUrl` `auth.saml.unlinkIdentity` `auth.saml.getMetadata` |
+| **SCIM** | `auth.scim.createConnection` `auth.scim.getConnection` `auth.scim.listConnections` `auth.scim.updateConnection` `auth.scim.disableConnection` `auth.scim.enableConnection` `auth.scim.createToken` `auth.scim.listTokens` `auth.scim.revokeToken` `auth.scim.linkUser` `auth.scim.restoreUser` |
 | **Provider Credentials** | `getExternalAccessToken` `revokeExternalProviderAccess` |
 | **MFA** | `beginTotpEnrollment` `confirmTotpEnrollment` `completeMfaWithTotp` `completeMfaWithRecoveryCode` `regenerateRecoveryCodes` `disableTotp` |
 | **Passkeys** | `beginPasskeyRegistration` `completePasskeyRegistration` `beginPasskeyAuthentication` `completePasskeyAuthentication` `listPasskeys` `renamePasskey` `revokePasskey` |
@@ -779,6 +820,7 @@ See [Observability](https://github.com/own-auth/own-auth/blob/main/docs/observab
 - Redirect URL allowlist for magic links and OAuth destinations
 - HMAC-SHA256 webhook signatures with timestamp validation and receiver-owned replay claims
 - Optional DPoP-bound OAuth tokens with method, URL, access-token hash, timestamp, and atomic proof-replay verification
+- Connection-scoped SCIM tokens are shown once, stored as peppered hashes, rate-limited, and rejected when revoked, expired, or disabled
 
 Report suspected vulnerabilities through the private process in
 [Security Policy](https://github.com/own-auth/own-auth/blob/main/SECURITY.md#reporting-a-vulnerability). Do not open a public
@@ -789,6 +831,8 @@ issue for an undisclosed vulnerability.
 - [Installation](https://github.com/own-auth/own-auth/blob/main/docs/installation.md)
 - [Security Model](https://github.com/own-auth/own-auth/blob/main/docs/security-model.md)
 - [OAuth And External Providers](https://github.com/own-auth/own-auth/blob/main/docs/external-providers.md)
+- [SAML SSO](https://github.com/own-auth/own-auth/blob/main/docs/saml.md)
+- [SCIM Provisioning](https://github.com/own-auth/own-auth/blob/main/docs/scim.md)
 - [OAuth And OpenID Connect Authorization Server](https://github.com/own-auth/own-auth/blob/main/docs/authorization-server.md)
 - [Protected Resources](https://github.com/own-auth/own-auth/blob/main/docs/protected-resources.md)
 - [Multi-Factor Authentication](https://github.com/own-auth/own-auth/blob/main/docs/mfa.md)

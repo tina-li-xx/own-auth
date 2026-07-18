@@ -5,13 +5,19 @@ import {
   handleAuthorizationStorageRpc,
   handleCloseLifecycle,
   handleDpopCrypto,
+  handleSamlEngineQualification,
   handleWebhookFlow,
   handleInspection,
   handleRateLimitRpc,
+  handleSamlStorageRpc,
   handleSchemaInspection,
   handleStorageRpc,
   handleWebhookVerification
 } from "./worker-conformance.js";
+import {
+  handleScimEngineQualification,
+  handleScimStorageRpc
+} from "./worker-scim-conformance.js";
 
 interface Env {
   DB: D1DatabaseLike;
@@ -32,6 +38,10 @@ export default {
           return await handleStorageRpc(request, env.DB);
         case "/conformance/rate-limit":
           return await handleRateLimitRpc(request, env.DB);
+        case "/conformance/saml-storage":
+          return await handleSamlStorageRpc(request, env.DB);
+        case "/conformance/scim-storage":
+          return await handleScimStorageRpc(request, env.DB);
         case "/conformance/inspect":
           return await handleInspection(request, env.DB);
         case "/conformance/schema":
@@ -40,6 +50,10 @@ export default {
           return await handleCloseLifecycle(env.DB);
         case "/conformance/dpop-crypto":
           return await handleDpopCrypto();
+        case "/conformance/saml-engine":
+          return await handleSamlEngineQualification();
+        case "/conformance/scim-engine":
+          return await handleScimEngineQualification(env.DB);
         case "/conformance/webhook-verifier":
           return await handleWebhookVerification(request);
         case "/conformance/webhook-flow":

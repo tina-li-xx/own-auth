@@ -18,7 +18,7 @@ This is different from Google, GitHub, or Apple sign-in. External provider sign-
 - Discovery metadata and JWKS
 - Consent, reauthentication, account selection, and AAL2 step-up interactions
 
-Device authorization, SAML, SCIM, and MCP authorization are not part of this release.
+Device authorization, SCIM, and MCP authorization are not part of this release. Organisation SAML sign-in is a separate integration documented in [SAML SSO](/docs/saml); it is not an authorization-server protocol mode.
 
 ## Run The Migration
 

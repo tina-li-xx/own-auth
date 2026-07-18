@@ -4,6 +4,7 @@ import {
   MemoryEmailProvider,
   MemorySmsProvider
 } from "../../dist/index.js";
+import { createSaml } from "../../dist/saml.js";
 import type {
   AuthorizationServerStorage,
   DpopStorage
@@ -12,6 +13,11 @@ import {
   createD1Persistence,
   type D1DatabaseLike
 } from "../../dist/d1/index.js";
+import {
+  coreMigrationFiles,
+  databaseTables
+} from "../../dist/database-metadata.js";
+import type { SamlStorage } from "../../dist/saml-storage.js";
 import { verifyDpopProof } from "../../dist/dpop-crypto.js";
 import { createDpopProof, generateDpopKeyPair } from "../../dist/dpop.js";
 import { verifyOwnAuthWebhook } from "../../dist/webhooks.js";
@@ -29,6 +35,7 @@ import {
   type ConformanceRpcRequest,
   isRecord
 } from "./conformance-protocol.js";
+import { invokeConformanceRpc, readConformanceRpc } from "./worker-rpc.js";
 
 const authMethods = new Set<string>(persistenceConformanceAuthMethods);
 
@@ -42,6 +49,7 @@ const storageMethods = new Set([
   "createAccount",
   "createMfaChallenge",
   "createOAuthTransaction",
+  "createOrganisation",
   "createPasskeyCredential",
   "createSmsOtp",
   "createToken",
@@ -80,92 +88,62 @@ const authorizationStorageMethods = new Set([
   "upsertAuthorizationGrant"
 ]);
 
-const expectedMigrations = [
-  "001_initial",
-  "002_external_providers",
-  "003_oauth_transactions",
-  "004_mfa",
-  "005_oauth_credentials",
-  "006_passkeys",
-  "007_plugin_migrations",
-  "008_webhooks",
-  "009_custom_authorization",
-  "010_administration",
-  "011_authorization_server",
-  "012_protected_resources",
-  "013_dpop"
-];
+const samlStorageMethods = new Set([
+  "consumeResponse",
+  "createConnection",
+  "createTransaction"
+]);
+const rateLimitMethods = new Set(["hit", "reset"]);
 
-const expectedTables = [
-  "own_auth_accounts",
-  "own_auth_api_keys",
-  "own_auth_audit_events",
-  "own_auth_authorization_access_tokens",
-  "own_auth_authorization_client_secrets",
-  "own_auth_authorization_clients",
-  "own_auth_authorization_codes",
-  "own_auth_authorization_grants",
-  "own_auth_authorization_interactions",
-  "own_auth_authorization_refresh_tokens",
-  "own_auth_dpop_proofs",
-  "own_auth_invitations",
-  "own_auth_mfa_challenges",
-  "own_auth_mfa_factors",
-  "own_auth_migrations",
-  "own_auth_oauth_credentials",
-  "own_auth_oauth_transactions",
-  "own_auth_oidc_subjects",
-  "own_auth_organisation_members",
-  "own_auth_organisations",
-  "own_auth_passkeys",
-  "own_auth_plugin_migrations",
-  "own_auth_protected_resource_secrets",
-  "own_auth_protected_resources",
-  "own_auth_rate_limits",
-  "own_auth_recovery_codes",
-  "own_auth_sessions",
-  "own_auth_sms_otps",
-  "own_auth_tokens",
-  "own_auth_users",
-  "own_auth_webauthn_challenges",
-  "own_auth_webhook_attempts",
-  "own_auth_webhook_deliveries",
-  "own_auth_webhook_events"
-];
+const expectedMigrations = coreMigrationFiles.map((file) => file.replace(/\.sql$/, ""));
+const expectedTables = Object.values(databaseTables);
 
 export async function handleAuthRpc(request: Request, database: D1DatabaseLike): Promise<Response> {
-  const rpc = await readRpc(request);
-  if (!authMethods.has(rpc.method)) return methodNotAllowed();
+  const rpc = await readConformanceRpc(request);
   const auth = createWorkerAuth(database, rpc.options);
-  return invoke(auth, rpc);
+  return invokeConformanceRpc(auth, rpc, authMethods);
 }
 
 export async function handleStorageRpc(
   request: Request,
   database: D1DatabaseLike
 ): Promise<Response> {
-  const rpc = await readRpc(request);
-  if (!storageMethods.has(rpc.method)) return methodNotAllowed();
-  return invoke(createD1Persistence(database).storage, rpc);
+  const rpc = await readConformanceRpc(request);
+  return invokeConformanceRpc(createD1Persistence(database).storage, rpc, storageMethods);
 }
 
 export async function handleAuthorizationStorageRpc(
   request: Request,
   database: D1DatabaseLike
 ): Promise<Response> {
-  const rpc = await readRpc(request);
-  if (!authorizationStorageMethods.has(rpc.method)) return methodNotAllowed();
+  const rpc = await readConformanceRpc(request);
   const storage = createD1Persistence(database).storage.authorizationServerStorage;
-  return invoke(storage as AuthorizationServerStorage & DpopStorage, rpc);
+  return invokeConformanceRpc(
+    storage as AuthorizationServerStorage & DpopStorage,
+    rpc,
+    authorizationStorageMethods
+  );
+}
+
+export async function handleSamlStorageRpc(
+  request: Request,
+  database: D1DatabaseLike
+): Promise<Response> {
+  const rpc = await readConformanceRpc(request);
+  const storage = createD1Persistence(database).storage.samlStorage;
+  return invokeConformanceRpc(storage as SamlStorage, rpc, samlStorageMethods);
 }
 
 export async function handleRateLimitRpc(
   request: Request,
   database: D1DatabaseLike
 ): Promise<Response> {
-  const rpc = await readRpc(request);
-  if (rpc.method !== "hit" && rpc.method !== "reset") return methodNotAllowed();
-  return invoke(createD1Persistence(database).rateLimitStore, rpc);
+  const rpc = await readConformanceRpc(request);
+  return invokeConformanceRpc(
+    createD1Persistence(database).rateLimitStore,
+    rpc,
+    rateLimitMethods
+  );
 }
 
 export async function handleWebhookVerification(request: Request): Promise<Response> {
@@ -198,6 +176,32 @@ export async function handleDpopCrypto(): Promise<Response> {
   return Response.json({
     proofVerified: verified.jwkThumbprint === keyPair.jwkThumbprint,
     thumbprintValid: /^[A-Za-z0-9_-]{43}$/.test(keyPair.jwkThumbprint)
+  });
+}
+
+export async function handleSamlEngineQualification(): Promise<Response> {
+  const saml = createSaml();
+  const connection = {
+    acsUrl: "https://app.example.com/saml/acs",
+    idpEntityId: "https://idp.example.com/metadata",
+    ssoUrl: "https://idp.example.com/sso",
+    idpCertificates: ["AA=="],
+    spEntityId: "https://app.example.com/saml/metadata"
+  };
+  const metadata = saml.createMetadata(connection);
+  const authorizeUrl = new URL(await saml.createAuthorizeUrl({
+    connection,
+    requestId: "_worker_request",
+    relayState: "relay-state"
+  }));
+  return Response.json({
+    metadataGenerated:
+      metadata.includes("EntityDescriptor") &&
+      metadata.includes("https://app.example.com/saml/acs"),
+    redirectGenerated:
+      authorizeUrl.origin === "https://idp.example.com" &&
+      authorizeUrl.searchParams.has("SAMLRequest") &&
+      authorizeUrl.searchParams.get("RelayState") === "relay-state"
   });
 }
 
@@ -331,30 +335,8 @@ function createWorkerAuth(
   });
 }
 
-async function readRpc(request: Request): Promise<ConformanceRpcRequest> {
-  const decoded = decodeConformanceValue(await request.json());
-  if (
-    !isRecord(decoded) ||
-    typeof decoded.method !== "string" ||
-    !Array.isArray(decoded.args)
-  ) {
-    throw new AuthError("validation_error", "Invalid conformance request", 400);
-  }
-  return decoded as unknown as ConformanceRpcRequest;
-}
-
-async function invoke(target: object, rpc: ConformanceRpcRequest): Promise<Response> {
-  const method = (target as Record<string, unknown>)[rpc.method];
-  if (typeof method !== "function") return methodNotAllowed();
-  return encodedJson(await method.apply(target, rpc.args));
-}
-
 function encodedJson(value: unknown, init?: ResponseInit): Response {
   return Response.json(encodeConformanceValue(value), init);
-}
-
-function methodNotAllowed(): Response {
-  return Response.json({ error: { message: "Conformance method is not allowed" } }, { status: 405 });
 }
 
 async function inspectPersistence(
