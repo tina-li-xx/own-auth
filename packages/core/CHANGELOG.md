@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.5
+
 ### Added
 
 - Optional RFC 9449 DPoP binding for authorization clients and protected resources, with the binding preserved across authorization codes, access tokens, and refresh-token rotation.
