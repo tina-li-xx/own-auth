@@ -304,6 +304,10 @@ const auth = createOwnAuth({
     },
     resourceIntrospectionRequestsPerMinute: 6_000,
     failedIntrospectionAttemptsPerMinute: 30,
+    dpop: {
+      proofTtlMs: 5 * 60 * 1_000,
+      clockSkewMs: 60 * 1_000,
+    },
   },
 });
 ```
@@ -312,8 +316,10 @@ const auth = createOwnAuth({
 |---|---|---|---|
 | `resourceIntrospectionRequestsPerMinute` | `number` | `6000` | Authenticated introspection requests shared by every instance using one protected-resource identity. |
 | `failedIntrospectionAttemptsPerMinute` | `number` | `30` | Failed protected-resource authentication attempts allowed per IP address. |
+| `dpop.proofTtlMs` | `number` | `300000` | Maximum age of a DPoP proof before clock skew is applied. |
+| `dpop.clockSkewMs` | `number` | `60000` | Allowed client and server clock difference for DPoP proof timestamps. |
 
-The authorization server requires the shared encryption key ring and migrations `011_authorization_server` and `012_protected_resources`. See [OAuth And OpenID Connect Authorization Server](/docs/authorization-server) for the provider flow and [Protected Resources](/docs/protected-resources) for resource registration and remote token verification.
+The current authorization-server schema requires migrations `011_authorization_server`, `012_protected_resources`, and `013_dpop`, plus the shared encryption key ring. DPoP remains optional: omit `dpop` for a Bearer-only server. See [OAuth And OpenID Connect Authorization Server](/docs/authorization-server) for the provider flow and [Protected Resources](/docs/protected-resources) for resource registration and remote token verification.
 
 ### Encryption
 

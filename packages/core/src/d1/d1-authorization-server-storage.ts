@@ -1,6 +1,7 @@
 import {
   mapAuthorizationAccessToken,
   mapAuthorizationCode,
+  mapAuthorizationCodeDpopBinding,
   mapAuthorizationRefreshToken,
   mapOidcSubject
 } from "../authorization-server-database-mappers.js";
@@ -14,7 +15,11 @@ import {
   oidcSubjectReturning
 } from "../authorization-server-database-schema.js";
 import type {
+  AuthorizationCodeDpopBinding,
   AuthorizationServerStorage,
+  ConsumeDpopProofInput,
+  DpopStorage,
+  FindAuthorizationCodeDpopBindingInput,
   RotateAuthorizationRefreshTokenInput,
   RotateAuthorizationRefreshTokenResult
 } from "../authorization-server-storage.js";
@@ -35,7 +40,8 @@ import type { D1DatabaseLike } from "./d1-types.js";
 
 export class D1AuthorizationServerStorage
   extends D1AuthorizationClientStorage
-  implements AuthorizationServerStorage {
+  implements AuthorizationServerStorage, DpopStorage {
+  readonly dpopStorage = this;
   constructor(db: D1DatabaseLike) {
     super(db);
   }
@@ -57,8 +63,48 @@ export class D1AuthorizationServerStorage
     resourceIdentifier: string | null,
     consumedAt: Date
   ): Promise<AuthorizationCode | null> {
+    return this.consumeAuthorizationCodeWithDpop(
+      codeHash,
+      authorizationClientId,
+      redirectUri,
+      codeChallenge,
+      resourceIdentifier,
+      null,
+      consumedAt
+    );
+  }
+
+  async consumeDpopAuthorizationCode(
+    codeHash: string,
+    authorizationClientId: string,
+    redirectUri: string,
+    codeChallenge: string,
+    resourceIdentifier: string | null,
+    dpopJkt: string | null,
+    consumedAt: Date
+  ): Promise<AuthorizationCode | null> {
+    return this.consumeAuthorizationCodeWithDpop(
+      codeHash,
+      authorizationClientId,
+      redirectUri,
+      codeChallenge,
+      resourceIdentifier,
+      dpopJkt,
+      consumedAt
+    );
+  }
+
+  private async consumeAuthorizationCodeWithDpop(
+    codeHash: string,
+    authorizationClientId: string,
+    redirectUri: string,
+    codeChallenge: string,
+    resourceIdentifier: string | null,
+    dpopJkt: string | null,
+    consumedAt: Date
+  ): Promise<AuthorizationCode | null> {
     const row = await this.prepare(
-      `update own_auth_authorization_codes set consumed_at = ?6
+      `update own_auth_authorization_codes set consumed_at = ?7
        where code_hash = ?1 and authorization_client_id = ?2
          and redirect_uri = ?3 and code_challenge = ?4
          and (
@@ -67,7 +113,8 @@ export class D1AuthorizationServerStorage
              where identifier = ?5 and status = 'active' and revoked_at is null
            )
          )
-         and consumed_at is null and expires_at > ?6
+         and dpop_jkt is ?6
+         and consumed_at is null and expires_at > ?7
        returning ${authorizationCodeReturning}`,
       [
         codeHash,
@@ -75,10 +122,62 @@ export class D1AuthorizationServerStorage
         redirectUri,
         codeChallenge,
         resourceIdentifier,
+        dpopJkt,
         consumedAt
       ]
     ).first<DatabaseRow>();
     return row ? mapAuthorizationCode(row) : null;
+  }
+
+  async findAuthorizationCodeDpopBinding(
+    input: FindAuthorizationCodeDpopBindingInput
+  ): Promise<AuthorizationCodeDpopBinding | null> {
+    const row = await this.selectOne(
+      `code.dpop_jkt,
+       (client.dpop_bound_access_tokens = 1 or coalesce(resource.require_dpop, 0) = 1)
+         as dpop_required
+       from own_auth_authorization_codes code
+       join own_auth_authorization_clients client
+         on client.id = code.authorization_client_id
+       left join own_auth_protected_resources resource
+         on resource.id = code.protected_resource_id
+       where code.code_hash = ?1 and code.authorization_client_id = ?2
+         and code.redirect_uri = ?3 and code.code_challenge = ?4
+         and (
+           ?5 is null or code.protected_resource_id = (
+             select id from own_auth_protected_resources
+             where identifier = ?5 and status = 'active' and revoked_at is null
+           )
+         )
+         and code.consumed_at is null and code.expires_at > ?6`,
+      [
+        input.codeHash,
+        input.authorizationClientId,
+        input.redirectUri,
+        input.codeChallenge,
+        input.resourceIdentifier,
+        input.now
+      ]
+    );
+    return row ? mapAuthorizationCodeDpopBinding(row) : null;
+  }
+
+  async consumeDpopProof(input: ConsumeDpopProofInput): Promise<boolean> {
+    const row = await this.prepare(
+      `insert into own_auth_dpop_proofs (proof_hash, consumed_at, expires_at)
+       values (?1,?2,?3) on conflict (proof_hash) do nothing returning proof_hash`,
+      [input.proofHash, input.consumedAt, input.expiresAt]
+    ).first<DatabaseRow>();
+    return Boolean(row);
+  }
+
+  async cleanupDpopProofs(expiredBefore: Date): Promise<number> {
+    const result = await this.prepare(
+      "delete from own_auth_dpop_proofs where expires_at <= ?1",
+      [expiredBefore]
+    ).run();
+    const changes = result.meta?.changes;
+    return typeof changes === "number" ? changes : 0;
   }
 
   async createAuthorizationTokens(
@@ -160,9 +259,9 @@ export class D1AuthorizationServerStorage
       this.prepare(
         `insert into own_auth_authorization_refresh_tokens
           (id, token_hash, prefix, grant_id, authorization_client_id, user_id,
-           protected_resource_id, scopes, generation, replaced_by_token_id, expires_at, consumed_at,
-           revoked_at, created_at)
-         select ?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17
+           protected_resource_id, scopes, generation, replaced_by_token_id, dpop_jkt,
+           expires_at, consumed_at, revoked_at, created_at)
+         select ?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18
          from own_auth_authorization_refresh_tokens current_token
          where current_token.token_hash = ?1
            and current_token.authorization_client_id = ?2
@@ -178,13 +277,14 @@ export class D1AuthorizationServerStorage
       this.prepare(
         `insert into own_auth_authorization_access_tokens
           (id, token_hash, prefix, grant_id, authorization_client_id,
-           user_id, protected_resource_id, scopes, expires_at, revoked_at, created_at)
-         select ?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14
+           user_id, protected_resource_id, scopes, dpop_jkt, expires_at,
+           revoked_at, created_at)
+         select ?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15
          from own_auth_authorization_refresh_tokens current_token
          where current_token.token_hash = ?1
            and current_token.authorization_client_id = ?2
            and current_token.consumed_at = ?3
-           and current_token.replaced_by_token_id = ?15`,
+           and current_token.replaced_by_token_id = ?16`,
         [
           input.tokenHash,
           input.authorizationClientId,

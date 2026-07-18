@@ -26,6 +26,43 @@ export type RotateAuthorizationRefreshTokenResult =
   | "reused"
   | "invalid";
 
+export interface FindAuthorizationCodeDpopBindingInput {
+  codeHash: string;
+  authorizationClientId: string;
+  redirectUri: string;
+  codeChallenge: string;
+  resourceIdentifier: string | null;
+  now: Date;
+}
+
+export interface AuthorizationCodeDpopBinding {
+  dpopJkt: string | null;
+  dpopRequired: boolean;
+}
+
+export interface ConsumeDpopProofInput {
+  proofHash: string;
+  consumedAt: Date;
+  expiresAt: Date;
+}
+
+export interface DpopStorage {
+  findAuthorizationCodeDpopBinding(
+    input: FindAuthorizationCodeDpopBindingInput
+  ): Promise<AuthorizationCodeDpopBinding | null>;
+  consumeDpopAuthorizationCode(
+    codeHash: string,
+    authorizationClientId: string,
+    redirectUri: string,
+    codeChallenge: string,
+    resourceIdentifier: string | null,
+    dpopJkt: string | null,
+    consumedAt: Date
+  ): Promise<AuthorizationCode | null>;
+  consumeDpopProof(input: ConsumeDpopProofInput): Promise<boolean>;
+  cleanupDpopProofs(expiredBefore: Date): Promise<number>;
+}
+
 export interface AuthorizationServerStorage {
   createAuthorizationClient(
     client: AuthorizationClient,
@@ -139,6 +176,11 @@ export interface AuthorizationServerCapableStorage extends AuthStorage {
   readonly authorizationServerStorage: AuthorizationServerStorage;
 }
 
+export interface DpopCapableAuthorizationServerStorage
+  extends AuthorizationServerStorage {
+  readonly dpopStorage: DpopStorage;
+}
+
 export function isAuthorizationServerCapableStorage(
   storage: AuthStorage
 ): storage is AuthorizationServerCapableStorage {
@@ -181,5 +223,20 @@ export function isAuthorizationServerCapableStorage(
   ].every(
     (method) =>
       typeof providerStorage?.[method as keyof AuthorizationServerStorage] === "function"
+  );
+}
+
+export function isDpopCapableAuthorizationServerStorage(
+  storage: AuthorizationServerStorage
+): storage is DpopCapableAuthorizationServerStorage {
+  const candidate = storage as Partial<DpopCapableAuthorizationServerStorage>;
+  const dpopStorage = candidate.dpopStorage;
+  return Boolean(dpopStorage) && [
+    "findAuthorizationCodeDpopBinding",
+    "consumeDpopAuthorizationCode",
+    "consumeDpopProof",
+    "cleanupDpopProofs"
+  ].every(
+    (method) => typeof dpopStorage?.[method as keyof DpopStorage] === "function"
   );
 }

@@ -3,8 +3,9 @@ import { authorizationServerPaths } from "./authorization-server-constants.js";
 import { authorizationRedirectUrl } from "./authorization-server-helpers.js";
 import {
   parseAuthorizationRequest,
-  readAuthorizationBearerToken,
+  readAuthorizationAccessToken,
   readAuthorizationClientCredentials,
+  readDpopProofHeader,
   readAuthorizationForm,
   singleAuthorizationParameter
 } from "./authorization-server-http-input.js";
@@ -21,6 +22,14 @@ import {
 import { OwnAuthHttpError } from "./http/errors.js";
 import { traceHttpEndpoint } from "./telemetry.js";
 import type { RequestContext } from "./types.js";
+
+export {
+  createOwnAuthAuthorizationServerOpenApiDocument
+} from "./authorization-server-openapi.js";
+export type {
+  OwnAuthAuthorizationServerOpenApiDocument,
+  OwnAuthAuthorizationServerOpenApiOptions
+} from "./authorization-server-openapi.js";
 
 const defaultBodyLimit = 16 * 1024;
 const discoveryPaths = new Set([
@@ -91,6 +100,9 @@ export function createOwnAuthAuthorizationServerHandler(
             refreshToken: singleAuthorizationParameter(form, "refresh_token"),
             scope: singleAuthorizationParameter(form, "scope"),
             resource: singleAuthorizationParameter(form, "resource"),
+            dpopProof: readDpopProofHeader(request),
+            requestMethod: request.method,
+            requestUrl: request.url,
             request: await requestContext(request, options)
           };
           return protocolJson(await auth.authorizationServer.exchangeToken(input));
@@ -104,6 +116,9 @@ export function createOwnAuthAuthorizationServerHandler(
             ...readAuthorizationClientCredentials(request, form),
             token: singleAuthorizationParameter(form, "token"),
             tokenTypeHint: singleAuthorizationParameter(form, "token_type_hint"),
+            dpopProof: readDpopProofHeader(request),
+            requestMethod: request.method,
+            requestUrl: request.url,
             request: await requestContext(request, options)
           };
           await auth.authorizationServer.revokeToken(input);
@@ -118,6 +133,9 @@ export function createOwnAuthAuthorizationServerHandler(
             ...readAuthorizationClientCredentials(request, form),
             token: singleAuthorizationParameter(form, "token"),
             tokenTypeHint: singleAuthorizationParameter(form, "token_type_hint"),
+            dpopProof: singleAuthorizationParameter(form, "dpop_proof"),
+            requestMethod: singleAuthorizationParameter(form, "request_method"),
+            requestUrl: singleAuthorizationParameter(form, "request_url"),
             request: await requestContext(request, options)
           }));
         }
@@ -125,8 +143,13 @@ export function createOwnAuthAuthorizationServerHandler(
           path === authorizationServerPaths.userinfo &&
           (request.method === "GET" || request.method === "POST")
         ) {
-          const accessToken = readAuthorizationBearerToken(request);
-          return protocolJson(await auth.authorizationServer.userInfo(accessToken));
+          const token = readAuthorizationAccessToken(request);
+          return protocolJson(await auth.authorizationServer.userInfo({
+            ...token,
+            dpopProof: readDpopProofHeader(request),
+            requestMethod: request.method,
+            requestUrl: request.url
+          }));
         }
         const existingRoute = routeExists(path);
         return protocolJson(
@@ -163,6 +186,8 @@ async function handleProtocolError(
     headers.set("www-authenticate", 'Basic realm="Own Auth OAuth"');
   } else if (protocol.code === "invalid_token") {
     headers.set("www-authenticate", 'Bearer error="invalid_token"');
+  } else if (protocol.code === "invalid_dpop_proof") {
+    headers.set("www-authenticate", 'DPoP error="invalid_dpop_proof"');
   }
   return new Response(JSON.stringify({
     error: protocol.code,

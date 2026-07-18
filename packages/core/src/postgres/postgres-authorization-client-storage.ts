@@ -44,14 +44,14 @@ export class PostgresAuthorizationClientStorage extends PostgresProtectedResourc
       `with inserted_client as (
          insert into own_auth_authorization_clients
            (id, client_id, name, client_type, application_type,
-            token_endpoint_auth_method, redirect_uris, allowed_scopes, status,
-            created_at, updated_at, revoked_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+            token_endpoint_auth_method, redirect_uris, allowed_scopes,
+            dpop_bound_access_tokens, status, created_at, updated_at, revoked_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          returning ${authorizationClientReturning}
        ), inserted_secret as (
          insert into own_auth_authorization_client_secrets
            (id, authorization_client_id, prefix, secret_hash, created_at, expires_at, revoked_at)
-         values ($13,$14,$15,$16,$17,$18,$19)
+         values ($14,$15,$16,$17,$18,$19,$20)
        )
        select ${authorizationClientReturning} from inserted_client`,
       [
@@ -63,6 +63,7 @@ export class PostgresAuthorizationClientStorage extends PostgresProtectedResourc
         client.tokenEndpointAuthMethod,
         client.redirectUris,
         client.allowedScopes,
+        client.dpopBoundAccessTokens,
         client.status,
         client.createdAt,
         client.updatedAt,

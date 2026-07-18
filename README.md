@@ -444,7 +444,7 @@ export const authorizationHandler =
   createOwnAuthAuthorizationServerHandler(auth);
 ```
 
-The server supports authorization code with PKCE, signed ID tokens, opaque access tokens, rotating refresh tokens, revocation, protected-resource introspection, userinfo, discovery, JWKS, consent, account selection, and AAL2 step-up. See [OAuth And OpenID Connect Authorization Server](./docs/authorization-server.md) and [Protected Resources](./docs/protected-resources.md).
+The server supports authorization code with PKCE, signed ID tokens, opaque access tokens, rotating refresh tokens, optional DPoP token binding, revocation, protected-resource introspection, userinfo, discovery, JWKS, consent, account selection, and AAL2 step-up. See [OAuth And OpenID Connect Authorization Server](./docs/authorization-server.md) and [Protected Resources](./docs/protected-resources.md).
 
 ## Multi-Factor Authentication
 
@@ -761,7 +761,7 @@ See [Observability](./docs/observability.md) for span hierarchy, metric names, a
 | **Permissions** | `checkPermission` `requirePermission` |
 | **Audit Logs** | `listAuditEvents` `cleanupAuditLogs` |
 | **Administration** | `auth.admin.listUsers` `auth.admin.getUser` `auth.admin.listUserSessions` `auth.admin.listUserAuditEvents` `auth.admin.disableUser` `auth.admin.enableUser` `auth.admin.revokeUserSessions` |
-| **Authorization Server** | `auth.authorizationServer.createClient` `auth.authorizationServer.listClients` `auth.authorizationServer.updateClient` `auth.authorizationServer.rotateClientSecret` `auth.authorizationServer.revokeClient` `auth.authorizationServer.createProtectedResource` `auth.authorizationServer.listProtectedResources` `auth.authorizationServer.updateProtectedResource` `auth.authorizationServer.rotateProtectedResourceSecret` `auth.authorizationServer.revokeProtectedResource` `auth.authorizationServer.getInteraction` `auth.authorizationServer.approveInteraction` `auth.authorizationServer.denyInteraction` `auth.authorizationServer.verifyAccessToken` `auth.authorizationServer.listUserGrants` `auth.authorizationServer.revokeUserGrant` |
+| **Authorization Server** | `auth.authorizationServer.createClient` `auth.authorizationServer.listClients` `auth.authorizationServer.updateClient` `auth.authorizationServer.rotateClientSecret` `auth.authorizationServer.revokeClient` `auth.authorizationServer.createProtectedResource` `auth.authorizationServer.listProtectedResources` `auth.authorizationServer.updateProtectedResource` `auth.authorizationServer.rotateProtectedResourceSecret` `auth.authorizationServer.revokeProtectedResource` `auth.authorizationServer.getInteraction` `auth.authorizationServer.approveInteraction` `auth.authorizationServer.denyInteraction` `auth.authorizationServer.verifyAccessToken` `auth.authorizationServer.listUserGrants` `auth.authorizationServer.revokeUserGrant` `auth.authorizationServer.cleanupDpopProofs` |
 | **Webhooks** | `processWebhookDeliveries` `listWebhookDeliveries` `retryWebhookDelivery` `cleanupWebhookDeliveries` |
 | **Plugins** | `callPluginMethod` plus methods and endpoints declared by configured plugins |
 | **Lifecycle** | `close` |
@@ -778,6 +778,7 @@ See [Observability](./docs/observability.md) for span hierarchy, metric names, a
 - Account enumeration protection on reset and verification endpoints
 - Redirect URL allowlist for magic links and OAuth destinations
 - HMAC-SHA256 webhook signatures with timestamp validation and receiver-owned replay claims
+- Optional DPoP-bound OAuth tokens with method, URL, access-token hash, timestamp, and atomic proof-replay verification
 
 Report suspected vulnerabilities through the private process in
 [Security Policy](./SECURITY.md#reporting-a-vulnerability). Do not open a public

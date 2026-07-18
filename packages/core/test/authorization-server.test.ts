@@ -1,7 +1,5 @@
 import {
   createLocalJWKSet,
-  exportPKCS8,
-  generateKeyPair,
   jwtVerify
 } from "jose";
 import { describe, expect, it } from "vitest";
@@ -10,8 +8,14 @@ import {
   createOwnAuthAuthorizationServerHandler,
   InMemoryAuthStorage
 } from "../src/index.js";
+import {
+  createAuthorizationFormRequest,
+  createSigningPrivateKey
+} from "./helpers/authorization-server.js";
+import { pkceChallenge } from "./helpers/pkce.js";
 
 const issuer = "http://localhost";
+const formRequest = createAuthorizationFormRequest(issuer);
 const redirectUri = "https://client.example.com/callback";
 const codeVerifier = "v".repeat(43);
 
@@ -302,7 +306,6 @@ describe("OAuth/OIDC authorization server", () => {
 });
 
 async function createHarness() {
-  const { privateKey } = await generateKeyPair("RS256", { extractable: true });
   const auth = createOwnAuth({
     storage: new InMemoryAuthStorage(),
     tokenPepper: "authorization-server-test-pepper",
@@ -318,7 +321,7 @@ async function createHarness() {
       signingKeys: {
         current: {
           id: "signing-key",
-          privateKey: await exportPKCS8(privateKey)
+          privateKey: await createSigningPrivateKey()
         }
       }
     }
@@ -399,21 +402,4 @@ function introspect(
     client_secret: clientSecret,
     token
   })));
-}
-
-function formRequest(path: string, body: URLSearchParams): Request {
-  return new Request(`${issuer}${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body
-  });
-}
-
-async function pkceChallenge(verifier: string): Promise<string> {
-  const digest = new Uint8Array(
-    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))
-  );
-  let binary = "";
-  for (const byte of digest) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/u, "");
 }

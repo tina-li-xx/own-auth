@@ -4,11 +4,16 @@ import {
   MemoryEmailProvider,
   MemorySmsProvider
 } from "../../dist/index.js";
-import type { AuthorizationServerStorage } from "../../dist/index.js";
+import type {
+  AuthorizationServerStorage,
+  DpopStorage
+} from "../../dist/index.js";
 import {
   createD1Persistence,
   type D1DatabaseLike
 } from "../../dist/d1/index.js";
+import { verifyDpopProof } from "../../dist/dpop-crypto.js";
+import { createDpopProof, generateDpopKeyPair } from "../../dist/dpop.js";
 import { verifyOwnAuthWebhook } from "../../dist/webhooks.js";
 import { createConformanceGoogleProvider } from "../conformance/conformance-oauth-provider.js";
 import {
@@ -60,6 +65,9 @@ const storageMethods = new Set([
 ]);
 
 const authorizationStorageMethods = new Set([
+  "cleanupDpopProofs",
+  "consumeDpopAuthorizationCode",
+  "consumeDpopProof",
   "createAuthorizationClient",
   "createAuthorizationTokens",
   "createProtectedResource",
@@ -67,6 +75,7 @@ const authorizationStorageMethods = new Set([
   "getAuthorizationGrant",
   "getProtectedResourceByIdentifier",
   "getAuthorizationRefreshTokenByHash",
+  "findAuthorizationCodeDpopBinding",
   "rotateAuthorizationRefreshToken",
   "upsertAuthorizationGrant"
 ]);
@@ -83,7 +92,8 @@ const expectedMigrations = [
   "009_custom_authorization",
   "010_administration",
   "011_authorization_server",
-  "012_protected_resources"
+  "012_protected_resources",
+  "013_dpop"
 ];
 
 const expectedTables = [
@@ -97,6 +107,7 @@ const expectedTables = [
   "own_auth_authorization_grants",
   "own_auth_authorization_interactions",
   "own_auth_authorization_refresh_tokens",
+  "own_auth_dpop_proofs",
   "own_auth_invitations",
   "own_auth_mfa_challenges",
   "own_auth_mfa_factors",
@@ -145,7 +156,7 @@ export async function handleAuthorizationStorageRpc(
   const rpc = await readRpc(request);
   if (!authorizationStorageMethods.has(rpc.method)) return methodNotAllowed();
   const storage = createD1Persistence(database).storage.authorizationServerStorage;
-  return invoke(storage as AuthorizationServerStorage, rpc);
+  return invoke(storage as AuthorizationServerStorage & DpopStorage, rpc);
 }
 
 export async function handleRateLimitRpc(
@@ -165,6 +176,29 @@ export async function handleWebhookVerification(request: Request): Promise<Respo
     claimEvent: async () => true
   });
   return Response.json({ id: event.id, type: event.type });
+}
+
+export async function handleDpopCrypto(): Promise<Response> {
+  const keyPair = await generateDpopKeyPair();
+  const accessToken = "oa_at_cloudflare_dpop_fixture";
+  const proof = await createDpopProof({
+    keyPair,
+    method: "GET",
+    url: "https://api.example.com/documents?ignored=true",
+    accessToken
+  });
+  const verified = await verifyDpopProof({
+    proof,
+    method: "GET",
+    url: "https://api.example.com/documents",
+    accessToken,
+    proofTtlMs: 5 * 60 * 1_000,
+    clockSkewMs: 60 * 1_000
+  });
+  return Response.json({
+    proofVerified: verified.jwkThumbprint === keyPair.jwkThumbprint,
+    thumbprintValid: /^[A-Za-z0-9_-]{43}$/.test(keyPair.jwkThumbprint)
+  });
 }
 
 export async function handleWebhookFlow(database: D1DatabaseLike): Promise<Response> {

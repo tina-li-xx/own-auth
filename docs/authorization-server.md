@@ -10,6 +10,7 @@ This is different from Google, GitHub, or Apple sign-in. External provider sign-
 - OpenID Connect ID tokens signed with RS256
 - Opaque access tokens
 - Rotating refresh tokens
+- Optional DPoP-bound access and refresh tokens
 - Token revocation
 - Client and protected-resource token introspection
 - Resource-bound access and refresh tokens
@@ -17,7 +18,7 @@ This is different from Google, GitHub, or Apple sign-in. External provider sign-
 - Discovery metadata and JWKS
 - Consent, reauthentication, account selection, and AAL2 step-up interactions
 
-Device authorization, DPoP, SAML, SCIM, and MCP authorization are not part of this release.
+Device authorization, SAML, SCIM, and MCP authorization are not part of this release.
 
 ## Run The Migration
 
@@ -25,7 +26,7 @@ Device authorization, DPoP, SAML, SCIM, and MCP authorization are not part of th
 npx own-auth migrate
 ```
 
-Migration `011_authorization_server` adds authorization clients, secrets, interactions, grants, codes, access tokens, refresh tokens, and stable OpenID Connect subjects. Migration `012_protected_resources` adds registered resource servers, hashed resource secrets, and token audience bindings.
+Migration `011_authorization_server` adds authorization clients, secrets, interactions, grants, codes, access tokens, refresh tokens, and stable OpenID Connect subjects. Migration `012_protected_resources` adds registered resource servers, hashed resource secrets, and token audience bindings. Migration `013_dpop` adds DPoP bindings and proof replay protection.
 
 ## Configuration
 
@@ -71,6 +72,7 @@ export const auth = createOwnAuth({
         description: "Read documents the user can access.",
       },
     },
+    dpop: {},
   },
 });
 ```
@@ -78,6 +80,8 @@ export const auth = createOwnAuth({
 `issuer` is the public origin serving the protocol handler. `interactionUrl` is the application page that handles sign-in, account selection, MFA, and consent.
 
 The encryption key protects stored authorization requests and OIDC nonces. The RSA key signs ID tokens. Keep both on the server.
+
+`dpop` enables DPoP support. The default proof lifetime is five minutes with one minute of clock skew. Omit `dpop` when the authorization server will issue only Bearer tokens.
 
 ## Mount The Protocol Handler
 
@@ -90,6 +94,19 @@ export const authorizationHandler =
 ```
 
 Pass Web `Request` objects to the handler and return its Web `Response`.
+
+Generate an OpenAPI 3.1 document for these protocol routes from the same package export:
+
+```ts
+import {
+  createOwnAuthAuthorizationServerOpenApiDocument,
+} from "own-auth/authorization-server";
+
+export const openApi =
+  createOwnAuthAuthorizationServerOpenApiDocument({
+    serverUrl: "https://auth.example.com",
+  });
+```
 
 The handler serves:
 
@@ -140,6 +157,76 @@ console.log(created.clientSecret);
 ```
 
 Store the secret immediately. Only its hash and visible prefix are stored.
+
+## Bind Tokens With DPoP
+
+DPoP binds an access and refresh token to a client-held private key. A copied token cannot be used without a fresh proof signed by the same key.
+
+Enable bound tokens for a client:
+
+```ts
+const { client } = await auth.authorizationServer.createClient({
+  name: "Native App",
+  clientType: "public",
+  applicationType: "native",
+  redirectUris: ["com.example.app://oauth/callback"],
+  allowedScopes: ["openid", "documents:read", "offline_access"],
+  dpopBoundAccessTokens: true,
+});
+```
+
+The OAuth client creates and retains one key pair for the grant:
+
+```ts
+import {
+  createDpopProof,
+  generateDpopKeyPair,
+} from "own-auth/dpop";
+
+const keyPair = await generateDpopKeyPair();
+```
+
+Keep the private key in secure client storage. Send only `keyPair.jwkThumbprint` as `dpop_jkt` in the authorization request. Send a new proof in the `DPoP` header when exchanging the code:
+
+```ts
+const proof = await createDpopProof({
+  keyPair,
+  method: "POST",
+  url: "https://auth.example.com/oauth/token",
+});
+
+await fetch("https://auth.example.com/oauth/token", {
+  method: "POST",
+  headers: {
+    "content-type": "application/x-www-form-urlencoded",
+    DPoP: proof,
+  },
+  body: tokenRequestBody,
+});
+```
+
+Bound token responses use `token_type: "DPoP"`. Refresh requests require a fresh proof from the same key. A refresh token cannot become bound, become unbound, or switch keys.
+
+For a protected API request, bind the proof to the access token and send both headers:
+
+```ts
+const apiUrl = "https://api.example.com/documents?draft=true";
+const apiProof = await createDpopProof({
+  keyPair,
+  method: "GET",
+  url: apiUrl,
+  accessToken,
+});
+
+await fetch(apiUrl, {
+  headers: {
+    Authorization: `DPoP ${accessToken}`,
+    DPoP: apiProof,
+  },
+});
+```
+
+The helper uses Web Crypto and does not import Own Auth core, Postgres, D1, or provider code. It works in supported browsers, Workers, and Node.js 20 or later.
 
 ## Build The Interaction Page
 
@@ -198,7 +285,7 @@ The interaction token is hashed in storage and can finish only once.
 
 ## Verify Access Tokens
 
-An API using the same Own Auth instance can verify a resource-bound access token directly:
+An API using the same Own Auth instance can verify a Bearer access token directly:
 
 ```ts
 const verified = await auth.authorizationServer.verifyAccessToken({
@@ -209,6 +296,8 @@ const verified = await auth.authorizationServer.verifyAccessToken({
 
 console.log(verified.userId);
 ```
+
+DPoP verification requires the request method, request URL, and proof header. Use `own-auth/protected-resource` for DPoP-bound tokens even when the API runs beside the authorization server.
 
 APIs running separately use authenticated remote introspection through the lightweight `own-auth/protected-resource` export. See [Protected Resources](/docs/protected-resources) for registration, resource indicators, scope behavior, credential rotation, and the remote verification helper.
 
@@ -231,6 +320,16 @@ Tokens issued to another client return:
 ```
 
 Tokens for another client or protected resource return the same inactive response. Introspection does not reveal the token's real owner or audience.
+
+## DPoP Replay Cleanup
+
+Own Auth stores only a peppered hash derived from the public-key thumbprint and proof ID. It never stores the proof JWT, public JWK, proof ID, or access token in the replay table.
+
+Proof rows expire after the configured proof lifetime plus clock skew. Delete expired rows on a schedule:
+
+```ts
+await auth.authorizationServer.cleanupDpopProofs();
+```
 
 ## Signing Key Rotation
 

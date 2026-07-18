@@ -4,6 +4,7 @@ import {
 } from "./authorization-server-protocol-error.js";
 import type {
   AuthorizationRequestInput,
+  AuthorizationTokenType,
   TokenEndpointAuthMethod
 } from "./authorization-server-types.js";
 import { readLimitedBody } from "./http/request-input.js";
@@ -33,7 +34,8 @@ export function parseAuthorizationRequest(
     loginHint: singleAuthorizationParameter(params, "login_hint"),
     requestObject: singleAuthorizationParameter(params, "request"),
     requestUri: singleAuthorizationParameter(params, "request_uri"),
-    resource: singleAuthorizationParameter(params, "resource")
+    resource: singleAuthorizationParameter(params, "resource"),
+    dpopJkt: singleAuthorizationParameter(params, "dpop_jkt")
   };
 }
 
@@ -74,17 +76,33 @@ export function readAuthorizationClientCredentials(
   };
 }
 
-export function readAuthorizationBearerToken(request: Request): string {
+export function readAuthorizationAccessToken(request: Request): {
+  accessToken: string;
+  tokenType: AuthorizationTokenType;
+} {
   const [scheme, token, extra] =
     request.headers.get("authorization")?.trim().split(/\s+/) ?? [];
-  if (scheme?.toLowerCase() !== "bearer" || !token || extra) {
+  const normalizedScheme = scheme?.toLowerCase();
+  if (
+    (normalizedScheme !== "bearer" && normalizedScheme !== "dpop") ||
+    !token ||
+    extra
+  ) {
     throw new AuthorizationProtocolError(
       "invalid_token",
-      "A Bearer access token is required",
+      "A Bearer or DPoP access token is required",
       { statusCode: 401 }
     );
   }
-  return token;
+  return {
+    accessToken: token,
+    tokenType: normalizedScheme === "dpop" ? "DPoP" : "Bearer"
+  };
+}
+
+export function readDpopProofHeader(request: Request): string | undefined {
+  const proof = request.headers.get("dpop");
+  return proof === null ? undefined : proof;
 }
 
 export async function readAuthorizationForm(

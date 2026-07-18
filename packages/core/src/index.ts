@@ -2,9 +2,12 @@ export { OwnAuth } from "./auth-engine.js";
 export { createOwnAuth } from "./create-own-auth.js";
 export { OwnAuthAuthorizationServer } from "./auth-engine-authorization-server.js";
 export {
-  createOwnAuthAuthorizationServerHandler
+  createOwnAuthAuthorizationServerHandler,
+  createOwnAuthAuthorizationServerOpenApiDocument
 } from "./authorization-server-http.js";
 export type {
+  OwnAuthAuthorizationServerOpenApiDocument,
+  OwnAuthAuthorizationServerOpenApiOptions,
   OwnAuthAuthorizationServerHandler,
   OwnAuthAuthorizationServerHandlerOptions
 } from "./authorization-server-http.js";
@@ -13,11 +16,17 @@ export type {
   AuthorizationProtocolErrorCode
 } from "./authorization-server-protocol-error.js";
 export {
-  isAuthorizationServerCapableStorage
+  isAuthorizationServerCapableStorage,
+  isDpopCapableAuthorizationServerStorage
 } from "./authorization-server-storage.js";
 export type {
+  AuthorizationCodeDpopBinding,
   AuthorizationServerCapableStorage,
   AuthorizationServerStorage,
+  ConsumeDpopProofInput,
+  DpopCapableAuthorizationServerStorage,
+  DpopStorage,
+  FindAuthorizationCodeDpopBindingInput,
   RotateAuthorizationRefreshTokenInput,
   RotateAuthorizationRefreshTokenResult
 } from "./authorization-server-storage.js";
@@ -47,8 +56,11 @@ export type {
   AuthorizationTokenActionInput,
   AuthorizationTokenRequestInput,
   AuthorizationTokenResponse,
+  AuthorizationTokenType,
   AuthorizationUserGrant,
   AuthorizationUserInfo,
+  AuthorizationUserInfoRequestInput,
+  CleanupDpopProofsInput,
   CompleteAuthorizationInteractionInput,
   CreatedAuthorizationClient,
   CreatedProtectedResource,

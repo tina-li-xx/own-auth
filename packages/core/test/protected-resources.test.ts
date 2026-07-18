@@ -1,4 +1,3 @@
-import { exportPKCS8, generateKeyPair } from "jose";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   createOwnAuth,
@@ -7,16 +6,21 @@ import {
   type AuthorizationServerCapableStorage
 } from "../src/index.js";
 import { createOwnAuthProtectedResource } from "../src/protected-resource.js";
+import {
+  createAuthorizationFormRequest,
+  createSigningPrivateKey
+} from "./helpers/authorization-server.js";
+import { pkceChallenge } from "./helpers/pkce.js";
 
 const issuer = "http://localhost";
+const formRequest = createAuthorizationFormRequest(issuer);
 const redirectUri = "https://client.example.com/callback";
 const resourceIdentifier = "https://api.example.com/";
 const codeVerifier = "v".repeat(43);
 let signingPrivateKey = "";
 
 beforeAll(async () => {
-  const { privateKey } = await generateKeyPair("RS256", { extractable: true });
-  signingPrivateKey = await exportPKCS8(privateKey);
+  signingPrivateKey = await createSigningPrivateKey();
 });
 
 describe("OAuth protected resources", () => {
@@ -388,21 +392,4 @@ function exchangeCode(
     code_verifier: codeVerifier,
     ...(resource ? { resource } : {})
   }));
-}
-
-function formRequest(path: string, values: Record<string, string>): Request {
-  return new Request(`${issuer}${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(values)
-  });
-}
-
-async function pkceChallenge(verifier: string): Promise<string> {
-  const digest = new Uint8Array(
-    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))
-  );
-  let binary = "";
-  for (const byte of digest) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/u, "");
 }

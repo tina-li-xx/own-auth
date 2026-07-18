@@ -10,6 +10,7 @@ import {
   requireAuthorizationServer
 } from "./authorization-server-helpers.js";
 import type { AuthorizationMetadata } from "./authorization-server-types.js";
+import { dpopSigningAlgorithms } from "./dpop-crypto.js";
 
 export async function getAuthorizationServerMetadata(
   ctx: AuthEngineContext
@@ -46,6 +47,9 @@ export async function getAuthorizationServerMetadata(
       ...confidentialClientAuthenticationMethods
     ],
     code_challenge_methods_supported: ["S256"],
+    ...(config.dpop
+      ? { dpop_signing_alg_values_supported: [...dpopSigningAlgorithms] }
+      : {}),
     scopes_supported: [...config.scopes.keys()],
     claims_supported: [
       "sub",

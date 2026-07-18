@@ -39,7 +39,9 @@ import {
   type AuthorizationServerRuntimeConfig
 } from "./authorization-server-config.js";
 import {
+  isDpopCapableAuthorizationServerStorage,
   isAuthorizationServerCapableStorage,
+  type DpopStorage,
   type AuthorizationServerStorage
 } from "./authorization-server-storage.js";
 
@@ -74,6 +76,7 @@ export interface AuthEngineContext {
   administration: Readonly<AdministrationOptions> | null;
   authorizationServer: AuthorizationServerRuntimeConfig | null;
   authorizationServerStorage: AuthorizationServerStorage | null;
+  dpopStorage: DpopStorage | null;
   authorization: AuthorizationRegistry;
   closePersistence(): Promise<void>;
 }
@@ -122,6 +125,17 @@ export function createAuthEngineContext(options: OwnAuthOptions = {}): AuthEngin
       "AuthorizationServerCapableStorage."
     );
   }
+  const dpopStorage = authorizationServer?.dpop && authorizationServerStorage &&
+      isDpopCapableAuthorizationServerStorage(authorizationServerStorage)
+    ? authorizationServerStorage.dpopStorage
+    : null;
+  if (authorizationServer?.dpop && !dpopStorage) {
+    throw new Error(
+      "DPoP requires authorization-server storage that supports " +
+      "DpopCapableAuthorizationServerStorage. The configured adapter does not " +
+      "implement dpopStorage."
+    );
+  }
   if (authorizationServer && !encryption) {
     throw new Error("OAuth/OIDC authorization-server support requires encryption configuration");
   }
@@ -157,6 +171,7 @@ export function createAuthEngineContext(options: OwnAuthOptions = {}): AuthEngin
     administration,
     authorizationServer,
     authorizationServerStorage,
+    dpopStorage,
     authorization: createAuthorizationRegistry(options.authorization),
     closePersistence: persistence.close
   };

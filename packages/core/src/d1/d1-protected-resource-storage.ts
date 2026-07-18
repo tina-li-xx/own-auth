@@ -82,9 +82,10 @@ export class D1ProtectedResourceStorage extends D1StorageBase {
         `update own_auth_protected_resources
          set name = coalesce(?2, name),
              allowed_scopes = coalesce(?3, allowed_scopes),
-             updated_at = ?4
+             require_dpop = coalesce(?4, require_dpop),
+             updated_at = ?5
          where id = ?1 returning ${protectedResourceReturning}`,
-        [id, patch.name ?? null, allowedScopes, updatedAt]
+        [id, patch.name ?? null, allowedScopes, patch.requireDpop ?? null, updatedAt]
       ),
       this.prepare(
         `update own_auth_authorization_grants

@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- Optional RFC 9449 DPoP binding for authorization clients and protected resources, with the binding preserved across authorization codes, access tokens, and refresh-token rotation.
+- Lightweight Web Crypto proof helpers through `own-auth/dpop` and request-aware verification through `own-auth/protected-resource`.
+- A dedicated authorization-server OpenAPI document covering DPoP authorization parameters, proof headers, token types, and introspection confirmation claims.
+- Migration `013_dpop` for Postgres and Cloudflare D1.
+
+### Security
+
+- DPoP proofs verify ES256 signatures, public-key thumbprints, request methods, canonical URLs, access-token hashes, timestamps, and proof IDs before atomic replay consumption.
+- Replay storage contains only a peppered, domain-separated hash and retains it for the proof lifetime plus clock skew.
+- DPoP-bound refresh tokens cannot become unbound or switch keys, and a bound access token cannot be accepted through the Bearer-only verification path.
+
 ## 0.3.4
 
 ### Breaking changes

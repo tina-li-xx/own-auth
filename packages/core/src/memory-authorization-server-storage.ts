@@ -10,7 +10,11 @@ import type {
   OidcSubject
 } from "./authorization-server-types.js";
 import type {
+  AuthorizationCodeDpopBinding,
   AuthorizationServerStorage,
+  ConsumeDpopProofInput,
+  DpopStorage,
+  FindAuthorizationCodeDpopBindingInput,
   RotateAuthorizationRefreshTokenInput,
   RotateAuthorizationRefreshTokenResult
 } from "./authorization-server-storage.js";
@@ -24,7 +28,8 @@ import { MemoryProtectedResourceStorage } from "./memory-protected-resource-stor
 
 export class MemoryAuthorizationServerStorage
   extends MemoryProtectedResourceStorage
-  implements AuthorizationServerStorage {
+  implements AuthorizationServerStorage, DpopStorage {
+  readonly dpopStorage = this;
   private readonly clients = new Map<string, AuthorizationClient>();
   private readonly secrets = new Map<string, AuthorizationClientSecret>();
   private readonly interactions = new Map<string, AuthorizationInteraction>();
@@ -33,6 +38,7 @@ export class MemoryAuthorizationServerStorage
   private readonly accessTokens = new Map<string, AuthorizationAccessToken>();
   private readonly refreshTokens = new Map<string, AuthorizationRefreshToken>();
   private readonly subjects = new Map<string, OidcSubject>();
+  private readonly dpopProofs = new Map<string, Date>();
 
   async createAuthorizationClient(
     client: AuthorizationClient,
@@ -222,25 +228,90 @@ export class MemoryAuthorizationServerStorage
     resourceIdentifier: string | null,
     consumedAt: Date
   ): Promise<AuthorizationCode | null> {
-    const requestedResource = resourceIdentifier === null
-      ? null
-      : this.findProtectedResourceByIdentifier(resourceIdentifier);
-    const code = [...this.codes.values()].find(
-      (candidate) =>
-        candidate.codeHash === codeHash &&
-        candidate.authorizationClientId === authorizationClientId &&
-        candidate.redirectUri === redirectUri &&
-        candidate.codeChallenge === codeChallenge &&
-        (resourceIdentifier === null ||
-          (requestedResource?.status === "active" &&
-            !requestedResource.revokedAt &&
-            candidate.protectedResourceId === requestedResource.id)) &&
-        !candidate.consumedAt &&
-        candidate.expiresAt.getTime() > consumedAt.getTime()
+    return this.consumeAuthorizationCodeWithDpop(
+      codeHash,
+      authorizationClientId,
+      redirectUri,
+      codeChallenge,
+      resourceIdentifier,
+      null,
+      consumedAt
     );
+  }
+
+  async consumeDpopAuthorizationCode(
+    codeHash: string,
+    authorizationClientId: string,
+    redirectUri: string,
+    codeChallenge: string,
+    resourceIdentifier: string | null,
+    dpopJkt: string | null,
+    consumedAt: Date
+  ): Promise<AuthorizationCode | null> {
+    return this.consumeAuthorizationCodeWithDpop(
+      codeHash,
+      authorizationClientId,
+      redirectUri,
+      codeChallenge,
+      resourceIdentifier,
+      dpopJkt,
+      consumedAt
+    );
+  }
+
+  private async consumeAuthorizationCodeWithDpop(
+    codeHash: string,
+    authorizationClientId: string,
+    redirectUri: string,
+    codeChallenge: string,
+    resourceIdentifier: string | null,
+    dpopJkt: string | null,
+    consumedAt: Date
+  ): Promise<AuthorizationCode | null> {
+    const code = this.findUsableAuthorizationCode({
+      codeHash,
+      authorizationClientId,
+      redirectUri,
+      codeChallenge,
+      resourceIdentifier,
+      now: consumedAt
+    });
+    if (code?.dpopJkt !== dpopJkt) return null;
     return code
       ? updateStoredEntity(this.codes, code.id, { consumedAt })
       : null;
+  }
+
+  async findAuthorizationCodeDpopBinding(
+    input: FindAuthorizationCodeDpopBindingInput
+  ): Promise<AuthorizationCodeDpopBinding | null> {
+    const code = this.findUsableAuthorizationCode(input);
+    if (!code) return null;
+    const client = this.clients.get(code.authorizationClientId);
+    const resource = code.protectedResourceId
+      ? await this.getProtectedResourceById(code.protectedResourceId)
+      : null;
+    return {
+      dpopJkt: code.dpopJkt ?? null,
+      dpopRequired: Boolean(client?.dpopBoundAccessTokens || resource?.requireDpop)
+    };
+  }
+
+  async consumeDpopProof(input: ConsumeDpopProofInput): Promise<boolean> {
+    if (this.dpopProofs.has(input.proofHash)) return false;
+    this.dpopProofs.set(input.proofHash, new Date(input.expiresAt));
+    return true;
+  }
+
+  async cleanupDpopProofs(expiredBefore: Date): Promise<number> {
+    let deleted = 0;
+    for (const [proofHash, expiresAt] of this.dpopProofs) {
+      if (expiresAt.getTime() <= expiredBefore.getTime()) {
+        this.dpopProofs.delete(proofHash);
+        deleted += 1;
+      }
+    }
+    return deleted;
   }
 
   async createAuthorizationTokens(
@@ -348,6 +419,27 @@ export class MemoryAuthorizationServerStorage
         interaction.status === "pending" &&
         !interaction.consumedAt &&
         interaction.expiresAt.getTime() > now.getTime()
+    ) ?? null;
+  }
+
+  private findUsableAuthorizationCode(
+    input: FindAuthorizationCodeDpopBindingInput
+  ): AuthorizationCode | null {
+    const requestedResource = input.resourceIdentifier === null
+      ? null
+      : this.findProtectedResourceByIdentifier(input.resourceIdentifier);
+    return [...this.codes.values()].find(
+      (candidate) =>
+        candidate.codeHash === input.codeHash &&
+        candidate.authorizationClientId === input.authorizationClientId &&
+        candidate.redirectUri === input.redirectUri &&
+        candidate.codeChallenge === input.codeChallenge &&
+        (input.resourceIdentifier === null ||
+          (requestedResource?.status === "active" &&
+            !requestedResource.revokedAt &&
+            candidate.protectedResourceId === requestedResource.id)) &&
+        !candidate.consumedAt &&
+        candidate.expiresAt.getTime() > input.now.getTime()
     ) ?? null;
   }
 

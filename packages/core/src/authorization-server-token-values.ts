@@ -15,6 +15,7 @@ export function authorizationAccessTokenValues(
     token.userId,
     token.protectedResourceId,
     token.scopes,
+    token.dpopJkt ?? null,
     token.expiresAt,
     token.revokedAt,
     token.createdAt
@@ -35,6 +36,7 @@ export function authorizationRefreshTokenValues(
     token.scopes,
     token.generation,
     token.replacedByTokenId,
+    token.dpopJkt ?? null,
     token.expiresAt,
     token.consumedAt,
     token.revokedAt,

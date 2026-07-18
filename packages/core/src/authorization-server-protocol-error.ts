@@ -2,6 +2,7 @@ export type AuthorizationProtocolErrorCode =
   | "access_denied"
   | "consent_required"
   | "invalid_client"
+  | "invalid_dpop_proof"
   | "invalid_grant"
   | "invalid_request"
   | "invalid_scope"

@@ -6,6 +6,10 @@ import {
 import { getOrCreateOidcSubject } from "./authorization-server-claims.js";
 import { authorizationServerTokenPrefixes } from "./authorization-server-constants.js";
 import {
+  rejectDpopProofWhenDisabled,
+  verifyAndConsumeDpopProof
+} from "./authorization-server-dpop.js";
+import {
   epochSeconds,
   hashAuthorizationSecret,
   requireAuthorizationProtocolToken,
@@ -41,6 +45,7 @@ export async function introspectAuthorizationToken(
   input: AuthorizationTokenActionInput
 ): Promise<AuthorizationIntrospectionResponse> {
   const principal = await authenticateIntrospectionPrincipal(ctx, input);
+  rejectDpopProofWhenDisabled(ctx, input.dpopProof);
   const rawToken = requireAuthorizationProtocolToken(input.token);
   const { storage } = requireAuthorizationServer(ctx);
   const tokenHash = hashAuthorizationSecret(ctx, rawToken);
@@ -53,6 +58,17 @@ export async function introspectAuthorizationToken(
     : accessToken ?? refreshToken;
   if (!token || !introspectionPrincipalOwnsToken(principal, token)) {
     return { active: false };
+  }
+  if (
+    principal.kind === "client" &&
+    (input.dpopProof !== undefined ||
+      input.requestMethod !== undefined ||
+      input.requestUrl !== undefined)
+  ) {
+    throw new AuthorizationProtocolError(
+      "invalid_request",
+      "DPoP request context is only accepted from protected resources"
+    );
   }
   const [grant, user, client, resource] = await Promise.all([
     storage.getAuthorizationGrant(
@@ -81,12 +97,27 @@ export async function introspectAuthorizationToken(
   ) {
     return { active: false };
   }
+  if (principal.kind === "resource") {
+    await verifyAndConsumeDpopProof(ctx, {
+      proof: input.dpopProof,
+      expectedJkt: token.dpopJkt ?? null,
+      bindingRequired:
+        principal.resource.requireDpop || client.dpopBoundAccessTokens,
+      method: input.requestMethod ?? "",
+      url: input.requestUrl ?? "",
+      accessToken: rawToken,
+      statusCode: 401
+    });
+  }
   const subject = await getOrCreateOidcSubject(ctx, user.id);
   return {
     active: true,
     scope: token.scopes.join(" "),
     client_id: client.clientId,
-    ...(accessToken ? { token_type: "Bearer" as const } : {}),
+    ...(token === accessToken
+      ? { token_type: token.dpopJkt ? "DPoP" as const : "Bearer" as const }
+      : {}),
+    ...(token.dpopJkt ? { cnf: { jkt: token.dpopJkt } } : {}),
     exp: epochSeconds(token.expiresAt),
     iat: epochSeconds(token.createdAt),
     sub: subject.subject,

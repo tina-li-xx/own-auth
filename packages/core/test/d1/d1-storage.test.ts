@@ -3,76 +3,12 @@ import { AuthError } from "../../src/errors.js";
 import {
   D1AuthStorage,
   D1RateLimitStore,
-  createD1Persistence,
-  type D1BindableValue,
-  type D1DatabaseLike,
-  type D1PreparedStatementLike,
-  type D1ResultLike
+  createD1Persistence
 } from "../../src/d1/index.js";
 import { D1WebhookStorage } from "../../src/d1/d1-webhook-storage.js";
 import type { Account, AuditEvent, User } from "../../src/types.js";
 import type { StoredWebhookEvent } from "../../src/webhook-types.js";
-
-interface D1Call {
-  sql: string;
-  values: readonly D1BindableValue[];
-}
-
-class RecordingD1 implements D1DatabaseLike {
-  readonly calls: D1Call[] = [];
-  readonly responses: Array<D1ResultLike> = [];
-  batchError: Error | null = null;
-
-  prepare(sql: string): D1PreparedStatementLike {
-    return new RecordingStatement(this, sql);
-  }
-
-  async batch<Row>(statements: D1PreparedStatementLike[]): Promise<D1ResultLike<Row>[]> {
-    if (this.batchError) throw this.batchError;
-    return statements.map((statement) => {
-      const recorded = statement as RecordingStatement;
-      this.calls.push({ sql: recorded.sql, values: recorded.values });
-      return (this.responses.shift() ?? { success: true, results: [] }) as D1ResultLike<Row>;
-    });
-  }
-
-  queue(rows: Record<string, unknown>[]): void {
-    this.responses.push({ success: true, results: rows });
-  }
-
-  next<Row>(): D1ResultLike<Row> {
-    return (this.responses.shift() ?? { success: true, results: [] }) as D1ResultLike<Row>;
-  }
-}
-
-class RecordingStatement implements D1PreparedStatementLike {
-  values: D1BindableValue[] = [];
-
-  constructor(readonly database: RecordingD1, readonly sql: string) {}
-
-  bind(...values: D1BindableValue[]): D1PreparedStatementLike {
-    this.values = values;
-    return this;
-  }
-
-  async first<Row>(): Promise<Row | null> {
-    const result = this.record<Row>();
-    return result.results?.[0] ?? null;
-  }
-
-  async all<Row>(): Promise<D1ResultLike<Row>> {
-    return this.record<Row>();
-  }
-
-  async run<Row>(): Promise<D1ResultLike<Row>> {
-    return this.record<Row>();
-  }
-
-  private record<Row>(): D1ResultLike<Row> {
-    this.database.calls.push({ sql: this.sql, values: this.values });
-    return this.database.next<Row>();
-  }
-}
+import { RecordingD1 } from "./recording-d1.js";
 
 describe("D1 persistence", () => {
   it("creates users with parameterized SQL and maps SQLite rows", async () => {
@@ -251,6 +187,7 @@ describe("D1 persistence", () => {
       identifier: "https://api.example.com/",
       name: "Example API",
       allowed_scopes: '["documents:read"]',
+      require_dpop: 0,
       status: "active",
       created_at: 1_752_580_800_000,
       updated_at: 1_752_581_100_000,
@@ -428,6 +365,7 @@ function authorizationAccessToken() {
     userId: "usr_1",
     protectedResourceId: null,
     scopes: ["openid", "offline_access"],
+    dpopJkt: null,
     expiresAt: new Date("2026-07-15T13:00:00.000Z"),
     revokedAt: null,
     createdAt: new Date("2026-07-15T12:05:00.000Z")
@@ -446,6 +384,7 @@ function authorizationRefreshToken() {
     scopes: ["openid", "offline_access"],
     generation: 1,
     replacedByTokenId: null,
+    dpopJkt: null,
     expiresAt: new Date("2026-08-15T12:05:00.000Z"),
     consumedAt: null,
     revokedAt: null,

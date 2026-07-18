@@ -3,6 +3,7 @@ import { audit, rateLimit } from "./auth-engine-helpers.js";
 import { getCurrentSession } from "./auth-engine-sessions.js";
 import { requireProtocolClient } from "./authorization-server-clients.js";
 import type { AuthorizationServerRuntimeConfig } from "./authorization-server-config.js";
+import { authorizationRequestDpopJkt } from "./authorization-server-dpop.js";
 import {
   authorizationServerRateLimits,
   authorizationServerRateLimitWindowMs
@@ -81,6 +82,7 @@ export async function startAuthorization(
   );
 
   const request = buildStoredAuthorizationRequest(
+    ctx,
     config,
     client,
     input,
@@ -147,6 +149,7 @@ export async function startAuthorization(
 }
 
 function buildStoredAuthorizationRequest(
+  ctx: AuthEngineContext,
   config: AuthorizationServerRuntimeConfig,
   client: AuthorizationClient,
   input: AuthorizationRequestInput,
@@ -198,7 +201,13 @@ function buildStoredAuthorizationRequest(
       uiLocales: parseOptionalList(input.uiLocales, "ui_locales"),
       claimsLocales: parseOptionalList(input.claimsLocales, "claims_locales"),
       loginHint: optionalText(input.loginHint, "login_hint", 320),
-      resource: resource?.identifier ?? null
+      resource: resource?.identifier ?? null,
+      dpopJkt: authorizationRequestDpopJkt(
+        ctx,
+        client,
+        input.dpopJkt,
+        resource?.requireDpop ?? false
+      )
     };
   } catch (error) {
     if (error instanceof AuthError) {

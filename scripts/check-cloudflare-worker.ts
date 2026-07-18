@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RateLimitStore } from "../packages/core/src/rate-limit.js";
 import type { AuthStorage } from "../packages/core/src/storage.js";
-import type { AuthorizationServerStorage } from "../packages/core/src/authorization-server-storage.js";
+import type {
+  AuthorizationServerStorage,
+  DpopStorage
+} from "../packages/core/src/authorization-server-storage.js";
 import {
   atomicAdapterCases,
   type AtomicAdapterHarness
@@ -51,11 +54,15 @@ try {
 
   const origin = `http://127.0.0.1:${port}`;
   await assertWebhookVerifier(origin);
+  await assertChecks(await postAction(`${origin}/conformance/dpop-crypto`), "DPoP Web Crypto");
   await assertChecks(await postAction(`${origin}/conformance/schema`), "D1 schema");
   await assertChecks(await postAction(`${origin}/conformance/webhook-flow`), "D1 webhook flow");
   await assertAuthorizationRefreshRace(
     createRemoteProxy<AuthStorage>(origin, "storage"),
     createRemoteProxy<AuthorizationServerStorage>(origin, "authorization-storage")
+  );
+  await assertDpopReplayRace(
+    createRemoteProxy<DpopStorage>(origin, "authorization-storage")
   );
 
   for (const testCase of atomicAdapterCases) {
@@ -92,7 +99,8 @@ try {
 
   console.log(
     `Cloudflare D1 passed ${atomicAdapterCases.length} atomic cases, ` +
-    `${authConcurrencyCases.length} auth races, webhook, lifecycle, migration, secret, and close checks.`
+    `${authConcurrencyCases.length} auth races, DPoP, webhook, lifecycle, migration, ` +
+    "secret, and close checks."
   );
 } catch (error) {
   if (workerOutput.length > 0) console.error(workerOutput.join(""));
@@ -132,6 +140,22 @@ function createRemoteAuthHarness(
       createRemoteProxy<AuthStorage>(origin, "storage")
     ]
   };
+}
+
+async function assertDpopReplayRace(storage: DpopStorage): Promise<void> {
+  const now = new Date();
+  const input = {
+    proofHash: `dpop_${crypto.randomUUID()}`,
+    consumedAt: now,
+    expiresAt: new Date(now.getTime() + 6 * 60 * 1_000)
+  };
+  const results = await Promise.all([
+    storage.consumeDpopProof(input),
+    storage.consumeDpopProof(input)
+  ]);
+  if (results.filter(Boolean).length !== 1) {
+    throw new Error("D1 accepted the same DPoP proof more than once");
+  }
 }
 
 function createRemoteProxy<T extends object>(

@@ -80,6 +80,8 @@ ID tokens use RS256 and publish only public key material through JWKS. OIDC subj
 
 Resource-bound tokens carry one immutable resource identity. A resource can introspect only access tokens issued for that identity. Removing an allowed scope fully invalidates tokens carrying that scope instead of returning them with reduced authority.
 
+DPoP-bound tokens also carry one immutable public-key thumbprint. Protected-resource requests verify the proof signature, method, canonical URL, access-token hash, issue time, and proof ID. The access-token hash is checked before the proof ID is consumed, so an invalid proof cannot burn a valid proof ID. Replay storage contains only a peppered hash of the thumbprint and proof ID and expires after the proof lifetime plus clock skew.
+
 Unauthenticated interaction reads do not reveal the client or requested scopes. `prompt=select_account` always reaches the interaction page, while `prompt=none` fails instead of showing UI.
 
 See [OAuth And OpenID Connect Authorization Server](/docs/authorization-server) for the protocol and application integration contract.

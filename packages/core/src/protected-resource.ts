@@ -1,8 +1,14 @@
 import { normalizeProtectedResourceUrl } from "./protected-resource-url.js";
+import {
+  canonicalizeDpopUrl,
+  isDpopJwkThumbprint,
+  maximumDpopProofBytes
+} from "./dpop-crypto.js";
 
 const scopePattern = /^[\x21\x23-\x5B\x5D-\x7E]+$/;
 
 export type ProtectedResourceVerificationError =
+  | "invalid_dpop_proof"
   | "invalid_token"
   | "insufficient_scope";
 
@@ -12,6 +18,8 @@ export interface ActiveProtectedResourceToken {
   clientId: string;
   resource: string;
   scopes: string[];
+  tokenType: "Bearer" | "DPoP";
+  dpopJkt?: string;
   issuedAt: Date;
   expiresAt: Date;
 }
@@ -31,6 +39,14 @@ export interface VerifyProtectedResourceTokenInput {
   requiredScopes?: readonly string[];
 }
 
+export interface VerifyProtectedResourceRequestInput {
+  authorization: string | null | undefined;
+  dpopProof?: string | null;
+  method: string;
+  url: string;
+  requiredScopes?: readonly string[];
+}
+
 export interface OwnAuthProtectedResourceOptions {
   introspectionUrl: string;
   resource: string;
@@ -43,6 +59,8 @@ export interface BearerChallengeOptions {
   realm?: string;
   requiredScopes?: readonly string[];
 }
+
+export type DpopChallengeOptions = BearerChallengeOptions;
 
 export type OwnAuthProtectedResourceErrorCode =
   | "configuration_error"
@@ -67,7 +85,11 @@ export interface OwnAuthProtectedResource {
   verifyAccessToken(
     input: VerifyProtectedResourceTokenInput
   ): Promise<ProtectedResourceTokenVerification>;
+  verifyRequest(
+    input: VerifyProtectedResourceRequestInput
+  ): Promise<ProtectedResourceTokenVerification>;
   createBearerChallenge(options?: BearerChallengeOptions): string;
+  createDpopChallenge(options?: DpopChallengeOptions): string;
 }
 
 export function createOwnAuthProtectedResource(
@@ -84,68 +106,127 @@ export function createOwnAuthProtectedResource(
   return {
     resource,
     createBearerChallenge,
+    createDpopChallenge,
     async verifyAccessToken(input) {
       const accessToken = validAccessToken(input.accessToken);
       if (!accessToken) return invalidToken();
-      const requiredScopes = normalizeScopes(input.requiredScopes ?? []);
-      const form = new URLSearchParams({ token: accessToken });
-      let response: Response;
+      return introspect({
+        accessToken,
+        tokenType: "Bearer",
+        requiredScopes: input.requiredScopes
+      });
+    },
+    async verifyRequest(input) {
+      const authorization = parseAuthorization(input.authorization);
+      if (!authorization) return invalidToken();
+      const dpopProof = input.dpopProof ?? undefined;
+      if (authorization.tokenType === "DPoP" && !validDpopProof(dpopProof)) {
+        return invalidDpopProof();
+      }
+      if (authorization.tokenType === "Bearer" && dpopProof !== undefined) {
+        return invalidDpopProof();
+      }
+      let requestUrl: string;
       try {
-        response = await fetchImpl(introspectionUrl, {
-          method: "POST",
-          headers: {
-            accept: "application/json",
-            authorization: basicCredentials(resource, resourceSecret),
-            "content-type": "application/x-www-form-urlencoded"
-          },
-          body: form.toString()
-        });
+        requestUrl = canonicalizeDpopUrl(input.url);
       } catch {
-        throw new OwnAuthProtectedResourceError(
-          "introspection_unavailable",
-          "Own Auth token introspection is unavailable"
-        );
+        throw configurationError("url must be an absolute HTTP or HTTPS URL");
       }
-      if (response.status === 401 || response.status === 403) {
-        throw new OwnAuthProtectedResourceError(
-          "resource_authentication_failed",
-          "Protected resource authentication failed",
-          response.status
-        );
-      }
-      if (response.status === 429) {
-        throw new OwnAuthProtectedResourceError(
-          "introspection_rate_limited",
-          "Protected resource introspection is rate limited",
-          429
-        );
-      }
-      if (!response.ok) {
-        throw new OwnAuthProtectedResourceError(
-          "introspection_unavailable",
-          "Own Auth token introspection failed",
-          response.status
-        );
-      }
-      const payload = await readIntrospectionResponse(response);
-      if (payload.active === false) return invalidToken();
-      if (payload.active !== true) throw invalidIntrospectionResponse();
-      const active = parseActiveToken(payload, resource);
-      if (!active) return invalidToken();
-      if (requiredScopes.some((scope) => !active.scopes.includes(scope))) {
-        return {
-          active: false,
-          error: "insufficient_scope",
-          requiredScopes
-        };
-      }
-      return active;
+      return introspect({
+        ...authorization,
+        dpopProof,
+        requestMethod: input.method,
+        requestUrl,
+        requiredScopes: input.requiredScopes
+      });
     }
   };
+
+  async function introspect(input: {
+    accessToken: string;
+    tokenType: "Bearer" | "DPoP";
+    dpopProof?: string;
+    requestMethod?: string;
+    requestUrl?: string;
+    requiredScopes?: readonly string[];
+  }): Promise<ProtectedResourceTokenVerification> {
+    const requiredScopes = normalizeScopes(input.requiredScopes ?? []);
+    const form = new URLSearchParams({ token: input.accessToken });
+    if (input.dpopProof) form.set("dpop_proof", input.dpopProof);
+    if (input.requestMethod) form.set("request_method", input.requestMethod);
+    if (input.requestUrl) form.set("request_url", input.requestUrl);
+    let response: Response;
+    try {
+      response = await fetchImpl(introspectionUrl, {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          authorization: basicCredentials(resource, resourceSecret),
+          "content-type": "application/x-www-form-urlencoded"
+        },
+        body: form.toString()
+      });
+    } catch {
+      throw new OwnAuthProtectedResourceError(
+        "introspection_unavailable",
+        "Own Auth token introspection is unavailable"
+      );
+    }
+    if (response.status === 401 && isDpopChallenge(response)) {
+      return invalidDpopProof();
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new OwnAuthProtectedResourceError(
+        "resource_authentication_failed",
+        "Protected resource authentication failed",
+        response.status
+      );
+    }
+    if (response.status === 429) {
+      throw new OwnAuthProtectedResourceError(
+        "introspection_rate_limited",
+        "Protected resource introspection is rate limited",
+        429
+      );
+    }
+    if (!response.ok) {
+      throw new OwnAuthProtectedResourceError(
+        "introspection_unavailable",
+        "Own Auth token introspection failed",
+        response.status
+      );
+    }
+    const payload = await readIntrospectionResponse(response);
+    if (payload.active === false) return invalidToken();
+    if (payload.active !== true) throw invalidIntrospectionResponse();
+    const active = parseActiveToken(payload, resource, input.tokenType);
+    if (!active) return invalidToken();
+    if (requiredScopes.some((scope) => !active.scopes.includes(scope))) {
+      return {
+        active: false,
+        error: "insufficient_scope",
+        requiredScopes
+      };
+    }
+    return active;
+  }
 }
 
 export function createBearerChallenge(
   options: BearerChallengeOptions = {}
+): string {
+  return createChallenge("Bearer", options);
+}
+
+export function createDpopChallenge(
+  options: DpopChallengeOptions = {}
+): string {
+  return createChallenge("DPoP", options);
+}
+
+function createChallenge(
+  scheme: "Bearer" | "DPoP",
+  options: BearerChallengeOptions
 ): string {
   const parts = options.realm ? [`realm="${quote(options.realm)}"`] : [];
   if (options.error) {
@@ -153,17 +234,20 @@ export function createBearerChallenge(
     parts.push(
       `error_description="${options.error === "insufficient_scope"
         ? "The access token does not include the required scope"
-        : "The access token is invalid, expired, or revoked"}"`
+        : options.error === "invalid_dpop_proof"
+          ? "The DPoP proof is invalid"
+          : "The access token is invalid, expired, or revoked"}"`
     );
   }
   const scopes = normalizeScopes(options.requiredScopes ?? []);
   if (scopes.length > 0) parts.push(`scope="${quote(scopes.join(" "))}"`);
-  return parts.length > 0 ? `Bearer ${parts.join(", ")}` : "Bearer";
+  return parts.length > 0 ? `${scheme} ${parts.join(", ")}` : scheme;
 }
 
 function parseActiveToken(
   payload: Record<string, unknown>,
-  resource: string
+  resource: string,
+  expectedTokenType: "Bearer" | "DPoP"
 ): ActiveProtectedResourceToken | null {
   if (
     typeof payload.sub !== "string" ||
@@ -176,10 +260,12 @@ function parseActiveToken(
     !Number.isSafeInteger(payload.exp) ||
     typeof payload.iat !== "number" ||
     !Number.isSafeInteger(payload.iat) ||
-    (payload.token_type !== undefined && payload.token_type !== "Bearer")
+    (payload.token_type !== "Bearer" && payload.token_type !== "DPoP")
   ) {
     throw invalidIntrospectionResponse();
   }
+  if (payload.token_type !== expectedTokenType) return null;
+  const dpopJkt = parseDpopConfirmation(payload, payload.token_type);
   const expiresAt = new Date(payload.exp * 1_000);
   const issuedAt = new Date(payload.iat * 1_000);
   if (
@@ -203,9 +289,30 @@ function parseActiveToken(
     clientId: payload.client_id,
     resource,
     scopes,
+    tokenType: payload.token_type,
+    ...(dpopJkt ? { dpopJkt } : {}),
     issuedAt,
     expiresAt
   };
+}
+
+function parseDpopConfirmation(
+  payload: Record<string, unknown>,
+  tokenType: "Bearer" | "DPoP"
+): string | null {
+  if (tokenType === "Bearer") {
+    if (payload.cnf !== undefined) throw invalidIntrospectionResponse();
+    return null;
+  }
+  const confirmation = payload.cnf;
+  if (!confirmation || typeof confirmation !== "object" || Array.isArray(confirmation)) {
+    throw invalidIntrospectionResponse();
+  }
+  const thumbprint = (confirmation as Record<string, unknown>).jkt;
+  if (!isDpopJwkThumbprint(thumbprint)) {
+    throw invalidIntrospectionResponse();
+  }
+  return thumbprint;
 }
 
 async function readIntrospectionResponse(
@@ -252,6 +359,34 @@ function validAccessToken(value: string): string | null {
     : null;
 }
 
+function validDpopProof(value: string | undefined): value is string {
+  return Boolean(
+    value &&
+    !value.includes(",") &&
+    new TextEncoder().encode(value).byteLength <= maximumDpopProofBytes
+  );
+}
+
+function parseAuthorization(value: string | null | undefined): {
+  accessToken: string;
+  tokenType: "Bearer" | "DPoP";
+} | null {
+  const [scheme, token, extra] = value?.trim().split(/\s+/) ?? [];
+  const normalizedScheme = scheme?.toLowerCase();
+  const accessToken = token ? validAccessToken(token) : null;
+  if (
+    !accessToken ||
+    extra ||
+    (normalizedScheme !== "bearer" && normalizedScheme !== "dpop")
+  ) {
+    return null;
+  }
+  return {
+    accessToken,
+    tokenType: normalizedScheme === "dpop" ? "DPoP" : "Bearer"
+  };
+}
+
 function normalizeScopes(values: readonly string[]): string[] {
   if (!Array.isArray(values) || values.length > 100) {
     throw configurationError("requiredScopes must contain at most 100 scopes");
@@ -278,6 +413,15 @@ function quote(value: string): string {
 
 function invalidToken(): InactiveProtectedResourceToken {
   return { active: false, error: "invalid_token" };
+}
+
+function invalidDpopProof(): InactiveProtectedResourceToken {
+  return { active: false, error: "invalid_dpop_proof" };
+}
+
+function isDpopChallenge(response: Response): boolean {
+  const challenge = response.headers.get("www-authenticate")?.toLowerCase();
+  return challenge === "dpop" || challenge?.startsWith("dpop ") === true;
 }
 
 function configurationError(message: string): OwnAuthProtectedResourceError {

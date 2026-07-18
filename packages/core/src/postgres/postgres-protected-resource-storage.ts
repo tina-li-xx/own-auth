@@ -22,13 +22,14 @@ export class PostgresProtectedResourceStorage extends PostgresStorageBase {
     const result = await this.db.query<Row>(
       `with inserted_resource as (
          insert into own_auth_protected_resources
-           (id, identifier, name, allowed_scopes, status, created_at, updated_at, revoked_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8)
+           (id, identifier, name, allowed_scopes, require_dpop, status,
+            created_at, updated_at, revoked_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
          returning ${protectedResourceReturning}
        ), inserted_secret as (
          insert into own_auth_protected_resource_secrets
            (id, protected_resource_id, prefix, secret_hash, created_at, expires_at, revoked_at)
-         values ($9,$10,$11,$12,$13,$14,$15)
+         values ($10,$11,$12,$13,$14,$15,$16)
        )
        select ${protectedResourceReturning} from inserted_resource`,
       [
@@ -36,6 +37,7 @@ export class PostgresProtectedResourceStorage extends PostgresStorageBase {
         resource.identifier,
         resource.name,
         resource.allowedScopes,
+        resource.requireDpop,
         resource.status,
         resource.createdAt,
         resource.updatedAt,
@@ -90,7 +92,8 @@ export class PostgresProtectedResourceStorage extends PostgresStorageBase {
          update own_auth_protected_resources
          set name = coalesce($2, name),
              allowed_scopes = coalesce($3::text[], allowed_scopes),
-             updated_at = $4
+             require_dpop = coalesce($4, require_dpop),
+             updated_at = $5
          where id = $1
          returning ${protectedResourceReturning}
        ), adjusted_grants as (
@@ -100,22 +103,22 @@ export class PostgresProtectedResourceStorage extends PostgresStorageBase {
                from unnest(scopes) as existing_scope
                where existing_scope = any($3::text[])
              ),
-             updated_at = $4
+             updated_at = $5
          where protected_resource_id = $1 and revoked_at is null
            and $3::text[] is not null and not (scopes <@ $3::text[])
        ), revoked_access as (
          update own_auth_authorization_access_tokens
-         set revoked_at = $4
+         set revoked_at = $5
          where protected_resource_id = $1 and revoked_at is null
            and $3::text[] is not null and not (scopes <@ $3::text[])
        ), revoked_refresh as (
          update own_auth_authorization_refresh_tokens
-         set revoked_at = $4
+         set revoked_at = $5
          where protected_resource_id = $1 and revoked_at is null
            and $3::text[] is not null and not (scopes <@ $3::text[])
        )
        select ${protectedResourceReturning} from updated_resource`,
-      [id, patch.name ?? null, allowedScopes, updatedAt]
+      [id, patch.name ?? null, allowedScopes, patch.requireDpop ?? null, updatedAt]
     );
     return result.rows[0] ? mapProtectedResource(result.rows[0]) : null;
   }

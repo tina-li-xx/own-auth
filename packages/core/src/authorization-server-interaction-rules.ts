@@ -52,6 +52,7 @@ export async function issueAuthorizationCode(
     nonceCiphertext: encryptedNonce?.ciphertext ?? null,
     nonceNonce: encryptedNonce?.nonce ?? null,
     encryptionKeyId: encryptedNonce?.encryptionKeyId ?? null,
+    dpopJkt: request.dpopJkt,
     expiresAt: new Date(now.getTime() + config.authorizationCodeTtlMs),
     consumedAt: null,
     createdAt: now

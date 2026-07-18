@@ -1,5 +1,6 @@
 import type { AuthEngineContext } from "./auth-engine-context.js";
 import { audit } from "./auth-engine-helpers.js";
+import { requireDpopConfiguration } from "./authorization-server-dpop.js";
 import {
   createProtectedResourceSecret,
   extractProtectedResourceSecretPrefix,
@@ -30,6 +31,8 @@ export async function createProtectedResource(
 ): Promise<CreatedProtectedResource> {
   const { config, storage } = requireAuthorizationServer(ctx);
   const identifier = normalizeProtectedResourceIdentifier(input.identifier);
+  const requireDpop = input.requireDpop ?? false;
+  requireDpopConfiguration(ctx, requireDpop, "requireDpop");
   if (await storage.getProtectedResourceByIdentifier(identifier)) {
     throw identifierUnavailable();
   }
@@ -39,6 +42,7 @@ export async function createProtectedResource(
     identifier,
     name: resourceName(input.name),
     allowedScopes: normalizeAllowedScopes(config, input.allowedScopes),
+    requireDpop,
     status: "active",
     createdAt: now,
     updatedAt: now,
@@ -84,12 +88,16 @@ export async function updateProtectedResource(
 ): Promise<ProtectedResource> {
   const { config, storage } = requireAuthorizationServer(ctx);
   const current = await requireManagedProtectedResource(ctx, input.identifier);
+  requireDpopConfiguration(ctx, input.requireDpop ?? false, "requireDpop");
   const updatedAt = new Date();
   const updated = await storage.updateProtectedResource(current.id, {
     ...(input.name === undefined ? {} : { name: resourceName(input.name) }),
     ...(input.allowedScopes === undefined
       ? {}
       : { allowedScopes: normalizeAllowedScopes(config, input.allowedScopes) }),
+    ...(input.requireDpop === undefined
+      ? {}
+      : { requireDpop: input.requireDpop }),
     updatedAt
   });
   if (!updated) throw resourceNotFound();

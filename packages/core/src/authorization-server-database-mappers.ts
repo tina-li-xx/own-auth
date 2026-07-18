@@ -16,7 +16,9 @@ import type {
   ProtectedResourceStatus,
   TokenEndpointAuthMethod
 } from "./authorization-server-types.js";
+import type { AuthorizationCodeDpopBinding } from "./authorization-server-storage.js";
 import {
+  booleanValue,
   dateValue,
   nullableDate,
   nullableString,
@@ -38,6 +40,7 @@ export function mapAuthorizationClient(row: DatabaseRow): AuthorizationClient {
     ) as TokenEndpointAuthMethod,
     redirectUris: stringArray(row.redirect_uris),
     allowedScopes: stringArray(row.allowed_scopes),
+    dpopBoundAccessTokens: booleanValue(row.dpop_bound_access_tokens),
     status: stringValue(row.status) as AuthorizationClientStatus,
     createdAt: dateValue(row.created_at),
     updatedAt: dateValue(row.updated_at),
@@ -65,6 +68,7 @@ export function mapProtectedResource(row: DatabaseRow): ProtectedResource {
     identifier: stringValue(row.identifier),
     name: stringValue(row.name),
     allowedScopes: stringArray(row.allowed_scopes),
+    requireDpop: booleanValue(row.require_dpop),
     status: stringValue(row.status) as ProtectedResourceStatus,
     createdAt: dateValue(row.created_at),
     updatedAt: dateValue(row.updated_at),
@@ -132,9 +136,19 @@ export function mapAuthorizationCode(row: DatabaseRow): AuthorizationCode {
     nonceCiphertext: nullableString(row.nonce_ciphertext),
     nonceNonce: nullableString(row.nonce_nonce),
     encryptionKeyId: nullableString(row.encryption_key_id),
+    dpopJkt: nullableString(row.dpop_jkt),
     expiresAt: dateValue(row.expires_at),
     consumedAt: nullableDate(row.consumed_at),
     createdAt: dateValue(row.created_at)
+  };
+}
+
+export function mapAuthorizationCodeDpopBinding(
+  row: DatabaseRow
+): AuthorizationCodeDpopBinding {
+  return {
+    dpopJkt: nullableString(row.dpop_jkt),
+    dpopRequired: booleanValue(row.dpop_required)
   };
 }
 
@@ -150,6 +164,7 @@ export function mapAuthorizationAccessToken(
     userId: stringValue(row.user_id),
     protectedResourceId: nullableString(row.protected_resource_id),
     scopes: stringArray(row.scopes),
+    dpopJkt: nullableString(row.dpop_jkt),
     expiresAt: dateValue(row.expires_at),
     revokedAt: nullableDate(row.revoked_at),
     createdAt: dateValue(row.created_at)
@@ -170,6 +185,7 @@ export function mapAuthorizationRefreshToken(
     scopes: stringArray(row.scopes),
     generation: numberValue(row.generation),
     replacedByTokenId: nullableString(row.replaced_by_token_id),
+    dpopJkt: nullableString(row.dpop_jkt),
     expiresAt: dateValue(row.expires_at),
     consumedAt: nullableDate(row.consumed_at),
     revokedAt: nullableDate(row.revoked_at),

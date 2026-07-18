@@ -4,6 +4,7 @@ import {
   handleAuthRpc,
   handleAuthorizationStorageRpc,
   handleCloseLifecycle,
+  handleDpopCrypto,
   handleWebhookFlow,
   handleInspection,
   handleRateLimitRpc,
@@ -37,6 +38,8 @@ export default {
           return await handleSchemaInspection(env.DB);
         case "/conformance/close":
           return await handleCloseLifecycle(env.DB);
+        case "/conformance/dpop-crypto":
+          return await handleDpopCrypto();
         case "/conformance/webhook-verifier":
           return await handleWebhookVerification(request);
         case "/conformance/webhook-flow":

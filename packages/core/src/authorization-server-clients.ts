@@ -1,6 +1,7 @@
 import type { AuthEngineContext } from "./auth-engine-context.js";
 import { audit } from "./auth-engine-helpers.js";
 import { authorizationClientAuthenticationMethods } from "./authorization-server-constants.js";
+import { requireDpopConfiguration } from "./authorization-server-dpop.js";
 import {
   createClientId,
   createClientSecret,
@@ -43,6 +44,12 @@ export async function createAuthorizationClient(
     input.clientType,
     input.tokenEndpointAuthMethod
   );
+  const dpopBoundAccessTokens = input.dpopBoundAccessTokens ?? false;
+  requireDpopConfiguration(
+    ctx,
+    dpopBoundAccessTokens,
+    "dpopBoundAccessTokens"
+  );
   const now = new Date();
   const client: AuthorizationClient = {
     id: createId("ocli"),
@@ -53,6 +60,7 @@ export async function createAuthorizationClient(
     tokenEndpointAuthMethod,
     redirectUris,
     allowedScopes,
+    dpopBoundAccessTokens,
     status: "active",
     createdAt: now,
     updatedAt: now,
@@ -95,6 +103,11 @@ export async function updateAuthorizationClient(
 ): Promise<AuthorizationClient> {
   const { config, storage } = requireAuthorizationServer(ctx);
   const current = await requireManagedClient(ctx, input.clientId);
+  requireDpopConfiguration(
+    ctx,
+    input.dpopBoundAccessTokens ?? false,
+    "dpopBoundAccessTokens"
+  );
   const updated = await storage.updateAuthorizationClient(current.id, {
     ...(input.name === undefined ? {} : { name: clientName(input.name) }),
     ...(input.redirectUris === undefined
@@ -108,6 +121,9 @@ export async function updateAuthorizationClient(
     ...(input.allowedScopes === undefined
       ? {}
       : { allowedScopes: normalizeAllowedScopes(config, input.allowedScopes) }),
+    ...(input.dpopBoundAccessTokens === undefined
+      ? {}
+      : { dpopBoundAccessTokens: input.dpopBoundAccessTokens }),
     updatedAt: new Date()
   });
   if (!updated) {

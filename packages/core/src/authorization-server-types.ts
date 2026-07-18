@@ -9,6 +9,7 @@ export type TokenEndpointAuthMethod =
   | "client_secret_basic"
   | "client_secret_post";
 export type AuthorizationInteractionStatus = "pending" | "approved" | "denied";
+export type AuthorizationTokenType = "Bearer" | "DPoP";
 export type AuthorizationPrompt =
   | "none"
   | "login"
@@ -44,6 +45,10 @@ export interface AuthorizationServerOptions {
   refreshTokenTtlMs?: number;
   resourceIntrospectionRequestsPerMinute?: number;
   failedIntrospectionAttemptsPerMinute?: number;
+  dpop?: {
+    proofTtlMs?: number;
+    clockSkewMs?: number;
+  };
 }
 
 export interface AuthorizationClient {
@@ -55,6 +60,7 @@ export interface AuthorizationClient {
   tokenEndpointAuthMethod: TokenEndpointAuthMethod;
   redirectUris: string[];
   allowedScopes: string[];
+  dpopBoundAccessTokens?: boolean;
   status: AuthorizationClientStatus;
   createdAt: Date;
   updatedAt: Date;
@@ -76,6 +82,7 @@ export interface ProtectedResource {
   identifier: string;
   name: string;
   allowedScopes: string[];
+  requireDpop?: boolean;
   status: ProtectedResourceStatus;
   createdAt: Date;
   updatedAt: Date;
@@ -120,6 +127,7 @@ export interface StoredAuthorizationRequest {
   claimsLocales: string[];
   loginHint: string | null;
   resource: string | null;
+  dpopJkt: string | null;
 }
 
 export interface AuthorizationGrant {
@@ -147,6 +155,7 @@ export interface AuthorizationCode {
   nonceCiphertext: string | null;
   nonceNonce: string | null;
   encryptionKeyId: string | null;
+  dpopJkt?: string | null;
   expiresAt: Date;
   consumedAt: Date | null;
   createdAt: Date;
@@ -161,6 +170,7 @@ export interface AuthorizationAccessToken {
   userId: string;
   protectedResourceId: string | null;
   scopes: string[];
+  dpopJkt?: string | null;
   expiresAt: Date;
   revokedAt: Date | null;
   createdAt: Date;
@@ -177,6 +187,7 @@ export interface AuthorizationRefreshToken {
   scopes: string[];
   generation: number;
   replacedByTokenId: string | null;
+  dpopJkt?: string | null;
   expiresAt: Date;
   consumedAt: Date | null;
   revokedAt: Date | null;
@@ -197,6 +208,7 @@ export interface CreateAuthorizationClientInput {
   redirectUris: string[];
   allowedScopes?: string[];
   tokenEndpointAuthMethod?: TokenEndpointAuthMethod;
+  dpopBoundAccessTokens?: boolean;
   actorUserId?: string;
   request?: RequestContext;
 }
@@ -210,6 +222,7 @@ export interface CreateProtectedResourceInput {
   identifier: string;
   name: string;
   allowedScopes: string[];
+  requireDpop?: boolean;
   actorUserId?: string;
   request?: RequestContext;
 }
@@ -223,6 +236,7 @@ export interface UpdateProtectedResourceInput {
   identifier: string;
   name?: string;
   allowedScopes?: string[];
+  requireDpop?: boolean;
   actorUserId?: string;
   request?: RequestContext;
 }
@@ -245,6 +259,7 @@ export interface UpdateAuthorizationClientInput {
   name?: string;
   redirectUris?: string[];
   allowedScopes?: string[];
+  dpopBoundAccessTokens?: boolean;
   actorUserId?: string;
   request?: RequestContext;
 }
@@ -359,6 +374,7 @@ export interface AuthorizationRequestInput {
   requestObject?: string;
   requestUri?: string;
   resource?: string;
+  dpopJkt?: string;
   sessionToken?: string | null;
   request?: RequestContext;
 }
@@ -374,11 +390,14 @@ export interface AuthorizationTokenRequestInput {
   refreshToken?: string;
   scope?: string;
   resource?: string;
+  dpopProof?: string;
+  requestMethod?: string;
+  requestUrl?: string;
   request?: RequestContext;
 }
 
 export interface AuthorizationTokenResponse {
-  token_type: "Bearer";
+  token_type: AuthorizationTokenType;
   access_token: string;
   expires_in: number;
   refresh_token?: string;
@@ -392,6 +411,9 @@ export interface AuthorizationTokenActionInput {
   clientId?: string;
   clientSecret?: string;
   clientAuthenticationMethod?: TokenEndpointAuthMethod;
+  dpopProof?: string;
+  requestMethod?: string;
+  requestUrl?: string;
   request?: RequestContext;
 }
 
@@ -399,7 +421,8 @@ export interface AuthorizationIntrospectionResponse extends JsonRecord {
   active: boolean;
   scope?: string;
   client_id?: string;
-  token_type?: "Bearer";
+  token_type?: AuthorizationTokenType;
+  cnf?: { jkt: string };
   exp?: number;
   iat?: number;
   sub?: string;
@@ -416,6 +439,18 @@ export interface AuthorizationUserInfo extends JsonRecord {
   phone_number_verified?: boolean;
 }
 
+export interface AuthorizationUserInfoRequestInput {
+  accessToken: string;
+  tokenType: AuthorizationTokenType;
+  dpopProof?: string;
+  requestMethod: string;
+  requestUrl: string;
+}
+
+export interface CleanupDpopProofsInput {
+  expiredBefore?: Date;
+}
+
 export interface AuthorizationMetadata extends JsonRecord {
   issuer: string;
   authorization_endpoint: string;
@@ -424,4 +459,5 @@ export interface AuthorizationMetadata extends JsonRecord {
   introspection_endpoint: string;
   userinfo_endpoint: string;
   jwks_uri: string;
+  dpop_signing_alg_values_supported?: string[];
 }

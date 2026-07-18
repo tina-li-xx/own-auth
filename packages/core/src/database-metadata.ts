@@ -10,7 +10,8 @@ export const coreMigrationFiles = [
   "009_custom_authorization.sql",
   "010_administration.sql",
   "011_authorization_server.sql",
-  "012_protected_resources.sql"
+  "012_protected_resources.sql",
+  "013_dpop.sql"
 ] as const;
 
 export const initialMigration = coreMigrationFiles[0];
@@ -48,5 +49,6 @@ export const databaseTables = {
   authorizationCodes: "own_auth_authorization_codes",
   authorizationAccessTokens: "own_auth_authorization_access_tokens",
   authorizationRefreshTokens: "own_auth_authorization_refresh_tokens",
-  oidcSubjects: "own_auth_oidc_subjects"
+  oidcSubjects: "own_auth_oidc_subjects",
+  dpopProofs: "own_auth_dpop_proofs"
 } as const;

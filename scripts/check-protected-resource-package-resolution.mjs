@@ -5,7 +5,7 @@ import {
 } from "./package-resolution-check.mjs";
 
 const guardUrl = pathToFileURL(
-  `${repositoryRoot}/scripts/protected-resource-import-guard.mjs`
+  `${repositoryRoot}/scripts/portable-subpath-import-guard.mjs`
 ).href;
 
 await checkPackageResolution({

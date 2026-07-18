@@ -7,6 +7,10 @@ import {
 import { createAuthorizationUserInfo } from "./authorization-server-claims.js";
 import { authorizationServerTokenPrefixes } from "./authorization-server-constants.js";
 import {
+  rejectDpopProofWhenDisabled,
+  verifyAndConsumeDpopProof
+} from "./authorization-server-dpop.js";
+import {
   hashAuthorizationSecret,
   normalizeProtectedResourceIdentifier,
   requireAuthorizationProtocolToken,
@@ -27,6 +31,7 @@ import type {
   AuthorizationTokenActionInput,
   AuthorizationUserGrant,
   AuthorizationUserInfo,
+  AuthorizationUserInfoRequestInput,
   ListAuthorizationUserGrantsInput,
   RevokeAuthorizationUserGrantInput,
   VerifiedAuthorizationAccessToken,
@@ -43,7 +48,16 @@ export async function verifyAuthorizationAccessToken(
   const expectedResource = input.resource === undefined
     ? undefined
     : normalizeVerificationResource(input.resource);
-  const resolved = await resolveAccessToken(ctx, input.accessToken, expectedResource);
+  const resolved = await resolveAccessToken(ctx, input.accessToken, {
+    expectedResource
+  });
+  if (
+    resolved.token.dpopJkt ||
+    resolved.client.dpopBoundAccessTokens ||
+    resolved.resource?.requireDpop
+  ) {
+    throw invalidAccessToken();
+  }
   const requiredScopes = input.requiredScopes ?? [];
   if (
     !Array.isArray(requiredScopes) ||
@@ -69,9 +83,28 @@ export async function verifyAuthorizationAccessToken(
 
 export async function getAuthorizationUserInfo(
   ctx: AuthEngineContext,
-  accessToken: string
+  input: AuthorizationUserInfoRequestInput
 ): Promise<AuthorizationUserInfo> {
-  const resolved = await resolveAccessToken(ctx, accessToken, null);
+  rejectDpopProofWhenDisabled(ctx, input.dpopProof);
+  const resolved = await resolveAccessToken(ctx, input.accessToken, {
+    allowAnyResource: true
+  });
+  if (
+    (resolved.token.dpopJkt && input.tokenType !== "DPoP") ||
+    (!resolved.token.dpopJkt && input.tokenType !== "Bearer")
+  ) {
+    throw invalidAccessToken();
+  }
+  await verifyAndConsumeDpopProof(ctx, {
+    proof: input.dpopProof,
+    expectedJkt: resolved.token.dpopJkt ?? null,
+    bindingRequired:
+      resolved.client.dpopBoundAccessTokens || Boolean(resolved.resource?.requireDpop),
+    method: input.requestMethod,
+    url: input.requestUrl,
+    accessToken: input.accessToken,
+    statusCode: 401
+  });
   if (!resolved.token.scopes.includes("openid")) {
     throw invalidAccessToken();
   }
@@ -84,6 +117,7 @@ export async function revokeAuthorizationProtocolToken(
 ): Promise<void> {
   await rateLimitAuthorizationServerProtocol(ctx, "revocation", input);
   const client = await authenticateAuthorizationClient(ctx, input);
+  rejectDpopProofWhenDisabled(ctx, input.dpopProof);
   const rawToken = requireAuthorizationProtocolToken(input.token);
   const { storage } = requireAuthorizationServer(ctx);
   const tokenHash = hashAuthorizationSecret(ctx, rawToken);
@@ -92,7 +126,19 @@ export async function revokeAuthorizationProtocolToken(
     storage.getAuthorizationRefreshTokenByHash(tokenHash)
   ]);
   const token = refreshToken ?? accessToken;
-  if (!token || token.authorizationClientId !== client.id) return;
+  if (!token || token.authorizationClientId !== client.id) {
+    return;
+  }
+  const resource = token.protectedResourceId
+    ? await storage.getProtectedResourceById(token.protectedResourceId)
+    : null;
+  await verifyAndConsumeDpopProof(ctx, {
+    proof: input.dpopProof,
+    expectedJkt: token.dpopJkt ?? null,
+    bindingRequired: client.dpopBoundAccessTokens || Boolean(resource?.requireDpop),
+    method: input.requestMethod ?? "",
+    url: input.requestUrl ?? ""
+  });
   await storage.revokeAuthorizationToken(tokenHash, client.id, new Date());
   await audit(ctx, {
     eventType: "authorization_server.token_revoked",
@@ -183,7 +229,10 @@ export async function revokeAuthorizationUserGrant(
 async function resolveAccessToken(
   ctx: AuthEngineContext,
   rawToken: string,
-  expectedResource: string | null | undefined
+  options: {
+    allowAnyResource?: boolean;
+    expectedResource?: string | null;
+  }
 ): Promise<{
   token: AuthorizationAccessToken;
   client: AuthorizationClient;
@@ -223,7 +272,12 @@ async function resolveAccessToken(
     grant.id !== token.grantId ||
     grant.revokedAt ||
     !isActiveProtectedResourceBinding(token.protectedResourceId, resource) ||
-    !resourceMatchesExpected(token.protectedResourceId, resource, expectedResource) ||
+    (!options.allowAnyResource &&
+      !resourceMatchesExpected(
+        token.protectedResourceId,
+        resource,
+        options.expectedResource
+      )) ||
     !authorizationTokenScopesAreActive(resource, grant.scopes, token.scopes) ||
     !user ||
     user.disabledAt

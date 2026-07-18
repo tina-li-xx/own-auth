@@ -45,6 +45,10 @@ export interface AuthorizationServerRuntimeConfig {
   refreshTokenTtlMs: number;
   resourceIntrospectionRequestsPerMinute: number;
   failedIntrospectionAttemptsPerMinute: number;
+  dpop: Readonly<{
+    proofTtlMs: number;
+    clockSkewMs: number;
+  }> | null;
   signer: AuthorizationServerSigner;
 }
 
@@ -84,6 +88,18 @@ export function normalizeAuthorizationServerOptions(
       options.failedIntrospectionAttemptsPerMinute ?? 30,
       "authorizationServer.failedIntrospectionAttemptsPerMinute"
     ),
+    dpop: options.dpop
+      ? Object.freeze({
+          proofTtlMs: positiveInteger(
+            options.dpop.proofTtlMs ?? 5 * minute,
+            "authorizationServer.dpop.proofTtlMs"
+          ),
+          clockSkewMs: nonNegativeInteger(
+            options.dpop.clockSkewMs ?? minute,
+            "authorizationServer.dpop.clockSkewMs"
+          )
+        })
+      : null,
     signer: new AuthorizationServerSigner({
       current: options.signingKeys.current,
       previous: [...(options.signingKeys.previous ?? [])]
@@ -191,6 +207,13 @@ function normalizeScopes(
 function positiveInteger(value: number, option: string): number {
   if (!Number.isInteger(value) || value < 1) {
     throw new Error(`${option} must be a positive integer`);
+  }
+  return value;
+}
+
+function nonNegativeInteger(value: number, option: string): number {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${option} must be a non-negative integer`);
   }
   return value;
 }

@@ -45,6 +45,13 @@ const webhookRetryDelay = meter.createHistogram("own_auth.webhook.retry.delay", 
   description: "Scheduled delay before an Own Auth webhook retry",
   unit: "s"
 });
+const dpopVerificationFailureCount = meter.createCounter(
+  "own_auth.dpop.verification.failure.count",
+  {
+    description: "Rejected Own Auth DPoP proofs",
+    unit: "{failure}"
+  }
+);
 
 const emailDeliveryTypes = new Set([
   "email_verification",
@@ -202,6 +209,26 @@ export function traceWebhookDelivery<Result extends {
 export function recordRateLimitDenial(key: string): void {
   safely(() => rateLimitDenialCount.add(1, {
     "own_auth.rate_limit.bucket": safeRateLimitBucket(key)
+  }));
+}
+
+export function recordDpopVerificationFailure(
+  reason:
+    | "algorithm_unsupported"
+    | "disabled"
+    | "expired"
+    | "malformed"
+    | "method_mismatch"
+    | "missing"
+    | "replayed"
+    | "signature_invalid"
+    | "thumbprint_mismatch"
+    | "token_hash_mismatch"
+    | "unexpected"
+    | "url_mismatch"
+): void {
+  safely(() => dpopVerificationFailureCount.add(1, {
+    "own_auth.dpop.failure.reason": reason
   }));
 }
 

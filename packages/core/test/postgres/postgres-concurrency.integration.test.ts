@@ -101,6 +101,7 @@ describeWithDatabase("Postgres concurrency integration", () => {
         tokenEndpointAuthMethod: "none",
         redirectUris: ["https://client.example.com/callback"],
         allowedScopes: ["openid", "offline_access"],
+        dpopBoundAccessTokens: false,
         status: "active",
         createdAt: now,
         updatedAt: now,
@@ -168,6 +169,31 @@ describeWithDatabase("Postgres concurrency integration", () => {
       expect(accessTokens.filter(Boolean)[0]?.revokedAt).toBeInstanceOf(Date);
       expect(refreshTokens.filter(Boolean)).toHaveLength(1);
       expect(refreshTokens.filter(Boolean)[0]?.revokedAt).toBeInstanceOf(Date);
+    } finally {
+      first.release();
+      second.release();
+    }
+  });
+
+  it("consumes a DPoP proof exactly once across separate connections", async () => {
+    const [first, second] = await database.connectPair();
+    const storage = [
+      new PostgresAuthStorage(first).authorizationServerStorage.dpopStorage,
+      new PostgresAuthStorage(second).authorizationServerStorage.dpopStorage
+    ] as const;
+    const now = new Date();
+    const input = {
+      proofHash: `dpop_${crypto.randomUUID()}`,
+      consumedAt: now,
+      expiresAt: new Date(now.getTime() + 6 * 60 * 1_000)
+    };
+
+    try {
+      const results = await Promise.all([
+        storage[0].consumeDpopProof(input),
+        storage[1].consumeDpopProof(input)
+      ]);
+      expect(results.sort()).toEqual([false, true]);
     } finally {
       first.release();
       second.release();
@@ -272,6 +298,7 @@ function accessToken(
     userId,
     protectedResourceId: null,
     scopes: ["openid", "offline_access"],
+    dpopJkt: null,
     expiresAt,
     revokedAt: null,
     createdAt
@@ -298,6 +325,7 @@ function refreshToken(
     scopes: ["openid", "offline_access"],
     generation,
     replacedByTokenId: null,
+    dpopJkt: null,
     expiresAt,
     consumedAt: null,
     revokedAt: null,

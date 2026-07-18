@@ -72,6 +72,10 @@
       "types": "./dist/protected-resource.d.ts",
       "default": "./dist/protected-resource.js"
     },
+    "./dpop": {
+      "types": "./dist/dpop.d.ts",
+      "default": "./dist/dpop.js"
+    },
     "./react": {
       "types": "./dist/react.d.ts",
       "default": "./dist/react.js"
@@ -100,6 +104,7 @@
     "./migrations/010_administration.sql": "./migrations/010_administration.sql",
     "./migrations/011_authorization_server.sql": "./migrations/011_authorization_server.sql",
     "./migrations/012_protected_resources.sql": "./migrations/012_protected_resources.sql",
+    "./migrations/013_dpop.sql": "./migrations/013_dpop.sql",
     "./migrations/d1/*.sql": "./migrations/d1/*.sql",
     "./docs/installation.md": "./docs/installation.md",
     "./docs/cloudflare-d1.md": "./docs/cloudflare-d1.md",

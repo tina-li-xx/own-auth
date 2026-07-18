@@ -10,7 +10,7 @@ A protected resource is an API that accepts access tokens issued by the Own Auth
 npx own-auth migrate
 ```
 
-Migration `012_protected_resources` adds registered resources, hashed resource secrets, and resource bindings for grants, authorization codes, access tokens, and refresh tokens.
+Migration `012_protected_resources` adds registered resources, hashed resource secrets, and resource bindings for grants, authorization codes, access tokens, and refresh tokens. Migration `013_dpop` adds optional DPoP enforcement and proof replay protection.
 
 ## Register A Resource
 
@@ -21,6 +21,7 @@ const created = await auth.authorizationServer.createProtectedResource({
   identifier: "https://api.example.com/",
   name: "Documents API",
   allowedScopes: ["documents:read", "documents:write"],
+  requireDpop: true,
 });
 
 console.log(created.resource.identifier);
@@ -35,7 +36,7 @@ Resource identifiers are permanent. Revoking a resource keeps its identifier res
 
 ## Request A Resource-Bound Token
 
-The client includes one `resource` parameter in the authorization request:
+The client includes one `resource` parameter in the authorization request. A DPoP flow also includes the public-key thumbprint in `dpop_jkt`:
 
 ```text
 GET /oauth/authorize
@@ -44,6 +45,7 @@ GET /oauth/authorize
   &redirect_uri=https%3A%2F%2Fclient.example.com%2Fcallback
   &scope=documents%3Aread
   &resource=https%3A%2F%2Fapi.example.com%2F
+  &dpop_jkt=...
   &code_challenge=...
   &code_challenge_method=S256
 ```
@@ -52,9 +54,11 @@ Own Auth supports one resource per authorization flow. The requested scopes must
 
 The token exchange may omit `resource` and inherit it from the authorization code. If it includes `resource`, the value must match the code exactly. An authorization flow started without a resource cannot gain one during code exchange or refresh, and a refresh token cannot switch resources.
 
+When the resource or client requires DPoP, `dpop_jkt` is required and the code exchange must include a valid `DPoP` proof header. See [OAuth And OpenID Connect Authorization Server](/docs/authorization-server#bind-tokens-with-dpop) for client key and proof creation.
+
 ## Verify In The Same Application
 
-An API using the same Own Auth instance can verify the token directly:
+An API using the same Own Auth instance can verify a Bearer token directly:
 
 ```ts
 const verified = await auth.authorizationServer.verifyAccessToken({
@@ -67,6 +71,8 @@ console.log(verified.userId);
 ```
 
 The resource must match exactly. A token for another resource, an unbound token, an expired token, a revoked token, or a token carrying a removed scope fails with `invalid_token`.
+
+This direct method does not accept DPoP-bound tokens because it has no HTTP request method, URL, or proof to verify. Use the request helper below for DPoP, including when the API and authorization server run in the same application.
 
 ## Verify From Another Service
 
@@ -81,8 +87,11 @@ const ownAuth = createOwnAuthProtectedResource({
   resourceSecret: process.env.OWN_AUTH_RESOURCE_SECRET!,
 });
 
-const result = await ownAuth.verifyAccessToken({
-  accessToken,
+const result = await ownAuth.verifyRequest({
+  authorization: request.headers.get("authorization"),
+  dpopProof: request.headers.get("dpop"),
+  method: request.method,
+  url: request.url,
   requiredScopes: ["documents:read"],
 });
 
@@ -90,7 +99,7 @@ if (!result.active) {
   return new Response("Unauthorized", {
     status: result.error === "insufficient_scope" ? 403 : 401,
     headers: {
-      "www-authenticate": ownAuth.createBearerChallenge({
+      "www-authenticate": ownAuth.createDpopChallenge({
         error: result.error,
         requiredScopes: result.requiredScopes,
       }),
@@ -100,6 +109,10 @@ if (!result.active) {
 
 console.log(result.subject);
 ```
+
+For a Bearer-only API, `verifyAccessToken({ accessToken })` remains the shorter equivalent and `createBearerChallenge` creates its challenge header.
+
+The request helper accepts `Authorization: DPoP <token>` plus the `DPoP` proof header. It forwards the proof, method, and canonical request URL in one authenticated introspection request. Own Auth verifies the proof signature, key thumbprint, method, URL, access-token hash, timestamp, and single-use proof ID.
 
 The helper uses Web `fetch` and does not import the Own Auth core, Postgres, D1, or encryption code. Access tokens remain opaque. The resource server authenticates to introspection with its identifier and resource secret.
 

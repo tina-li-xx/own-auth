@@ -36,6 +36,7 @@ export async function assertAuthorizationRefreshRace(
     tokenEndpointAuthMethod: "none",
     redirectUris: ["https://client.example.com/callback"],
     allowedScopes: ["openid", "offline_access"],
+    dpopBoundAccessTokens: false,
     status: "active",
     createdAt: now,
     updatedAt: now,
@@ -124,6 +125,7 @@ function accessToken(
     userId,
     protectedResourceId: null,
     scopes: ["openid", "offline_access"],
+    dpopJkt: null,
     expiresAt,
     revokedAt: null,
     createdAt
@@ -151,6 +153,7 @@ function refreshToken(
     scopes: ["openid", "offline_access"],
     generation,
     replacedByTokenId: null,
+    dpopJkt: null,
     expiresAt,
     consumedAt: null,
     revokedAt: null,

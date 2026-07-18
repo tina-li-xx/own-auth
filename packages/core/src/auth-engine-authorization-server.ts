@@ -12,6 +12,7 @@ import {
   getAuthorizationInteraction
 } from "./authorization-server-interactions.js";
 import { startAuthorization } from "./authorization-server-authorization-request.js";
+import { cleanupDpopProofs } from "./authorization-server-dpop.js";
 import {
   getAuthorizationServerJwks,
   getAuthorizationServerMetadata
@@ -43,6 +44,8 @@ import type {
   AuthorizationTokenResponse,
   AuthorizationUserGrant,
   AuthorizationUserInfo,
+  AuthorizationUserInfoRequestInput,
+  CleanupDpopProofsInput,
   CompleteAuthorizationInteractionInput,
   CreatedAuthorizationClient,
   CreatedProtectedResource,
@@ -208,9 +211,14 @@ export class OwnAuthAuthorizationServer {
   }
 
   /** @internal Used by createOwnAuthAuthorizationServerHandler. */
-  userInfo(accessToken: string): Promise<AuthorizationUserInfo> {
-    return this.execute("authorizationServer.userInfo", { accessToken }, () =>
-      getAuthorizationUserInfo(this.ctx, accessToken));
+  userInfo(input: AuthorizationUserInfoRequestInput): Promise<AuthorizationUserInfo> {
+    return this.execute("authorizationServer.userInfo", input, () =>
+      getAuthorizationUserInfo(this.ctx, input));
+  }
+
+  cleanupDpopProofs(input: CleanupDpopProofsInput = {}): Promise<number> {
+    return this.execute("authorizationServer.cleanupDpopProofs", input, () =>
+      cleanupDpopProofs(this.ctx, input.expiredBefore));
   }
 
   /** @internal Used by createOwnAuthAuthorizationServerHandler. */

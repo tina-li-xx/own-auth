@@ -4,6 +4,10 @@ import { authenticateAuthorizationClient } from "./authorization-server-clients.
 import { createAuthorizationIdToken } from "./authorization-server-claims.js";
 import { authorizationServerTokenPrefixes } from "./authorization-server-constants.js";
 import {
+  rejectDpopProofWhenDisabled,
+  verifyAndConsumeDpopProof
+} from "./authorization-server-dpop.js";
+import {
   authorizationTokenPrefix,
   calculateCodeChallenge,
   createAccessToken,
@@ -37,6 +41,7 @@ export async function exchangeAuthorizationToken(
 ): Promise<AuthorizationTokenResponse> {
   await rateLimitAuthorizationServerProtocol(ctx, "token", input);
   const client = await authenticateAuthorizationClient(ctx, input);
+  rejectDpopProofWhenDisabled(ctx, input.dpopProof);
   if (!input.grantType) {
     throw new AuthorizationProtocolError("invalid_request", "grant_type is required");
   }
@@ -67,15 +72,50 @@ async function exchangeAuthorizationCode(
   const codeVerifier = requiredText(input.codeVerifier, "code_verifier");
   const requestedResource = optionalResource(input.resource);
   const codeChallenge = await calculateCodeChallenge(codeVerifier);
-  const code = await storage.consumeAuthorizationCode(
-    hashAuthorizationSecret(ctx, rawCode),
-    client.id,
-    redirectUri,
-    codeChallenge,
-    requestedResource,
-    new Date()
-  );
+  const codeHash = hashAuthorizationSecret(ctx, rawCode);
+  const exchangedAt = new Date();
+  const dpopStorage = ctx.dpopStorage;
+  const dpopBinding = ctx.authorizationServer?.dpop && dpopStorage
+    ? await dpopStorage.findAuthorizationCodeDpopBinding({
+        codeHash,
+        authorizationClientId: client.id,
+        redirectUri,
+        codeChallenge,
+        resourceIdentifier: requestedResource,
+        now: exchangedAt
+      })
+    : null;
+  if (ctx.authorizationServer?.dpop && !dpopBinding) throw invalidGrant();
+  await verifyAndConsumeDpopProof(ctx, {
+    proof: input.dpopProof,
+    expectedJkt: dpopBinding?.dpopJkt ?? null,
+    bindingRequired: dpopBinding?.dpopRequired ?? client.dpopBoundAccessTokens,
+    method: input.requestMethod ?? "",
+    url: input.requestUrl ?? "",
+    now: exchangedAt
+  });
+  const code = dpopBinding && dpopStorage
+    ? await dpopStorage.consumeDpopAuthorizationCode(
+        codeHash,
+        client.id,
+        redirectUri,
+        codeChallenge,
+        requestedResource,
+        dpopBinding.dpopJkt,
+        exchangedAt
+      )
+    : await storage.consumeAuthorizationCode(
+        codeHash,
+        client.id,
+        redirectUri,
+        codeChallenge,
+        requestedResource,
+        exchangedAt
+      );
   if (!code) throw invalidGrant();
+  if ((code.dpopJkt ?? null) !== (dpopBinding?.dpopJkt ?? null)) {
+    throw invalidGrant();
+  }
 
   const [grant, user, sessions, resource] = await Promise.all([
     storage.getAuthorizationGrant(
@@ -107,7 +147,8 @@ async function exchangeAuthorizationCode(
     user,
     code.protectedResourceId,
     code.scopes,
-    0
+    0,
+    code.dpopJkt ?? null
   );
   const nonce = code.nonceCiphertext && code.nonceNonce && code.encryptionKeyId
     ? await decryptAuthorizationNonce(ctx, {
@@ -146,6 +187,7 @@ async function exchangeAuthorizationCode(
     issued.access.raw,
     issued.access.entity.expiresAt,
     code.scopes,
+    code.dpopJkt ?? null,
     issued.refresh?.raw,
     idToken
   );
@@ -192,6 +234,14 @@ async function exchangeRefreshToken(
   ) {
     throw invalidGrant();
   }
+  await verifyAndConsumeDpopProof(ctx, {
+    proof: input.dpopProof,
+    expectedJkt: current.dpopJkt ?? null,
+    bindingRequired: client.dpopBoundAccessTokens || Boolean(resource?.requireDpop),
+    method: input.requestMethod ?? "",
+    url: input.requestUrl ?? "",
+    now: new Date()
+  });
   const scopes = refreshScopes(input.scope, current.scopes);
   const issued = createTokenPair(
     ctx,
@@ -201,6 +251,7 @@ async function exchangeRefreshToken(
     current.protectedResourceId,
     scopes,
     current.generation + 1,
+    current.dpopJkt ?? null,
     true
   );
   if (!issued.refresh) throw new Error("Refresh rotation did not create a refresh token");
@@ -254,6 +305,7 @@ async function exchangeRefreshToken(
     issued.access.raw,
     issued.access.entity.expiresAt,
     scopes,
+    current.dpopJkt ?? null,
     issued.refresh.raw
   );
 }
@@ -266,6 +318,7 @@ function createTokenPair(
   protectedResourceId: string | null,
   scopes: string[],
   refreshGeneration: number,
+  dpopJkt: string | null,
   forceRefresh = false
 ): {
   access: { raw: string; entity: AuthorizationAccessToken };
@@ -283,6 +336,7 @@ function createTokenPair(
     userId: user.id,
     protectedResourceId,
     scopes: [...scopes],
+    dpopJkt,
     expiresAt: new Date(now.getTime() + config.accessTokenTtlMs),
     revokedAt: null,
     createdAt: now
@@ -306,6 +360,7 @@ function createTokenPair(
         scopes: [...scopes],
         generation: refreshGeneration,
         replacedByTokenId: null,
+        dpopJkt,
         expiresAt: new Date(now.getTime() + config.refreshTokenTtlMs),
         consumedAt: null,
         revokedAt: null,
@@ -319,11 +374,12 @@ function tokenResponse(
   accessToken: string,
   expiresAt: Date,
   scopes: readonly string[],
+  dpopJkt: string | null,
   refreshToken?: string,
   idToken?: string
 ): AuthorizationTokenResponse {
   return {
-    token_type: "Bearer",
+    token_type: dpopJkt ? "DPoP" : "Bearer",
     access_token: accessToken,
     expires_in: Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000)),
     scope: scopes.join(" "),
